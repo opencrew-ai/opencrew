@@ -18,6 +18,7 @@ import { registerNetworkRoutes } from './routes/network'
 import { registerCloudLinkRoutes } from './routes/cloudlink'
 import { registerSearchRoutes } from './routes/search'
 import { registerWorkRoutes } from './routes/work'
+import { registerReactionRoutes } from './routes/reactions'
 import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
@@ -58,19 +59,20 @@ async function main(): Promise<void> {
   registerCloudLinkRoutes(app, ctx)
   registerSearchRoutes(app, ctx)
   registerWorkRoutes(app, ctx)
+  registerReactionRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
   app.register(async (scope) => {
-    scope.get('/api/ws', { websocket: true }, (socket, req) => {
-      const user = currentUser(ctx, req)
+    scope.get('/api/ws', { websocket: true }, async (socket, req) => {
+      const user = await currentUser(ctx, req)
       if (!user) {
         socket.close(4001, 'unauthorized')
         return
       }
       hub.add(socket, user.id)
       broadcastPresence(ctx)
-      socket.send(JSON.stringify({ type: 'presence', entries: computePresence(ctx) }))
+      socket.send(JSON.stringify({ type: 'presence', entries: await computePresence(ctx) }))
       socket.on('message', (raw: Buffer) => {
         try {
           const event = JSON.parse(raw.toString())

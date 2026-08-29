@@ -4,9 +4,10 @@ import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import type { AppContext } from '../context'
 import { channels, messages } from '../db/schema'
-import { enrichMessage } from '../services/messages'
+import { createMessage, enrichMessage } from '../services/messages'
 import { postMessage } from '../services/post'
-import { authGuard, fail, ok } from './helpers'
+import { reactionsFor } from './reactions'
+import { authGuard, memberGuard, fail, ok } from './helpers'
 
 const MESSAGE_PAGE_SIZE = 50
 
@@ -31,7 +32,7 @@ const postMessageSchema = z
 
 export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/channels', { preHandler: authGuard(ctx) }, async () => {
-    const rows = ctx.db.select().from(channels).all()
+    const rows = await ctx.db.select().from(channels)
     return ok(
       rows.map((c) => ({
         id: c.id,
@@ -42,23 +43,23 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
     )
   })
 
-  app.post('/api/channels', { preHandler: authGuard(ctx) }, async (req, reply) => {
+  app.post('/api/channels', { preHandler: memberGuard(ctx) }, async (req, reply) => {
     const parsed = createChannelSchema.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
-    const existing = ctx.db
+    const [existing] = await ctx.db
       .select()
       .from(channels)
       .where(eq(channels.name, parsed.data.name))
-      .get()
+      .limit(1)
     if (existing) return reply.code(409).send(fail('channel name already exists'))
     const channel = {
       id: nanoid(),
       name: parsed.data.name,
       topic: parsed.data.topic,
-      isPrivate: 0,
+      isPrivate: false,
       createdAt: Date.now()
     }
-    ctx.db.insert(channels).values(channel).run()
+    await ctx.db.insert(channels).values(channel)
     const publicChannel = { ...channel, isPrivate: false }
     ctx.hub.broadcast({ type: 'channel_created', channel: publicChannel })
     return ok(publicChannel)
@@ -75,16 +76,16 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
         ? or(eq(messages.id, thread), eq(messages.threadRootId, thread))
         : and(eq(messages.channelId, channelId), isNull(messages.threadRootId))
 
-      const rows = ctx.db
-        .select()
-        .from(messages)
-        .where(scope)
-        .orderBy(desc(messages.createdAt))
-        .limit(MESSAGE_PAGE_SIZE)
-        .all()
-        .reverse()
+      const rows = (
+        await ctx.db
+          .select()
+          .from(messages)
+          .where(scope)
+          .orderBy(desc(messages.createdAt))
+          .limit(MESSAGE_PAGE_SIZE)
+      ).reverse()
 
-      const replyCounts = ctx.db
+      const replyCounts = await ctx.db
         .select({
           rootId: messages.threadRootId,
           count: sql<number>`count(*)`
@@ -92,15 +93,17 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
         .from(messages)
         .where(eq(messages.channelId, channelId))
         .groupBy(messages.threadRootId)
-        .all()
       const countByRoot = new Map(replyCounts.map((r) => [r.rootId, r.count]))
 
-      return ok(
-        rows.map((row) => ({
-          ...enrichMessage(ctx.db, row),
-          replyCount: countByRoot.get(row.id) ?? 0
+      const reactionsByMessage = await reactionsFor(ctx.db, rows.map((r) => r.id))
+      const enriched = await Promise.all(
+        rows.map(async (row) => ({
+          ...(await enrichMessage(ctx.db, row)),
+          replyCount: countByRoot.get(row.id) ?? 0,
+          reactions: reactionsByMessage.get(row.id) ?? []
         }))
       )
+      return ok(enriched)
     }
   )
 
@@ -112,21 +115,28 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
       const parsed = postMessageSchema.safeParse(req.body)
       if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
 
-      const channel = ctx.db
+      const [channel] = await ctx.db
         .select()
         .from(channels)
         .where(eq(channels.id, channelId))
-        .get()
+        .limit(1)
       if (!channel) return reply.code(404).send(fail('channel not found'))
 
-      const message = postMessage(ctx, {
+      const messageInput = {
         channelId,
         threadRootId: parsed.data.threadRootId ?? null,
-        authorType: 'human',
+        authorType: 'human' as const,
         authorId: req.user!.id,
         content: parsed.data.content,
         images: parsed.data.images?.length ? parsed.data.images : undefined
-      })
+      }
+
+      // Guests can chat with humans but must not trigger agent runs.
+      const message =
+        req.user!.role === 'guest'
+          ? await createMessage(ctx, messageInput)
+          : await postMessage(ctx, messageInput)
+
       return ok(message)
     }
   )

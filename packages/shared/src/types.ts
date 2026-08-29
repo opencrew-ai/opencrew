@@ -18,6 +18,16 @@ export type RunStepType =
   | 'approval_resolved'
 export type ApprovalStatus = 'pending' | 'approved' | 'denied'
 
+/** The workspace reaction vocabulary — deliberately constrained. */
+export const REACTION_SET = ['🔥', '👍', '😬', '👀', '🎉'] as const
+export type ReactionEmoji = (typeof REACTION_SET)[number]
+
+export interface ReactionGroup {
+  emoji: string
+  /** Human user ids who reacted with this emoji. */
+  userIds: string[]
+}
+
 export interface User {
   id: string
   name: string
@@ -109,6 +119,8 @@ export interface Message {
   runStatus?: RunStatus
   /** Human override on a conversation root: 'done' closes it regardless of run history. */
   manualStatus?: 'done'
+  /** Aggregated emoji reactions, one group per emoji. */
+  reactions?: ReactionGroup[]
   /**
    * When set, renders a thread citation card — the UI fetches the referenced
    * thread and shows it inline. May point to a thread in any channel.
@@ -181,6 +193,7 @@ export type ServerEvent =
   | { type: 'agent_updated'; agent: AgentWithVersion }
   | { type: 'user_updated'; user: User }
   | { type: 'thread_status'; rootId: string; channelId: string; manualStatus: 'done' | null }
+  | { type: 'reaction_updated'; messageId: string; channelId: string; reactions: ReactionGroup[] }
 
 /** Client → server WebSocket events. */
 export type ClientEvent = { type: 'ping' }

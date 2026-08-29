@@ -3,6 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import { ChannelView } from '../components/ChannelView'
 import { TerminalDrawer } from '../components/TerminalDrawer'
+import { PresenceBar } from '../components/PresenceBar'
+import { SpectatorPanel } from '../components/SpectatorPanel'
 import { useWorkspace } from '../lib/workspace'
 
 export function WorkspacePage() {
@@ -13,6 +15,7 @@ export function WorkspacePage() {
   const targetThreadId = searchParams.get('thread') ?? undefined
   const [runId, setRunId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [spectateUserId, setSpectateUserId] = useState<string | null>(null)
 
   const channel = channels.find((c) => c.id === channelId)
 
@@ -81,14 +84,24 @@ export function WorkspacePage() {
       />
 
       {/* Main content area */}
-      <div className="relative flex min-w-0 flex-1 overflow-hidden">
-        <ChannelView
-          channel={channel}
-          onOpenRun={setRunId}
-          targetThreadId={targetThreadId}
-          onThreadFocused={() => setSearchParams({}, { replace: true })}
-        />
-        {runId && <TerminalDrawer runId={runId} onClose={() => setRunId(null)} />}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <PresenceBar onSpectate={(userId) => setSpectateUserId(userId)} />
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          <ChannelView
+            channel={channel}
+            onOpenRun={setRunId}
+            targetThreadId={targetThreadId}
+            onThreadFocused={() => setSearchParams({}, { replace: true })}
+          />
+          {spectateUserId && !runId && (
+            <SpectatorPanel
+              userId={spectateUserId}
+              onOpenRun={setRunId}
+              onClose={() => setSpectateUserId(null)}
+            />
+          )}
+          {runId && <TerminalDrawer runId={runId} onClose={() => setRunId(null)} />}
+        </div>
       </div>
     </div>
   )

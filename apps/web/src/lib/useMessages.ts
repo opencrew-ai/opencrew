@@ -61,6 +61,11 @@ export function useMessages(channelId: string | undefined, thread: string | null
         setMessages((prev) =>
           prev.map((x) => (x.runId === event.runId ? { ...x, runStatus: event.status } : x))
         )
+      } else if (event.type === 'reaction_updated') {
+        if (event.channelId !== channelId) return
+        setMessages((prev) =>
+          prev.map((x) => (x.id === event.messageId ? { ...x, reactions: event.reactions } : x))
+        )
       } else if (event.type === 'thread_status') {
         if (event.channelId !== channelId) return
         setMessages((prev) =>

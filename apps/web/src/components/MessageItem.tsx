@@ -1,13 +1,75 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Message } from '@opencrew/shared'
+import { REACTION_SET, type Message } from '@opencrew/shared'
+import { api } from '../lib/api'
+import { useWorkspace } from '../lib/workspace'
 import { ApprovalCard } from './ApprovalCard'
 import { InlineThread } from './InlineThread'
 import { ThreadRefCard } from './ThreadRefCard'
 import { ImageLightbox } from './ImageLightbox'
 
 const MD_PLUGINS = [remarkGfm]
+
+/** Reaction chips + hover picker. Constrained set, one toggle per emoji. */
+function Reactions({ message }: { message: Message }) {
+  const { me } = useWorkspace()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const groups = message.reactions ?? []
+
+  const toggle = (emoji: string) => {
+    setPickerOpen(false)
+    void api.post(`/api/messages/${message.id}/reactions`, { emoji }).catch(() => {
+      // WS reaction_updated never arrives on failure — chips stay as they were
+    })
+  }
+
+  return (
+    <div className="ml-7 mt-1 flex items-center gap-1">
+      {groups.map((group) => {
+        const mine = group.userIds.includes(me.id)
+        return (
+          <button
+            key={group.emoji}
+            onClick={() => toggle(group.emoji)}
+            title={mine ? 'Remove reaction' : 'React'}
+            className={`rounded-full border px-1.5 py-0.5 text-xs transition ${
+              mine
+                ? 'border-sky-600/60 bg-sky-950/50'
+                : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600'
+            }`}
+          >
+            {group.emoji} <span className="text-[10px] text-zinc-400">{group.userIds.length}</span>
+          </button>
+        )
+      })}
+      <div className="relative">
+        <button
+          onClick={() => setPickerOpen((v) => !v)}
+          className={`rounded-full border border-zinc-800 px-1.5 py-0.5 text-xs text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-300 ${
+            groups.length === 0 ? 'invisible group-hover:visible' : ''
+          }`}
+          title="Add reaction"
+        >
+          +
+        </button>
+        {pickerOpen && (
+          <div className="absolute bottom-full left-0 z-20 mb-1 flex gap-1 rounded-lg border border-zinc-700 bg-zinc-900 p-1.5 shadow-xl">
+            {REACTION_SET.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => toggle(emoji)}
+                className="rounded px-1 text-base transition hover:bg-zinc-700"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 interface MessageItemProps {
   message: Message
@@ -18,15 +80,23 @@ interface MessageItemProps {
    */
   channelId?: string
   onOpenRun?: (runId: string) => void
+  /** When true the inline thread opens automatically (e.g. deep-linked from a ThreadRefCard). */
+  autoOpenThread?: boolean
 }
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps) {
+export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: MessageItemProps) {
+  const { agents, users } = useWorkspace()
   const [threadOpen, setThreadOpen] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+
+  // Auto-open the inline thread when deep-linked from a ThreadRefCard
+  useEffect(() => {
+    if (autoOpenThread && channelId) setThreadOpen(true)
+  }, [autoOpenThread, channelId])
 
   if (message.authorType === 'system') {
     return (
@@ -52,9 +122,13 @@ export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps)
 
   const isAgent = message.authorType === 'agent'
   const threadRootId = message.threadRootId ?? message.id
+  // Personal crews: every agent message names the human whose crew it is.
+  const owner = isAgent
+    ? users.find((u) => u.id === agents.find((a) => a.id === message.authorId)?.createdBy)
+    : undefined
 
   return (
-    <div className="group px-4 py-1.5 hover:bg-zinc-900/40">
+    <div data-msg-id={message.id} className="group px-4 py-1.5 hover:bg-zinc-900/40">
       {/* Header row */}
       <div className="flex items-baseline gap-2">
         <span className="text-base">{isAgent ? message.authorEmoji : '👤'}</span>
@@ -64,6 +138,11 @@ export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps)
         {isAgent && (
           <span className="rounded bg-violet-900/50 px-1 text-[10px] uppercase tracking-wide text-violet-300">
             agent
+          </span>
+        )}
+        {owner && (
+          <span className="text-[11px] text-zinc-500" title={`${owner.name}'s crew`}>
+            · {owner.name}
           </span>
         )}
         <span className="text-xs text-zinc-500">{formatTime(message.createdAt)}</span>
@@ -132,6 +211,9 @@ export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps)
           onClose={() => setLightboxSrc(null)}
         />
       )}
+
+      {/* Emoji reactions */}
+      <Reactions message={message} />
 
       {/* Thread actions — only shown when channelId is provided */}
       {channelId && (

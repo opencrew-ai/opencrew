@@ -158,6 +158,14 @@ CREATE TABLE IF NOT EXISTS invites (
   used_by TEXT,
   role TEXT NOT NULL DEFAULT 'member'
 );
+CREATE TABLE IF NOT EXISTS reactions (
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  message_id TEXT NOT NULL,
+  emoji TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (message_id, emoji, user_id)
+);
 `
 
 // ---------------------------------------------------------------------------

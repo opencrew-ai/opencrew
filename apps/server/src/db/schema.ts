@@ -203,3 +203,17 @@ export const invites = pgTable('invites', {
   /** Role granted to the user who redeems this invite. Defaults to 'member'. */
   role: text('role', { enum: ['member', 'guest'] }).notNull().default('member')
 })
+
+export const reactions = pgTable(
+  'reactions',
+  {
+    ...ws,
+    messageId: text('message_id').notNull(),
+    emoji: text('emoji').notNull(),
+    userId: text('user_id').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.messageId, t.emoji, t.userId] })
+  })
+)
