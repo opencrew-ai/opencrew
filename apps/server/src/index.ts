@@ -70,7 +70,7 @@ async function main(): Promise<void> {
         socket.close(4001, 'unauthorized')
         return
       }
-      hub.add(socket, user.id)
+      hub.add(socket, user.id, user.role === 'admin')
       broadcastPresence(ctx)
       socket.send(JSON.stringify({ type: 'presence', entries: await computePresence(ctx) }))
       socket.on('message', (raw: Buffer) => {

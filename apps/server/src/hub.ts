@@ -7,12 +7,23 @@ export interface SocketLike {
   send(data: string): void
 }
 
+interface Connection {
+  userId: string
+  isAdmin: boolean
+}
+
+/**
+ * Event types that expose the owner's machine (terminal output can contain
+ * file contents, env values, command output) — admins only.
+ */
+const ADMIN_ONLY_EVENTS = new Set<ServerEvent['type']>(['run_step'])
+
 /** Tracks connected sockets and broadcasts events to every client. */
 export class Hub {
-  private sockets = new Map<SocketLike, string>() // socket -> userId
+  private sockets = new Map<SocketLike, Connection>()
 
-  add(socket: SocketLike, userId: string): void {
-    this.sockets.set(socket, userId)
+  add(socket: SocketLike, userId: string, isAdmin = true): void {
+    this.sockets.set(socket, { userId, isAdmin })
   }
 
   remove(socket: SocketLike): void {
@@ -20,12 +31,14 @@ export class Hub {
   }
 
   onlineUserIds(): string[] {
-    return [...new Set(this.sockets.values())]
+    return [...new Set([...this.sockets.values()].map((c) => c.userId))]
   }
 
   broadcast(event: ServerEvent): void {
     const payload = JSON.stringify(event)
-    for (const socket of this.sockets.keys()) {
+    const adminOnly = ADMIN_ONLY_EVENTS.has(event.type)
+    for (const [socket, conn] of this.sockets) {
+      if (adminOnly && !conn.isAdmin) continue
       if (socket.readyState === socket.OPEN) {
         socket.send(payload)
       }

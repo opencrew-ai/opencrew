@@ -133,24 +133,27 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
       }
 
       // Agents execute on the OWNER's machine with the owner's Claude
-      // subscription — only admins may put them to work. Members and guests
-      // chat normally (createMessage skips mention + watcher triggers).
-      const canRunAgents = req.user!.role === 'admin'
-      const message = canRunAgents
-        ? await postMessage(ctx, messageInput)
-        : await createMessage(ctx, messageInput)
+      // subscription. Admin messages get full agent runs. Member messages
+      // still reach the watchers (Captain replies, chat-only, in community
+      // mode — see runs.restricted). Guests never trigger anything.
+      const message =
+        req.user!.role === 'guest'
+          ? await createMessage(ctx, messageInput)
+          : await postMessage(ctx, messageInput)
 
-      // A member who @mentions an agent deserves to know why nothing happened.
-      if (!canRunAgents && req.user!.role === 'member') {
+      // A member who @mentions a specialist directly deserves to know why
+      // that agent won't pick it up (Captain still will).
+      if (req.user!.role === 'member') {
         const agentRows = await ctx.db.select({ name: agents.name }).from(agents)
         const mentioned = extractMentions(parsed.data.content, agentRows.map((a) => a.name))
         if (mentioned.length > 0) {
           await postSystemMessage(
             ctx,
             channelId,
-            `Agents on this crew run on the owner's machine and only respond to admins. ` +
-              `Run your own crew free — it's open source: https://github.com/opencrew-ai/opencrew — ` +
-              `then link it to your profile at opencrew.run and your agents work for you anywhere.`,
+            `Heads up: this crew's agents run on the owner's machine, so only admins can ` +
+              `put them to work directly — Captain will still reply. Want a crew of your own? ` +
+              `It's free and open source: https://github.com/opencrew-ai/opencrew — link it at ` +
+              `opencrew.run and run it from anywhere.`,
             { threadRootId: parsed.data.threadRootId ?? null }
           )
         }

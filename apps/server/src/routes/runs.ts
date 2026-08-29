@@ -13,7 +13,6 @@ const RECENT_RUNS_LIMIT = 50
 
 const resolveSchema = z.object({
   decision: z.enum(['approved', 'denied']),
-  // "Approve + always allow": also create a standing auto-approve rule.
   always: z.boolean().default(false)
 })
 
@@ -33,59 +32,52 @@ function toRun(row: typeof runs.$inferSelect) {
 }
 
 export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get('/api/runs/:runId', { preHandler: authGuard(ctx) }, async (req, reply) => {
+  // Terminal steps expose the owner's machine (file contents, command
+  // output) — admins only, matching the run_step WS gating in the Hub.
+  app.get('/api/runs/:runId', { preHandler: adminGuard(ctx) }, async (req, reply) => {
     const { runId } = req.params as { runId: string }
-    const run = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
+    const [run] = await ctx.db.select().from(runs).where(eq(runs.id, runId)).limit(1)
     if (!run) return reply.code(404).send(fail('run not found'))
-    const steps = ctx.db
-      .select()
-      .from(runSteps)
-      .where(eq(runSteps.runId, runId))
-      .orderBy(asc(runSteps.seq))
-      .all()
-      .map((s) => ({
-        id: s.id,
-        runId: s.runId,
-        seq: s.seq,
-        type: s.type,
-        payload: JSON.parse(s.payload),
-        createdAt: s.createdAt
-      }))
+    const steps = (
+      await ctx.db
+        .select()
+        .from(runSteps)
+        .where(eq(runSteps.runId, runId))
+        .orderBy(asc(runSteps.seq))
+    ).map((s) => ({
+      id: s.id,
+      runId: s.runId,
+      seq: s.seq,
+      type: s.type,
+      payload: JSON.parse(s.payload),
+      createdAt: s.createdAt
+    }))
     return ok({ run: toRun(run), steps })
   })
 
-  app.get(
-    '/api/agents/:agentId/runs',
-    { preHandler: authGuard(ctx) },
-    async (req) => {
-      const { agentId } = req.params as { agentId: string }
-      const rows = ctx.db
-        .select()
-        .from(runs)
-        .where(eq(runs.agentId, agentId))
-        .orderBy(desc(runs.createdAt))
-        .limit(RECENT_RUNS_LIMIT)
-        .all()
-      return ok(rows.map(toRun))
-    }
-  )
+  app.get('/api/agents/:agentId/runs', { preHandler: authGuard(ctx) }, async (req) => {
+    const { agentId } = req.params as { agentId: string }
+    const rows = await ctx.db
+      .select()
+      .from(runs)
+      .where(eq(runs.agentId, agentId))
+      .orderBy(desc(runs.createdAt))
+      .limit(RECENT_RUNS_LIMIT)
+    return ok(rows.map(toRun))
+  })
 
-  // 🛑 Emergency stop: cancel queued runs, deny pending approvals, abort
-  // every live session. The red button.
   app.post('/api/runs/stop-all', { preHandler: adminGuard(ctx) }, async (req) => {
-    // 1. Queued (never started): drop from the scheduler, mark cancelled.
+    // 1. Queued: drop from scheduler, mark cancelled.
     ctx.queue.drainPending()
-    const queued = ctx.db
+    const queued = await ctx.db
       .select()
       .from(runs)
       .where(inArray(runs.status, ['queued']))
-      .all()
     for (const run of queued) {
-      ctx.db
+      await ctx.db
         .update(runs)
         .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
         .where(eq(runs.id, run.id))
-        .run()
       ctx.hub.broadcast({
         type: 'run_status',
         runId: run.id,
@@ -94,31 +86,28 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       })
     }
 
-    // 2. Pending approvals: deny — resolving wakes blocked sessions, which
-    // then cancel themselves cleanly (full audit trail kept).
-    const pendingApprovals = ctx.db
+    // 2. Pending approvals: deny — resolving wakes blocked sessions.
+    const pendingApprovals = await ctx.db
       .select()
       .from(approvals)
       .where(eq(approvals.status, 'pending'))
-      .all()
     for (const approval of pendingApprovals) {
       try {
-        resolveApproval(ctx, approval.id, 'denied', req.user!.id)
+        await resolveApproval(ctx, approval.id, 'denied', req.user!.id)
       } catch {
         // Already resolved in a race — fine.
       }
     }
 
-    // 3. Live sessions: pre-mark cancelled (suppresses failure spam), then abort.
+    // 3. Live sessions: pre-mark cancelled, then abort.
     let aborted = 0
     for (const [runId, controller] of ctx.activeRuns) {
-      const run = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
+      const [run] = await ctx.db.select().from(runs).where(eq(runs.id, runId)).limit(1)
       if (run && ['running', 'awaiting_approval'].includes(run.status)) {
-        ctx.db
+        await ctx.db
           .update(runs)
           .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
           .where(eq(runs.id, runId))
-          .run()
         ctx.hub.broadcast({
           type: 'run_status',
           runId,
@@ -143,18 +132,16 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     { preHandler: authGuard(ctx) },
     async (req, reply) => {
       const { approvalId } = req.params as { approvalId: string }
-      const row = ctx.db
+      const [row] = await ctx.db
         .select()
         .from(approvals)
         .where(eq(approvals.id, approvalId))
-        .get()
+        .limit(1)
       if (!row) return reply.code(404).send(fail('approval not found'))
       return ok(toApproval(row))
     }
   )
 
-  // Only admins resolve approvals; enforcement of the result lives in the
-  // executor (assertToolInvocationAllowed), not here.
   app.post(
     '/api/approvals/:approvalId/resolve',
     { preHandler: adminGuard(ctx) },
@@ -164,35 +151,30 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
       try {
         if (parsed.data.decision === 'approved' && parsed.data.always) {
-          const row = ctx.db
+          const [row] = await ctx.db
             .select()
             .from(approvals)
             .where(eq(approvals.id, approvalId))
-            .get()
-          const run = row
-            ? ctx.db.select().from(runs).where(eq(runs.id, row.runId)).get()
-            : undefined
+            .limit(1)
+          const [run] = row
+            ? await ctx.db.select().from(runs).where(eq(runs.id, row.runId)).limit(1)
+            : []
           if (row && run) {
-            const existing = ctx.db
-              .select()
-              .from(approvalRules)
-              .all()
-              .find((r) => r.agentId === run.agentId && r.toolName === row.toolName)
+            const existing = (await ctx.db.select().from(approvalRules)).find(
+              (r) => r.agentId === run.agentId && r.toolName === row.toolName
+            )
             if (!existing) {
-              ctx.db
-                .insert(approvalRules)
-                .values({
-                  id: nanoid(),
-                  agentId: run.agentId,
-                  toolName: row.toolName,
-                  createdBy: req.user!.id,
-                  createdAt: Date.now()
-                })
-                .run()
+              await ctx.db.insert(approvalRules).values({
+                id: nanoid(),
+                agentId: run.agentId,
+                toolName: row.toolName,
+                createdBy: req.user!.id,
+                createdAt: Date.now()
+              })
             }
           }
         }
-        return ok(resolveApproval(ctx, approvalId, parsed.data.decision, req.user!.id))
+        return ok(await resolveApproval(ctx, approvalId, parsed.data.decision, req.user!.id))
       } catch (err) {
         return reply
           .code(400)
@@ -206,22 +188,17 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     { preHandler: authGuard(ctx) },
     async (req) => {
       const { agentId } = req.params as { agentId: string }
-      const rules = ctx.db
+      const rules = await ctx.db
         .select()
         .from(approvalRules)
         .where(eq(approvalRules.agentId, agentId))
-        .all()
       return ok(rules)
     }
   )
 
-  app.delete(
-    '/api/approval-rules/:ruleId',
-    { preHandler: adminGuard(ctx) },
-    async (req) => {
-      const { ruleId } = req.params as { ruleId: string }
-      ctx.db.delete(approvalRules).where(eq(approvalRules.id, ruleId)).run()
-      return ok(null)
-    }
-  )
+  app.delete('/api/approval-rules/:ruleId', { preHandler: adminGuard(ctx) }, async (req) => {
+    const { ruleId } = req.params as { ruleId: string }
+    await ctx.db.delete(approvalRules).where(eq(approvalRules.id, ruleId))
+    return ok(null)
+  })
 }

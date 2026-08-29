@@ -76,17 +76,16 @@ interface ReplyState {
   text: string
 }
 
-function setRunStatus(
+async function setRunStatus(
   ctx: AppContext,
   runEnv: Pick<RunEnv, 'runId' | 'agentId'>,
   status: RunStatus,
   patch: Partial<typeof runs.$inferInsert> = {}
-): void {
-  ctx.db
+): Promise<void> {
+  await ctx.db
     .update(runs)
     .set({ status, ...patch })
     .where(eq(runs.id, runEnv.runId))
-    .run()
   ctx.hub.broadcast({
     type: 'run_status',
     runId: runEnv.runId,
@@ -97,21 +96,46 @@ function setRunStatus(
 }
 
 export async function executeRun(ctx: AppContext, runId: string): Promise<void> {
-  const run = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
+  const [run] = await ctx.db.select().from(runs).where(eq(runs.id, runId)).limit(1)
   if (!run || run.status !== 'queued') return
 
-  const agent = getAgent(ctx.db, run.agentId)
-  const version = getVersion(ctx.db, run.agentVersionId)
-  const trigger = ctx.db
+  const agent = await getAgent(ctx.db, run.agentId)
+  let version = await getVersion(ctx.db, run.agentVersionId)
+
+  // Community mode: run was triggered by a non-admin (public/shared
+  // workspace visitor). The agent may talk, never touch the machine —
+  // clipping the pinned version's tool list here means the SDK allowlist,
+  // the PreToolUse guardrail, and the approval gate all inherit it.
+  if (run.restricted && version) {
+    const SAFE_TOOLS = new Set(['post_to_channel', 'list_agents'])
+    version = {
+      ...version,
+      tools: version.tools.filter((tool) => SAFE_TOOLS.has(tool)),
+      capabilities: { ...version.capabilities, requiresApprovalFor: [] },
+      systemPrompt:
+        version.systemPrompt +
+        '\n\nCOMMUNITY MODE: this message came from a community member, not the ' +
+        'workspace owner. Chat freely and be helpful, but you have no file, ' +
+        'shell, browser, or hiring tools for this reply — do not promise to ' +
+        'build, run, or change anything. If they want a working crew of their ' +
+        'own, point them at https://github.com/opencrew-ai/opencrew (free, ' +
+        'open source) and opencrew.run to run it from anywhere.'
+    }
+  }
+  const [trigger] = await ctx.db
     .select()
     .from(messagesTable)
     .where(eq(messagesTable.id, run.triggerMessageId))
-    .get()
-  const channelRow = trigger
-    ? ctx.db.select().from(channels).where(eq(channels.id, trigger.channelId)).get()
-    : undefined
+    .limit(1)
+  const [channelRow] = trigger
+    ? await ctx.db
+        .select()
+        .from(channels)
+        .where(eq(channels.id, trigger.channelId))
+        .limit(1)
+    : []
   if (!agent || !version || !trigger || !channelRow) {
-    setRunStatus(ctx, { runId, agentId: run.agentId }, 'failed', {
+    await setRunStatus(ctx, { runId, agentId: run.agentId }, 'failed', {
       error: 'missing agent, version, or trigger message',
       finishedAt: Date.now()
     })
@@ -123,7 +147,7 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     agentId: agent.id,
     agentName: agent.name,
     version,
-    channel: { ...channelRow, isPrivate: Boolean(channelRow.isPrivate) },
+    channel: { ...channelRow, isPrivate: channelRow.isPrivate },
     threadRootId: trigger.threadRootId,
     depth: run.depth,
     triggerType: run.triggerType
@@ -136,10 +160,14 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     try {
       await runSession(ctx, runEnv, trigger.id, abort)
     } catch (err) {
-      const current = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
+      const [current] = await ctx.db
+        .select()
+        .from(runs)
+        .where(eq(runs.id, runId))
+        .limit(1)
       // A cancelled run (denied approval) already has its terminal status.
       if (current && ['running', 'awaiting_approval', 'queued'].includes(current.status)) {
-        failRun(ctx, runEnv, err instanceof Error ? err.message : String(err))
+        await failRun(ctx, runEnv, err instanceof Error ? err.message : String(err))
       }
     } finally {
       clearTimeout(timeout)
@@ -171,9 +199,9 @@ async function runSession(
   triggerMessageId: string,
   abort: AbortController
 ): Promise<void> {
-  setRunStatus(ctx, runEnv, 'running', { startedAt: Date.now() })
+  await setRunStatus(ctx, runEnv, 'running', { startedAt: Date.now() })
   const threadKey = runEnv.threadRootId ?? 'main'
-  const existing = ctx.db
+  const [existing] = await ctx.db
     .select()
     .from(agentSessions)
     .where(
@@ -183,7 +211,7 @@ async function runSession(
         eq(agentSessions.threadKey, threadKey)
       )
     )
-    .get()
+    .limit(1)
 
   try {
     await runSessionAttempt(ctx, runEnv, triggerMessageId, abort, existing ?? null)
@@ -191,7 +219,7 @@ async function runSession(
     // A stale/corrupt session must not strand the conversation — drop it and
     // run the turn fresh once.
     if (existing) {
-      ctx.db
+      await ctx.db
         .delete(agentSessions)
         .where(
           and(
@@ -200,8 +228,7 @@ async function runSession(
             eq(agentSessions.threadKey, threadKey)
           )
         )
-        .run()
-      recordStep(ctx, runEnv.runId, 'llm_call', {
+      await recordStep(ctx, runEnv.runId, 'llm_call', {
         phase: 'session_resume_failed',
         error: err instanceof Error ? err.message : String(err)
       })
@@ -226,14 +253,19 @@ async function runSessionAttempt(
   }
 
   const transcript = session
-    ? buildIncrementalTranscript(
+    ? await buildIncrementalTranscript(
         ctx.db,
         runEnv.channel.id,
         runEnv.threadRootId,
         session.updatedAt,
         triggerMessageId
       )
-    : buildContextTranscript(ctx.db, runEnv.channel.id, runEnv.threadRootId, triggerMessageId)
+    : await buildContextTranscript(
+        ctx.db,
+        runEnv.channel.id,
+        runEnv.threadRootId,
+        triggerMessageId
+      )
 
   const intro = session
     ? `The conversation in #${runEnv.channel.name} continues. New messages since your last turn:`
@@ -260,11 +292,18 @@ async function runSessionAttempt(
     depth: runEnv.depth
   }
 
+  const systemPrompt = await buildSystemPrompt(
+    ctx.db,
+    runEnv.agentName,
+    runEnv.version,
+    runEnv.channel
+  )
+
   const stream = query({
     prompt,
     options: {
       model: runEnv.version.model,
-      systemPrompt: buildSystemPrompt(ctx.db, runEnv.agentName, runEnv.version, runEnv.channel),
+      systemPrompt,
       cwd,
       maxTurns: MAX_TURNS,
       abortController: abort,
@@ -302,7 +341,7 @@ async function runSessionAttempt(
                 )
                 if (decision === 'denied_by_admin') {
                   cancelled = true
-                  cancelRun(ctx, runEnv, reply)
+                  await cancelRun(ctx, runEnv, reply)
                   return permissionHookOutput('deny', 'Denied by admin. Stop working.')
                 }
                 if (decision === 'forbidden') {
@@ -322,7 +361,7 @@ async function runSessionAttempt(
         const decision = await gateToolUse(ctx, runEnv, sdkName, input)
         if (decision === 'denied_by_admin') {
           cancelled = true
-          cancelRun(ctx, runEnv, reply)
+          await cancelRun(ctx, runEnv, reply)
           return { behavior: 'deny', message: 'Denied by admin. Stop working.', interrupt: true }
         }
         if (decision === 'forbidden') {
@@ -341,11 +380,11 @@ async function runSessionAttempt(
   for await (const msg of stream) {
     capturedSessionId ??= msg.session_id ?? null
     if (msg.type === 'assistant') {
-      handleAssistantMessage(ctx, runEnv, reply, msg)
+      await handleAssistantMessage(ctx, runEnv, reply, msg)
     } else if (msg.type === 'user') {
-      handleUserMessage(ctx, runEnv, msg)
+      await handleUserMessage(ctx, runEnv, msg)
     } else if (msg.type === 'result') {
-      recordStep(ctx, runEnv.runId, 'llm_call', {
+      await recordStep(ctx, runEnv.runId, 'llm_call', {
         phase: 'result',
         subtype: msg.subtype,
         numTurns: msg.num_turns,
@@ -358,24 +397,24 @@ async function runSessionAttempt(
   }
 
   if (capturedSessionId) {
-    saveSession(ctx, runEnv, capturedSessionId, promptBuiltAt)
+    await saveSession(ctx, runEnv, capturedSessionId, promptBuiltAt)
   }
   if (cancelled) return
   if (resultError) {
-    failRun(ctx, runEnv, `session ended with ${resultError}`, reply)
+    await failRun(ctx, runEnv, `session ended with ${resultError}`, reply)
     return
   }
-  finalizeRun(ctx, runEnv, reply)
+  await finalizeRun(ctx, runEnv, reply)
 }
 
 /** Remember the session so the NEXT turn in this conversation resumes it. */
-function saveSession(
+async function saveSession(
   ctx: AppContext,
   runEnv: RunEnv,
   sessionId: string,
   promptBuiltAt: number
-): void {
-  ctx.db
+): Promise<void> {
+  await ctx.db
     .insert(agentSessions)
     .values({
       agentId: runEnv.agentId,
@@ -388,7 +427,6 @@ function saveSession(
       target: [agentSessions.agentId, agentSessions.channelId, agentSessions.threadKey],
       set: { sessionId, updatedAt: promptBuiltAt }
     })
-    .run()
 }
 
 /** Point the agent at a real repo when configured; its workspace otherwise. */
@@ -418,25 +456,12 @@ function sessionEnv(): Record<string, string> {
   return clean
 }
 
-/**
- * The "Browser" capability: a Playwright MCP server driving the locally
- * installed Chrome with a persistent profile inside the agent's workspace.
- * The human logs into sites (e.g. x.com) once in that profile — every later
- * run reuses the session. Runs headed, so you can literally watch it work.
- */
-/**
- * Take over the agent's Chrome profile before a run: close any leftover
- * window using it (e.g. the login window opened from the agent page) and
- * remove stale Singleton* lock files, so Playwright can always launch.
- * Safe because browser runs are serialized per agent — anything still
- * holding the profile here is not an active run.
- */
 async function prepareBrowserProfile(profileDir: string): Promise<void> {
   const pattern = `user-data-dir=${profileDir}`
   spawnSync('pkill', ['-f', pattern])
   for (let i = 0; i < 20; i++) {
     const check = spawnSync('pgrep', ['-f', pattern])
-    if (check.status !== 0) break // no processes left
+    if (check.status !== 0) break
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   for (const file of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
@@ -452,21 +477,10 @@ const CHROME_PATHS = [
   '/usr/bin/chromium-browser'
 ]
 
-/**
- * The agent must drive the SAME browser binary the human logs in with —
- * cookies are encrypted with a per-browser keychain key, so Playwright's
- * bundled Chromium cannot read a login made in real Chrome (and vice versa).
- */
 function chromeExecutablePath(): string | null {
   return CHROME_PATHS.find((p) => existsSync(p)) ?? null
 }
 
-/**
- * Resolves the Chrome profile directory for a run.
- * When useSharedBrowserProfile is true the agent uses the workspace-level
- * _shared profile (Anup logs in once; every shared-profile agent reuses it).
- * Otherwise the agent gets its own isolated profile (default / existing behaviour).
- */
 function browserProfileDir(runEnv: RunEnv): string {
   if (runEnv.version.capabilities.useSharedBrowserProfile) {
     return join(env.workspacesDir, '_shared', '.browser-profile')
@@ -481,9 +495,7 @@ function browserMcpServer(
   const profileDir = browserProfileDir(runEnv)
   mkdirSync(profileDir, { recursive: true })
   const chrome = chromeExecutablePath()
-  const browserArgs = chrome
-    ? ['--executable-path', chrome]
-    : ['--browser', 'chrome']
+  const browserArgs = chrome ? ['--executable-path', chrome] : ['--browser', 'chrome']
   return {
     [BROWSER_MCP_SERVER]: {
       command: 'npx',
@@ -494,7 +506,6 @@ function browserMcpServer(
 
 function allowedToolsFor(version: AgentVersion): string[] {
   return [
-    // Schema loader for deferred MCP tools — always available, never a gate.
     'ToolSearch',
     ...version.tools
       .filter((t) => !version.capabilities.requiresApprovalFor.includes(t))
@@ -502,7 +513,6 @@ function allowedToolsFor(version: AgentVersion): string[] {
   ]
 }
 
-/** Everything in the catalog the version didn't opt into is hard-blocked. */
 function disallowedToolsFor(version: AgentVersion): string[] {
   const catalogNames = toolCatalog().map((t) => t.name)
   return [
@@ -523,11 +533,6 @@ function permissionHookOutput(decision: 'allow' | 'deny', reason: string) {
   }
 }
 
-/**
- * GUARDRAIL choke point: the SDK consults this for tool calls not already
- * decided by allowed/disallowed lists. Gated tools block here until an admin
- * resolves the approval card, then the approvals row is re-verified in the DB.
- */
 async function gateToolUse(
   ctx: AppContext,
   runEnv: RunEnv,
@@ -540,54 +545,48 @@ async function gateToolUse(
   if (verdict === 'allow') return 'allowed'
 
   // Standing auto-approve rule: skip the human click, keep the full audit.
-  const rule = findAutoApproveRule(ctx.db, runEnv.agentId, name)
+  const rule = await findAutoApproveRule(ctx.db, runEnv.agentId, name)
   if (rule) {
     const autoId = nanoid()
-    ctx.db
-      .insert(approvals)
-      .values({
-        id: autoId,
-        runId: runEnv.runId,
-        toolName: name,
-        toolInput: JSON.stringify(input),
-        status: 'approved',
-        resolvedBy: `rule:${rule.createdBy}`,
-        resolvedAt: Date.now(),
-        createdAt: Date.now()
-      })
-      .run()
-    recordStep(ctx, runEnv.runId, 'approval_requested', {
+    await ctx.db.insert(approvals).values({
+      id: autoId,
+      runId: runEnv.runId,
+      toolName: name,
+      toolInput: JSON.stringify(input),
+      status: 'approved',
+      resolvedBy: `rule:${rule.createdBy}`,
+      resolvedAt: Date.now(),
+      createdAt: Date.now()
+    })
+    await recordStep(ctx, runEnv.runId, 'approval_requested', {
       approvalId: autoId,
       tool: name,
       input,
       autoApproved: true
     })
-    recordStep(ctx, runEnv.runId, 'approval_resolved', {
+    await recordStep(ctx, runEnv.runId, 'approval_resolved', {
       approvalId: autoId,
       tool: name,
       decision: 'approved',
       resolvedBy: `rule:${rule.createdBy}`,
       autoApproved: true
     })
-    assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, autoId)
+    await assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, autoId)
     return 'allowed'
   }
 
   const approvalId = nanoid()
-  ctx.db
-    .insert(approvals)
-    .values({
-      id: approvalId,
-      runId: runEnv.runId,
-      toolName: name,
-      toolInput: JSON.stringify(input),
-      status: 'pending',
-      createdAt: Date.now()
-    })
-    .run()
-  recordStep(ctx, runEnv.runId, 'approval_requested', { approvalId, tool: name, input })
-  setRunStatus(ctx, runEnv, 'awaiting_approval')
-  postSystemMessage(
+  await ctx.db.insert(approvals).values({
+    id: approvalId,
+    runId: runEnv.runId,
+    toolName: name,
+    toolInput: JSON.stringify(input),
+    status: 'pending',
+    createdAt: Date.now()
+  })
+  await recordStep(ctx, runEnv.runId, 'approval_requested', { approvalId, tool: name, input })
+  await setRunStatus(ctx, runEnv, 'awaiting_approval')
+  await postSystemMessage(
     ctx,
     runEnv.channel.id,
     `🟡 **${runEnv.agentName}** wants to use \`${name}\` — waiting for an admin.`,
@@ -600,41 +599,44 @@ async function gateToolUse(
   ctx.approvalWaiters.delete(approvalId)
 
   if (decision === 'approved') {
-    // Never trust the in-memory signal alone — re-verify the DB row.
-    assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, approvalId)
-    setRunStatus(ctx, runEnv, 'running')
+    await assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, approvalId)
+    await setRunStatus(ctx, runEnv, 'running')
     return 'allowed'
   }
   return 'denied_by_admin'
 }
 
-function handleAssistantMessage(
+async function handleAssistantMessage(
   ctx: AppContext,
   runEnv: RunEnv,
   reply: ReplyState,
   msg: SDKAssistantMessage
-): void {
+): Promise<void> {
   let text = ''
   for (const block of msg.message.content) {
     if (block.type === 'text') {
       text += block.text
     } else if (block.type === 'tool_use') {
-      recordStep(ctx, runEnv.runId, 'tool_call', {
+      await recordStep(ctx, runEnv.runId, 'tool_call', {
         tool: fromSdkToolName(block.name),
         input: block.input,
         toolUseId: block.id
       })
     }
   }
-  recordStep(ctx, runEnv.runId, 'llm_call', {
+  await recordStep(ctx, runEnv.runId, 'llm_call', {
     model: msg.message.model,
     stopReason: msg.message.stop_reason,
     usage: msg.message.usage
   })
-  if (text.trim()) appendReplyText(ctx, runEnv, reply, text)
+  if (text.trim()) await appendReplyText(ctx, runEnv, reply, text)
 }
 
-function handleUserMessage(ctx: AppContext, runEnv: RunEnv, msg: SDKUserMessage): void {
+async function handleUserMessage(
+  ctx: AppContext,
+  runEnv: RunEnv,
+  msg: SDKUserMessage
+): Promise<void> {
   const content = msg.message.content
   if (!Array.isArray(content)) return
   for (const block of content) {
@@ -645,7 +647,7 @@ function handleUserMessage(ctx: AppContext, runEnv: RunEnv, msg: SDKUserMessage)
         : (block.content ?? [])
             .map((c) => (c.type === 'text' ? c.text : `[${c.type}]`))
             .join('\n')
-    recordStep(ctx, runEnv.runId, 'tool_result', {
+    await recordStep(ctx, runEnv.runId, 'tool_result', {
       toolUseId: block.tool_use_id,
       isError: block.is_error ?? false,
       content:
@@ -656,15 +658,14 @@ function handleUserMessage(ctx: AppContext, runEnv: RunEnv, msg: SDKUserMessage)
   }
 }
 
-function appendReplyText(
+async function appendReplyText(
   ctx: AppContext,
   runEnv: RunEnv,
   reply: ReplyState,
   text: string
-): void {
+): Promise<void> {
   if (!reply.messageId) {
-    // GUARDRAIL: createMessage enforces canPostInChannels for agent authors.
-    const message = createMessage(ctx, {
+    const message = await createMessage(ctx, {
       channelId: runEnv.channel.id,
       threadRootId: runEnv.threadRootId,
       authorType: 'agent',
@@ -684,40 +685,47 @@ function appendReplyText(
   })
 }
 
-function finalizeRun(ctx: AppContext, runEnv: RunEnv, reply: ReplyState): void {
+async function finalizeRun(
+  ctx: AppContext,
+  runEnv: RunEnv,
+  reply: ReplyState
+): Promise<void> {
   if (reply.messageId) {
-    updateMessageContent(ctx, reply.messageId, reply.text)
-    recordStep(ctx, runEnv.runId, 'post_message', {
+    await updateMessageContent(ctx, reply.messageId, reply.text)
+    await recordStep(ctx, runEnv.runId, 'post_message', {
       messageId: reply.messageId,
       channelId: runEnv.channel.id,
       via: 'reply'
     })
-    // The reply may @mention other agents — collaboration chain, depth-capped.
-    const row = ctx.db
+    const [row] = await ctx.db
       .select()
       .from(messagesTable)
       .where(eq(messagesTable.id, reply.messageId))
-      .get()
+      .limit(1)
     if (row) {
-      enqueueMentionRuns(ctx, enrichMessage(ctx.db, row), runEnv.depth + 1)
+      await enqueueMentionRuns(ctx, await enrichMessage(ctx.db, row), runEnv.depth + 1)
     }
   }
-  setRunStatus(ctx, runEnv, 'done', { finishedAt: Date.now() })
+  await setRunStatus(ctx, runEnv, 'done', { finishedAt: Date.now() })
 }
 
-function cancelRun(ctx: AppContext, runEnv: RunEnv, reply: ReplyState): void {
+async function cancelRun(
+  ctx: AppContext,
+  runEnv: RunEnv,
+  reply: ReplyState
+): Promise<void> {
   if (reply.messageId) {
-    updateMessageContent(
+    await updateMessageContent(
       ctx,
       reply.messageId,
       `${reply.text}\n\n_(run cancelled — tool use was denied)_`
     )
   }
-  setRunStatus(ctx, runEnv, 'cancelled', {
+  await setRunStatus(ctx, runEnv, 'cancelled', {
     error: 'tool use denied by admin',
     finishedAt: Date.now()
   })
-  postSystemMessage(
+  await postSystemMessage(
     ctx,
     runEnv.channel.id,
     `🛑 **${runEnv.agentName}**'s run was cancelled — tool use was denied.`,
@@ -725,18 +733,18 @@ function cancelRun(ctx: AppContext, runEnv: RunEnv, reply: ReplyState): void {
   )
 }
 
-function failRun(
+async function failRun(
   ctx: AppContext,
   runEnv: RunEnv,
   error: string,
   reply?: ReplyState
-): void {
+): Promise<void> {
   if (reply?.messageId) {
-    updateMessageContent(ctx, reply.messageId, reply.text)
+    await updateMessageContent(ctx, reply.messageId, reply.text)
   }
-  setRunStatus(ctx, runEnv, 'failed', { error, finishedAt: Date.now() })
+  await setRunStatus(ctx, runEnv, 'failed', { error, finishedAt: Date.now() })
   try {
-    postSystemMessage(
+    await postSystemMessage(
       ctx,
       runEnv.channel.id,
       `❌ **${runEnv.agentName}** run failed: ${error}`,

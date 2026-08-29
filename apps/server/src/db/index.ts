@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS runs (
   error TEXT,
   trigger_type TEXT NOT NULL DEFAULT 'mention',
   depth INTEGER NOT NULL DEFAULT 0,
+  restricted BOOLEAN NOT NULL DEFAULT FALSE,
   created_at BIGINT NOT NULL,
   started_at BIGINT,
   finished_at BIGINT
@@ -177,6 +178,7 @@ export const MIGRATIONS = `
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_thread_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_channel_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS manual_status TEXT;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS restricted BOOLEAN NOT NULL DEFAULT FALSE;
 `
 
 // ---------------------------------------------------------------------------

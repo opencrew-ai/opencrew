@@ -118,6 +118,8 @@ export const runs = pgTable('runs', {
     .notNull()
     .default('mention'),
   depth: integer('depth').notNull().default(0),
+  /** Community mode: run triggered by a non-admin — tools clipped to chat-only. */
+  restricted: boolean('restricted').notNull().default(false),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   startedAt: bigint('started_at', { mode: 'number' }),
   finishedAt: bigint('finished_at', { mode: 'number' })
