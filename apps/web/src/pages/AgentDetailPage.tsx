@@ -74,7 +74,7 @@ export function AgentDetailPage() {
     try {
       await api.post(`/api/agents/${agent!.id}/browser`, { url: browserUrl })
       setBrowserStatus(
-        '✅ Window opened on this machine. Log in, then close it before the agent runs — Chrome locks the profile.'
+        '✅ Window opened on this machine. Log in and you’re done — the agent closes the window and takes over the profile when it runs.'
       )
     } catch (err) {
       setBrowserStatus(`❌ ${err instanceof Error ? err.message : 'failed'}`)

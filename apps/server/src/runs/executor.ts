@@ -1,4 +1,5 @@
-import { mkdirSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   createSdkMcpServer,
@@ -113,20 +114,36 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     triggerType: run.triggerType
   }
 
-  const abort = new AbortController()
-  ctx.activeRuns.set(runId, abort)
-  const timeout = setTimeout(() => abort.abort(), RUN_TIMEOUT_MS)
-  try {
-    await runSession(ctx, runEnv, trigger.id, abort)
-  } catch (err) {
-    const current = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
-    // A cancelled run (denied approval) already has its terminal status.
-    if (current && ['running', 'awaiting_approval', 'queued'].includes(current.status)) {
-      failRun(ctx, runEnv, err instanceof Error ? err.message : String(err))
+  const runGuarded = async (): Promise<void> => {
+    const abort = new AbortController()
+    ctx.activeRuns.set(runId, abort)
+    const timeout = setTimeout(() => abort.abort(), RUN_TIMEOUT_MS)
+    try {
+      await runSession(ctx, runEnv, trigger.id, abort)
+    } catch (err) {
+      const current = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
+      // A cancelled run (denied approval) already has its terminal status.
+      if (current && ['running', 'awaiting_approval', 'queued'].includes(current.status)) {
+        failRun(ctx, runEnv, err instanceof Error ? err.message : String(err))
+      }
+    } finally {
+      clearTimeout(timeout)
+      ctx.activeRuns.delete(runId)
     }
-  } finally {
-    clearTimeout(timeout)
-    ctx.activeRuns.delete(runId)
+  }
+
+  // A Chrome profile supports one instance at a time — browser runs for the
+  // same agent execute strictly one after another.
+  if (runEnv.version.tools.includes(BROWSER_TOOL)) {
+    const prev = ctx.agentLocks.get(runEnv.agentId) ?? Promise.resolve()
+    const current = prev.then(runGuarded) // runGuarded never rejects
+    ctx.agentLocks.set(runEnv.agentId, current)
+    await current
+    if (ctx.agentLocks.get(runEnv.agentId) === current) {
+      ctx.agentLocks.delete(runEnv.agentId)
+    }
+  } else {
+    await runGuarded()
   }
 }
 
@@ -141,6 +158,9 @@ async function runSession(
 
   const cwd = join(env.workspacesDir, runEnv.agentId)
   mkdirSync(cwd, { recursive: true })
+  if (runEnv.version.tools.includes(BROWSER_TOOL)) {
+    await prepareBrowserProfile(join(cwd, '.browser-profile'))
+  }
 
   const transcript = buildContextTranscript(
     ctx.db,
@@ -293,6 +313,26 @@ function sessionEnv(): Record<string, string> {
  * The human logs into sites (e.g. x.com) once in that profile — every later
  * run reuses the session. Runs headed, so you can literally watch it work.
  */
+/**
+ * Take over the agent's Chrome profile before a run: close any leftover
+ * window using it (e.g. the login window opened from the agent page) and
+ * remove stale Singleton* lock files, so Playwright can always launch.
+ * Safe because browser runs are serialized per agent — anything still
+ * holding the profile here is not an active run.
+ */
+async function prepareBrowserProfile(profileDir: string): Promise<void> {
+  const pattern = `user-data-dir=${profileDir}`
+  spawnSync('pkill', ['-f', pattern])
+  for (let i = 0; i < 20; i++) {
+    const check = spawnSync('pgrep', ['-f', pattern])
+    if (check.status !== 0) break // no processes left
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  for (const file of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+    rmSync(join(profileDir, file), { force: true })
+  }
+}
+
 function browserMcpServer(
   runEnv: RunEnv,
   cwd: string

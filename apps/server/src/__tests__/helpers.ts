@@ -41,6 +41,7 @@ export function makeTestCtx(): TestCtx {
     queue,
     approvalWaiters: new Map(),
     activeRuns: new Map(),
+    agentLocks: new Map(),
     broadcasts,
     enqueued
   }

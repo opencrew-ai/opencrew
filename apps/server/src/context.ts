@@ -16,4 +16,9 @@ export interface AppContext {
   approvalWaiters: Map<string, (decision: ApprovalDecision) => void>
   /** AbortControllers for in-flight runs, keyed by runId. */
   activeRuns: Map<string, AbortController>
+  /**
+   * Per-agent execution chains for agents with the Browser tool: a Chrome
+   * profile supports one instance at a time, so browser runs serialize.
+   */
+  agentLocks: Map<string, Promise<void>>
 }

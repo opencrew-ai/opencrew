@@ -240,7 +240,7 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       }
       return ok({
         opened: true,
-        note: 'Log in, then close the window before the agent runs — Chrome locks the profile.'
+        note: 'Log in, then you can leave the window open — the agent takes over the profile when it runs.'
       })
     }
   )

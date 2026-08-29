@@ -29,7 +29,8 @@ async function main(): Promise<void> {
     hub,
     queue,
     approvalWaiters: new Map(),
-    activeRuns: new Map()
+    activeRuns: new Map(),
+    agentLocks: new Map()
   }
   queue.configure(
     (runId) => executeRun(ctx, runId),
