@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { showConfirm } from '../lib/dialogs'
 import { Sidebar } from '../components/Sidebar'
 import { CloudLinkCard } from '../components/CloudLinkCard'
 import { DeviceAccessCard } from '../components/DeviceAccessCard'
@@ -20,7 +21,11 @@ export function SettingsPage() {
   const isAdmin = me.role === 'admin'
 
   const stopAll = async () => {
-    if (!confirm('Stop ALL agents? Live sessions are aborted, queued runs cancelled, pending approvals denied.')) {
+    const ok = await showConfirm(
+      'Stop ALL agents? Live sessions are aborted, queued runs cancelled, pending approvals denied.',
+      { title: 'Stop all agents', confirmLabel: 'Stop all', danger: true }
+    )
+    if (!ok) {
       return
     }
     setStopping(true)

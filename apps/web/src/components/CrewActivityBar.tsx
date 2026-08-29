@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
+import { showConfirm } from '../lib/dialogs'
 
 /**
  * Floating crew activity pill — visible on every page, but only while agents
@@ -24,9 +25,11 @@ export function CrewActivityBar() {
   if (runningAgents.length === 0 && !notice) return null
 
   const stopAll = async () => {
-    if (!confirm(`Stop ${runningAgents.length} working agent${runningAgents.length === 1 ? '' : 's'}? Live sessions abort, queued runs cancel, pending approvals are denied.`)) {
-      return
-    }
+    const ok = await showConfirm(
+      `Stop ${runningAgents.length} working agent${runningAgents.length === 1 ? '' : 's'}? Live sessions abort, queued runs cancel, pending approvals are denied.`,
+      { title: 'Stop all agents', confirmLabel: 'Stop all', danger: true }
+    )
+    if (!ok) return
     setStopping(true)
     try {
       const r = await api.post<{

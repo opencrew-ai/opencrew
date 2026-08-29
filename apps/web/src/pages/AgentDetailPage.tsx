@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { AgentVersion, AgentWithVersion, Run, VersionDiff } from '@opencrew/shared'
 import { api } from '../lib/api'
+import { showConfirm } from '../lib/dialogs'
 import { Sidebar } from '../components/Sidebar'
 import { AgentForm } from '../components/AgentForm'
 import { DiffView } from '../components/DiffView'
@@ -89,7 +90,11 @@ export function AgentDetailPage() {
   }
 
   const rollback = async (version: AgentVersion) => {
-    if (!confirm(`Roll back to v${version.version}? This creates a new version.`)) return
+    const ok = await showConfirm(`Roll back to v${version.version}? This creates a new version.`, {
+      title: 'Roll back agent',
+      confirmLabel: 'Roll back'
+    })
+    if (!ok) return
     await api.post(`/api/agents/${agent.id}/rollback`, { versionId: version.id })
     await reload()
     setTab('versions')

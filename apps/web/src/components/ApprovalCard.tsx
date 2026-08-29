@@ -3,6 +3,7 @@ import type { Approval } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { useWorkspace } from '../lib/workspace'
+import { showAlert } from '../lib/dialogs'
 
 /**
  * The yellow guardrail card: a gated tool call paused this run. Admins
@@ -29,7 +30,7 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
     try {
       await api.post(`/api/approvals/${approvalId}/resolve`, { decision, always })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'failed')
+      void showAlert(err instanceof Error ? err.message : 'failed', { title: 'Approval failed' })
     } finally {
       setBusy(false)
     }

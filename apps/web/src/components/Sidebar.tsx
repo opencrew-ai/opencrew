@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
+import { showAlert, showPrompt } from '../lib/dialogs'
 import { useAgentLoad } from '../lib/useAgentLoad'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
@@ -51,7 +52,11 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   }, [open])
 
   const createChannel = async () => {
-    const name = prompt('Channel name (lowercase, dashes):')
+    const name = await showPrompt('Channel name (lowercase, dashes):', {
+      title: 'New channel',
+      placeholder: 'growth-experiments',
+      confirmLabel: 'Create'
+    })
     if (!name) return
     try {
       const channel = await api.post<Channel>('/api/channels', { name, topic: '' })
@@ -59,7 +64,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
       navigate(`/channels/${channel.id}`)
       onClose?.()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'failed')
+      void showAlert(err instanceof Error ? err.message : 'failed', { title: 'Channel not created' })
     }
   }
 
@@ -69,12 +74,16 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   }
 
   const renameMe = async () => {
-    const name = prompt('Your display name:', me.name)
+    const name = await showPrompt('Your display name:', {
+      title: 'Rename yourself',
+      initial: me.name,
+      confirmLabel: 'Rename'
+    })
     if (!name || name.trim() === me.name) return
     try {
       await api.post('/api/users/me', { name: name.trim() })
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'rename failed')
+      void showAlert(err instanceof Error ? err.message : 'rename failed', { title: 'Rename failed' })
     }
   }
 

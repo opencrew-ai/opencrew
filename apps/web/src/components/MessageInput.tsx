@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ClipboardEvent } from 'react'
 import { useWorkspace } from '../lib/workspace'
+import { showAlert } from '../lib/dialogs'
 
 interface MessageInputProps {
   placeholder: string
@@ -78,7 +79,7 @@ export function MessageInput({ placeholder, onSend }: MessageInputProps) {
       setValue('')
       setImages([])
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'failed to send')
+      void showAlert(err instanceof Error ? err.message : 'failed to send', { title: 'Send failed' })
     } finally {
       setBusy(false)
     }

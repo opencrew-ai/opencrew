@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { QrCode } from './QrCode'
 import { useWorkspace } from '../lib/workspace'
+import { showConfirm } from '../lib/dialogs'
 
 interface CloudStatus {
   linked: boolean
@@ -52,7 +53,11 @@ export function CloudLinkCard() {
   }
 
   const unlink = async () => {
-    if (!confirm('Unlink from opencrew.run? Remote access via your profile stops immediately.')) return
+    const ok = await showConfirm(
+      'Unlink from opencrew.run? Remote access via your profile stops immediately.',
+      { title: 'Unlink crew', confirmLabel: 'Unlink', danger: true }
+    )
+    if (!ok) return
     await api.post('/api/cloudlink/unlink')
     setApproveUrl(null)
     await refresh()

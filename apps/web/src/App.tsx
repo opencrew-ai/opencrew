@@ -10,6 +10,7 @@ import { AgentsPage } from './pages/AgentsPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { CrewActivityBar } from './components/CrewActivityBar'
+import { DialogHost } from './lib/dialogs'
 
 type AuthState =
   | { kind: 'loading' }
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/channels" replace />} />
       </Routes>
       <CrewActivityBar />
+      <DialogHost />
     </WorkspaceProvider>
   )
 }
