@@ -70,7 +70,8 @@ export async function enrichMessage(
         )
       : undefined,
     refThreadId: row.refThreadId ?? undefined,
-    refChannelId: row.refChannelId ?? undefined
+    refChannelId: row.refChannelId ?? undefined,
+    manualStatus: row.manualStatus === 'done' ? 'done' : undefined
   }
 }
 
@@ -118,6 +119,7 @@ export async function createMessage(
     runId: input.runId ?? null,
     refThreadId: input.refThreadId ?? null,
     refChannelId: input.refChannelId ?? null,
+    manualStatus: null,
     createdAt: Date.now()
   }
   await db.insert(messages).values(row)

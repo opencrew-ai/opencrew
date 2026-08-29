@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Channel } from '@opencrew/shared'
+import { api } from '../lib/api'
+import { wsClient } from '../lib/ws'
 import { useMessages } from '../lib/useMessages'
 import {
   ConversationGroup,
@@ -46,6 +48,58 @@ function lastActivityOf(group: MessageGroup): number {
   return last?.createdAt ?? group.trigger?.createdAt ?? 0
 }
 
+const STATUS_RANK: Record<GroupStatus, number> = {
+  waiting: 4,
+  in_progress: 3,
+  failed: 2,
+  done: 1,
+  not_started: 0
+}
+
+/**
+ * Merge the message-derived status with the server's run aggregation, which
+ * also sees thread activity and runs that haven't posted yet. Active states
+ * always win; a human's manual "done" closes anything quiet.
+ */
+function mergeStatus(
+  local: GroupStatus,
+  server: GroupStatus | undefined,
+  manuallyDone: boolean
+): GroupStatus {
+  const base = server && STATUS_RANK[server] > STATUS_RANK[local] ? server : local
+  if (base === 'waiting' || base === 'in_progress') return base
+  return manuallyDone ? 'done' : base
+}
+
+/** Server-side per-conversation statuses, refreshed when runs change. */
+function useWorkStatuses(): Map<string, GroupStatus> {
+  const [statuses, setStatuses] = useState<Map<string, GroupStatus>>(new Map())
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const items = await api.get<{ rootId: string; status: GroupStatus }[]>('/api/work')
+        setStatuses(new Map(items.map((item) => [item.rootId, item.status])))
+      } catch {
+        // transient — next run event retries
+      }
+    }
+    void load()
+    const unsubscribe = wsClient.subscribe((event) => {
+      if (event.type !== 'run_status' && event.type !== 'thread_status') return
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => void load(), 600)
+    })
+    return () => {
+      unsubscribe()
+      if (timer.current) clearTimeout(timer.current)
+    }
+  }, [])
+
+  return statuses
+}
+
 interface ChannelViewProps {
   channel: Channel
   onOpenRun: (runId: string) => void
@@ -86,16 +140,29 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
   }, [targetThreadId, loading, onThreadFocused])
 
   const groups = groupIntoConversations(messages)
+  const workStatuses = useWorkStatuses()
+
+  const toggleDone = useCallback(async (rootId: string, done: boolean) => {
+    try {
+      await api.post(`/api/messages/${rootId}/status`, { done })
+    } catch {
+      // WS thread_status never arrives on failure — pill simply stays put
+    }
+  }, [])
 
   // Status + last-activity per group, computed once per render pass.
   const annotated = useMemo(
     () =>
       groups.map((group) => ({
         group,
-        status: deriveGroupStatus(group.responses),
+        status: mergeStatus(
+          deriveGroupStatus(group.responses),
+          group.trigger ? workStatuses.get(group.trigger.id) : undefined,
+          group.trigger?.manualStatus === 'done'
+        ),
         lastActivityAt: lastActivityOf(group)
       })),
-    [groups]
+    [groups, workStatuses]
   )
 
   const counts = useMemo(() => {
@@ -204,6 +271,8 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
             channelId={channel.id}
             onOpenRun={onOpenRun}
             targetThreadId={targetThreadId}
+            status={entry.status}
+            onToggleDone={(rootId, done) => void toggleDone(rootId, done)}
           />
         ))}
         <div ref={bottomRef} />

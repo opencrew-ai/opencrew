@@ -107,6 +107,8 @@ export interface Message {
   runId?: string
   /** Current status of the run linked to this message — kept live via WS run_status events. */
   runStatus?: RunStatus
+  /** Human override on a conversation root: 'done' closes it regardless of run history. */
+  manualStatus?: 'done'
   /**
    * When set, renders a thread citation card — the UI fetches the referenced
    * thread and shows it inline. May point to a thread in any channel.
@@ -178,6 +180,7 @@ export type ServerEvent =
   | { type: 'channel_created'; channel: Channel }
   | { type: 'agent_updated'; agent: AgentWithVersion }
   | { type: 'user_updated'; user: User }
+  | { type: 'thread_status'; rootId: string; channelId: string; manualStatus: 'done' | null }
 
 /** Client → server WebSocket events. */
 export type ClientEvent = { type: 'ping' }

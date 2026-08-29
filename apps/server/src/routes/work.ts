@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
 import type { AppContext } from '../context'
 import { agents, channels, messages, runs, users } from '../db/schema'
-import { authGuard, ok } from './helpers'
+import { z } from 'zod'
+import { authGuard, fail, memberGuard, ok } from './helpers'
 
 /**
  * Work view — every conversation (a human message and everything it caused,
@@ -46,7 +47,15 @@ interface MessageLite {
   authorId: string | null
   content: string
   runId: string | null
+  manualStatus: string | null
   createdAt: number
+}
+
+/** Active run states always win; otherwise a human's manual 'done' closes it. */
+function finalStatus(derived: WorkStatus, manualStatus: string | null): WorkStatus {
+  if (derived === 'waiting' || derived === 'in_progress') return derived
+  if (manualStatus === 'done') return 'done'
+  return derived
 }
 
 interface RunLite {
@@ -126,6 +135,7 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
           authorId: messages.authorId,
           content: messages.content,
           runId: messages.runId,
+          manualStatus: messages.manualStatus,
           createdAt: messages.createdAt
         })
         .from(messages)
@@ -215,7 +225,7 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
             ? `${root.content.slice(0, EXCERPT_LENGTH)}…`
             : root.content,
         authorName,
-        status: deriveStatus(acc.runStatuses),
+        status: finalStatus(deriveStatus(acc.runStatuses), root.manualStatus),
         agents: [...acc.agentIds].flatMap((id) => {
           const agent = agentById.get(id)
           return agent ? [{ id: agent.id, name: agent.name, emoji: agent.avatarEmoji }] : []
@@ -239,4 +249,33 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
       .where(eq(runs.status, 'awaiting_approval'))
     return ok({ waiting: waitingRuns.length })
   })
+
+  /** Human override: mark a conversation root done, or reopen it. */
+  app.post(
+    '/api/messages/:messageId/status',
+    { preHandler: memberGuard(ctx) },
+    async (req, reply) => {
+      const { messageId } = req.params as { messageId: string }
+      const parsed = z.object({ done: z.boolean() }).safeParse(req.body)
+      if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+
+      const [root] = await ctx.db
+        .select({ id: messages.id, channelId: messages.channelId, threadRootId: messages.threadRootId })
+        .from(messages)
+        .where(eq(messages.id, messageId))
+        .limit(1)
+      if (!root) return reply.code(404).send(fail('message not found'))
+      if (root.threadRootId) return reply.code(400).send(fail('status lives on the conversation root'))
+
+      const manualStatus = parsed.data.done ? 'done' : null
+      await ctx.db.update(messages).set({ manualStatus }).where(eq(messages.id, messageId))
+      ctx.hub.broadcast({
+        type: 'thread_status',
+        rootId: messageId,
+        channelId: root.channelId,
+        manualStatus
+      })
+      return ok({ rootId: messageId, manualStatus })
+    }
+  )
 }

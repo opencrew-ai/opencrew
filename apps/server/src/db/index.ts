@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS invites (
 export const MIGRATIONS = `
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_thread_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_channel_id TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS manual_status TEXT;
 `
 
 // ---------------------------------------------------------------------------

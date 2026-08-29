@@ -61,6 +61,15 @@ export function useMessages(channelId: string | undefined, thread: string | null
         setMessages((prev) =>
           prev.map((x) => (x.runId === event.runId ? { ...x, runStatus: event.status } : x))
         )
+      } else if (event.type === 'thread_status') {
+        if (event.channelId !== channelId) return
+        setMessages((prev) =>
+          prev.map((x) =>
+            x.id === event.rootId
+              ? { ...x, manualStatus: event.manualStatus === 'done' ? ('done' as const) : undefined }
+              : x
+          )
+        )
       }
     })
   }, [channelId, thread])

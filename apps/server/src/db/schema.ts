@@ -99,6 +99,8 @@ export const messages = pgTable('messages', {
   /** Thread citation — references a thread root in (possibly another) channel. */
   refThreadId: text('ref_thread_id'),
   refChannelId: text('ref_channel_id'),
+  /** Human override on a conversation root: 'done' marks it complete. */
+  manualStatus: text('manual_status'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
 })
 

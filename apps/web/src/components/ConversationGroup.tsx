@@ -17,7 +17,33 @@ export function deriveGroupStatus(responses: Message[]): GroupStatus {
   return 'done'
 }
 
-export function StatusPill({ status }: { status: GroupStatus }) {
+/**
+ * The pill is also the manual control: click marks the conversation done,
+ * click again reopens it. Active runs (waiting/running) can't be overridden —
+ * truth beats labels while agents are working.
+ */
+interface StatusPillProps {
+  status: GroupStatus
+  onToggleDone?: (done: boolean) => void
+}
+
+export function StatusPill({ status, onToggleDone }: StatusPillProps) {
+  const canToggle =
+    onToggleDone !== undefined && status !== 'waiting' && status !== 'in_progress'
+  const pill = renderPill(status)
+  if (!canToggle) return pill
+  return (
+    <button
+      onClick={() => onToggleDone(status !== 'done')}
+      title={status === 'done' ? 'Reopen' : 'Mark done'}
+      className="cursor-pointer rounded transition-opacity hover:opacity-70"
+    >
+      {pill}
+    </button>
+  )
+}
+
+function renderPill(status: GroupStatus) {
   if (status === 'not_started') {
     return (
       <span className="flex items-center gap-1 text-xs text-zinc-600">
@@ -108,23 +134,36 @@ interface ConversationGroupProps {
   channelId: string
   onOpenRun: (runId: string) => void
   targetThreadId?: string
+  /** Override the message-derived status (e.g. server-side run aggregation). */
+  status?: GroupStatus
+  /** When set, the pill is clickable: mark the conversation done / reopen. */
+  onToggleDone?: (rootId: string, done: boolean) => void
 }
 
-export function ConversationGroup({ group, channelId, onOpenRun, targetThreadId }: ConversationGroupProps) {
+export function ConversationGroup({
+  group,
+  channelId,
+  onOpenRun,
+  targetThreadId,
+  status,
+  onToggleDone
+}: ConversationGroupProps) {
   const [expanded, setExpanded] = useState(false)
   const { trigger, responses } = group
 
   const hiddenCount = Math.max(0, responses.length - COLLAPSE_AT)
   const visibleResponses =
     expanded || hiddenCount === 0 ? responses : responses.slice(0, COLLAPSE_AT)
-  const groupStatus = deriveGroupStatus(responses)
+  const groupStatus = status ?? deriveGroupStatus(responses)
+  const toggleDone =
+    trigger && onToggleDone ? (done: boolean) => onToggleDone(trigger.id, done) : undefined
 
   // A group with only a human message and no responses: minimal card with "Not started" pill
   if (responses.length === 0) {
     return trigger ? (
       <div className="relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/20">
-        <div className="pointer-events-none absolute right-3 top-2 z-10">
-          <StatusPill status={groupStatus} />
+        <div className="absolute right-3 top-2 z-10">
+          <StatusPill status={groupStatus} onToggleDone={toggleDone} />
         </div>
         <MessageItem
           message={trigger}
@@ -140,8 +179,8 @@ export function ConversationGroup({ group, channelId, onOpenRun, targetThreadId 
     <div className="relative mx-3 mb-3 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/30">
       {/* Status pill — top-right corner, floated over the trigger message header */}
       {trigger && (
-        <div className="pointer-events-none absolute right-3 top-2 z-10">
-          <StatusPill status={groupStatus} />
+        <div className="absolute right-3 top-2 z-10">
+          <StatusPill status={groupStatus} onToggleDone={toggleDone} />
         </div>
       )}
 
