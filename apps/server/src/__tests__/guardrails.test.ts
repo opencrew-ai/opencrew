@@ -40,6 +40,8 @@ describe('tool allowlist and approval gates', () => {
 
     expect(evaluateToolUse(version, 'Bash')).toBe('deny')
     expect(evaluateToolUse(version, 'WebFetch')).toBe('allow')
+    // ToolSearch only loads schemas — always allowed, even off-list.
+    expect(evaluateToolUse(version, 'ToolSearch')).toBe('allow')
   })
 
   it('requires approval for gated tools', () => {

@@ -13,6 +13,13 @@ export function isToolGated(version: AgentVersion, toolName: string): boolean {
 export type ToolUseVerdict = 'allow' | 'deny' | 'needs_approval'
 
 /**
+ * Harness meta-tools that are always allowed: ToolSearch only loads tool
+ * SCHEMAS (needed for deferred MCP tools like the browser); invoking the
+ * loaded tools still passes through the allowlist + approval gate.
+ */
+const ALWAYS_ALLOWED_META = ['ToolSearch']
+
+/**
  * GUARDRAIL decision for a tool call (friendly tool names). Runs inside the
  * session's canUseTool permission callback — the executor-level choke point
  * every tool call passes through:
@@ -20,6 +27,7 @@ export type ToolUseVerdict = 'allow' | 'deny' | 'needs_approval'
  *  - gated tools must pause for human approval
  */
 export function evaluateToolUse(version: AgentVersion, toolName: string): ToolUseVerdict {
+  if (ALWAYS_ALLOWED_META.includes(toolName)) return 'allow'
   if (!version.tools.includes(toolName)) return 'deny'
   return isToolGated(version, toolName) ? 'needs_approval' : 'allow'
 }

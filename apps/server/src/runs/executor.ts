@@ -370,9 +370,13 @@ function browserMcpServer(
 }
 
 function allowedToolsFor(version: AgentVersion): string[] {
-  return version.tools
-    .filter((t) => !version.capabilities.requiresApprovalFor.includes(t))
-    .map(toSdkToolName)
+  return [
+    // Schema loader for deferred MCP tools — always available, never a gate.
+    'ToolSearch',
+    ...version.tools
+      .filter((t) => !version.capabilities.requiresApprovalFor.includes(t))
+      .map(toSdkToolName)
+  ]
 }
 
 /** Everything in the catalog the version didn't opt into is hard-blocked. */
