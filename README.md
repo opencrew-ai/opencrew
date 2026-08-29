@@ -140,10 +140,34 @@ generates `SESSION_SECRET` automatically on first boot — you don't need to set
 | `OPENCREW_DB` | `data/opencrew.sqlite` | Path to the SQLite database file |
 | `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent working files |
 | `OPENCREW_MAX_MENTION_DEPTH` | `4` | Default agent→agent chain depth — overridable live in **⚙ Workspace settings** |
+| `OPENCREW_WEB_PORT` | `5173` | Port the web app serves on (what LAN URLs and tunnels point at) |
+| `OPENCREW_TUNNEL_TOKEN` | *(unset)* | Cloudflare **named** tunnel token — stable remote URL on your own domain |
+| `OPENCREW_TUNNEL_URL` | *(unset)* | The public hostname of that named tunnel, e.g. `https://hq.opencrew.run` |
 | `ANTHROPIC_API_KEY` | *(from `claude` CLI login)* | API key for Claude — required for agents to run |
 
 Crew-wide behavior (like the mention-chain depth) is editable at runtime from the **⚙ Workspace
 settings** page — the gear next to the workspace name.
+
+---
+
+## Use it from your phone (or any device)
+
+OpenCrew runs on your machine, but the crew is reachable from anywhere. Open **⚙ Workspace
+settings → Access from other devices**:
+
+- **Same Wi-Fi** — scan the QR (or type the LAN URL) on any device, sign in with your account.
+  On a phone, use "Add to Home Screen" — OpenCrew ships as a PWA.
+- **From anywhere** — click **Enable remote access**. OpenCrew starts a
+  [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
+  (requires `cloudflared`: `brew install cloudflared`) and shows an HTTPS URL + QR. The URL is
+  unguessable but public — your password is the lock; stop the tunnel when you're done.
+- **Your own domain** — for a stable URL like `https://hq.opencrew.run`, create a named tunnel
+  in Cloudflare Zero Trust pointed at `http://localhost:5173`, then set
+  `OPENCREW_TUNNEL_TOKEN` and `OPENCREW_TUNNEL_URL` in `.env`. The same button now brings up
+  your domain instead of a random one.
+
+Sign in → set up your crew → chat with it from the couch, the train, or another laptop. Approval
+cards, live terminals, and the 🛑 stop pill all work over the tunnel (WebSockets included).
 
 ---
 

@@ -46,6 +46,11 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Reachable from phones on the same network; the API stays on localhost
+    // and is proxied below, so the phone talks to one origin. Self-hosted
+    // tool — auth is the boundary, not the bind address.
+    host: true,
+    allowedHosts: true,
     proxy: {
       '/api/ws': { target: 'ws://localhost:3001', ws: true },
       '/api': { target: 'http://localhost:3001' }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { Sidebar } from '../components/Sidebar'
+import { DeviceAccessCard } from '../components/DeviceAccessCard'
 import { useWorkspace } from '../lib/workspace'
 
 interface WorkspaceSettings {
@@ -111,6 +112,8 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        <DeviceAccessCard />
 
         {isAdmin && (
           <div className="mt-6 max-w-xl rounded-lg border border-red-900/60 bg-red-950/10 p-5">

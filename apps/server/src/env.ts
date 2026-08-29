@@ -40,5 +40,15 @@ export const env = {
    * Agent→agent mention chains stop at this depth (loop protection; rate
    * limits are the second line of defense). Raise for chattier crews.
    */
-  maxMentionDepth: Number(process.env.OPENCREW_MAX_MENTION_DEPTH ?? 4)
+  maxMentionDepth: Number(process.env.OPENCREW_MAX_MENTION_DEPTH ?? 4),
+  /** Port the web app serves on — what LAN URLs and tunnels point at. */
+  webPort: Number(process.env.OPENCREW_WEB_PORT ?? 5173),
+  /**
+   * Named Cloudflare tunnel (stable URL on your own domain, e.g.
+   * https://hq.opencrew.run). Create it in Cloudflare Zero Trust pointed at
+   * http://localhost:5173, then set both values. Unset = quick tunnel with
+   * a random trycloudflare.com URL.
+   */
+  tunnelToken: process.env.OPENCREW_TUNNEL_TOKEN ?? '',
+  tunnelUrl: process.env.OPENCREW_TUNNEL_URL ?? ''
 }
