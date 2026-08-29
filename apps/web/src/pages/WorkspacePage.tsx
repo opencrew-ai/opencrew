@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import { ChannelView } from '../components/ChannelView'
 import { TerminalDrawer } from '../components/TerminalDrawer'
@@ -9,6 +9,8 @@ export function WorkspacePage() {
   const { channels } = useWorkspace()
   const { channelId } = useParams<{ channelId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const targetThreadId = searchParams.get('thread') ?? undefined
   const [runId, setRunId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -83,6 +85,8 @@ export function WorkspacePage() {
         <ChannelView
           channel={channel}
           onOpenRun={setRunId}
+          targetThreadId={targetThreadId}
+          onThreadFocused={() => setSearchParams({}, { replace: true })}
         />
         {runId && <TerminalDrawer runId={runId} onClose={() => setRunId(null)} />}
       </div>

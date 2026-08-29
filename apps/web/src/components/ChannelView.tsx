@@ -7,15 +7,33 @@ import { MessageInput } from './MessageInput'
 interface ChannelViewProps {
   channel: Channel
   onOpenRun: (runId: string) => void
+  targetThreadId?: string
+  onThreadFocused?: () => void
 }
 
-export function ChannelView({ channel, onOpenRun }: ChannelViewProps) {
+export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocused }: ChannelViewProps) {
   const { messages, loading, post } = useMessages(channel.id, null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const focusedRef = useRef<string | undefined>(undefined)
 
+  // Scroll to bottom on new messages (unless we have a target thread to focus)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView()
-  }, [messages])
+    if (!targetThreadId) bottomRef.current?.scrollIntoView()
+  }, [messages, targetThreadId])
+
+  // When a targetThreadId is set, scroll to and flash-highlight that message
+  useEffect(() => {
+    if (!targetThreadId || loading || focusedRef.current === targetThreadId) return
+    const el = document.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(targetThreadId)}"]`)
+    if (!el) return
+    focusedRef.current = targetThreadId
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2', 'ring-offset-zinc-950', 'rounded-md')
+    setTimeout(() => {
+      el.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2', 'ring-offset-zinc-950', 'rounded-md')
+      onThreadFocused?.()
+    }, 2000)
+  }, [targetThreadId, loading, onThreadFocused])
 
   const groups = groupIntoConversations(messages)
 
@@ -42,6 +60,7 @@ export function ChannelView({ channel, onOpenRun }: ChannelViewProps) {
             group={group}
             channelId={channel.id}
             onOpenRun={onOpenRun}
+            targetThreadId={targetThreadId}
           />
         ))}
         <div ref={bottomRef} />

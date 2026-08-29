@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Channel, Message } from '@opencrew/shared'
 import { api } from '../lib/api'
 
@@ -21,12 +22,19 @@ function formatTime(ts: number): string {
 }
 
 export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps) {
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<Message[]>([])
   const [channelName, setChannelName] = useState<string>(refChannelId)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fetchedRef = useRef(false)
+
+  function goToThread(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation() // prevent double-fire from outer div + inner <a> bubbling
+    navigate(`/channels/${refChannelId}?thread=${encodeURIComponent(refThreadId)}`)
+  }
 
   useEffect(() => {
     if (fetchedRef.current) return
@@ -58,8 +66,12 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
 
   return (
     <div className="mt-1.5 overflow-hidden rounded-lg border border-indigo-700/40 bg-zinc-950/60 text-sm">
-      {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-indigo-700/30 bg-indigo-950/30 px-3 py-1.5">
+      {/* Header bar — clicking anywhere on it navigates to the thread */}
+      <div
+        className="flex cursor-pointer items-center justify-between border-b border-indigo-700/30 bg-indigo-950/30 px-3 py-1.5 transition-colors hover:bg-indigo-900/30"
+        onClick={goToThread}
+        title="Open original thread"
+      >
         <div className="flex items-center gap-2 text-xs text-indigo-300">
           <span>📎</span>
           <span className="font-medium">#{channelName}</span>
@@ -74,13 +86,13 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
             </>
           )}
         </div>
-        {/* Jump link navigates to the channel — the ConversationGroup will show it */}
         <a
-          href={`?channel=${refChannelId}`}
+          href={`/channels/${refChannelId}?thread=${encodeURIComponent(refThreadId)}`}
+          onClick={goToThread}
           className="text-xs text-indigo-400 transition-colors hover:text-indigo-200"
-          title="Jump to original thread"
+          title="Open original thread"
         >
-          Jump to thread →
+          Go to thread →
         </a>
       </div>
 
