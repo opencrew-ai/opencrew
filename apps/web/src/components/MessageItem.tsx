@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Message } from '@opencrew/shared'
 import { ApprovalCard } from './ApprovalCard'
 import { InlineThread } from './InlineThread'
+import { ThreadRefCard } from './ThreadRefCard'
 
 const MD_PLUGINS = [remarkGfm]
 
@@ -82,6 +83,17 @@ export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps)
           <span className="italic text-zinc-500">thinking…</span>
         )}
       </div>
+
+      {/* Thread citation card */}
+      {message.refThreadId && message.refChannelId && (
+        <div className="ml-7 mt-1">
+          <ThreadRefCard
+            refThreadId={message.refThreadId}
+            refChannelId={message.refChannelId}
+            onOpenRun={onOpenRun}
+          />
+        </div>
+      )}
 
       {/* Attached images */}
       {message.images && message.images.length > 0 && (

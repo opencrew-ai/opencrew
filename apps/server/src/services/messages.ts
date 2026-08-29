@@ -18,6 +18,9 @@ export interface CreateMessageInput {
   runId?: string | null
   /** For agent authors: the pinned version whose capabilities apply. */
   agentVersionId?: string
+  /** Thread citation — pin another thread inline in this message. */
+  refThreadId?: string | null
+  refChannelId?: string | null
 }
 
 export class GuardrailViolation extends Error {}
@@ -61,9 +64,13 @@ export async function enrichMessage(
     approvalId: row.approvalId ?? undefined,
     runId: row.runId ?? undefined,
     runStatus: row.runId
-      ? (db.select({ status: runs.status }).from(runs).where(eq(runs.id, row.runId)).get()
-          ?.status as RunStatus | undefined)
-      : undefined
+      ? (
+          (await db.select({ status: runs.status }).from(runs).where(eq(runs.id, row.runId)).limit(1))
+            .at(0)?.status as RunStatus | undefined
+        )
+      : undefined,
+    refThreadId: row.refThreadId ?? undefined,
+    refChannelId: row.refChannelId ?? undefined
   }
 }
 
@@ -100,6 +107,7 @@ export async function createMessage(
 
   const row = {
     id: nanoid(),
+    workspaceSlug: 'default' as const,
     channelId: input.channelId,
     threadRootId: input.threadRootId ?? null,
     authorType: input.authorType,
@@ -108,6 +116,8 @@ export async function createMessage(
     images: input.images?.length ? JSON.stringify(input.images) : null,
     approvalId: input.approvalId ?? null,
     runId: input.runId ?? null,
+    refThreadId: input.refThreadId ?? null,
+    refChannelId: input.refChannelId ?? null,
     createdAt: Date.now()
   }
   await db.insert(messages).values(row)

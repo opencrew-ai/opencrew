@@ -4,6 +4,8 @@
 import './post_to_channel'
 import './list_agents'
 import './create_agent'
+import './search_threads'
+import './cite_thread'
 
 export * from './registry'
 export * from './catalog'

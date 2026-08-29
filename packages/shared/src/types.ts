@@ -107,6 +107,13 @@ export interface Message {
   runId?: string
   /** Current status of the run linked to this message — kept live via WS run_status events. */
   runStatus?: RunStatus
+  /**
+   * When set, renders a thread citation card — the UI fetches the referenced
+   * thread and shows it inline. May point to a thread in any channel.
+   */
+  refThreadId?: string
+  /** Channel the cited thread lives in (required when refThreadId is set). */
+  refChannelId?: string
 }
 
 export type RunTriggerType = 'mention' | 'watch'
