@@ -20,6 +20,18 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const agentLoad = useAgentLoad()
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
+
+  const copyInvite = async () => {
+    if (!inviteUrl) return
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+      setInviteCopied(true)
+      setTimeout(() => setInviteCopied(false), 2000)
+    } catch {
+      // Clipboard unavailable (http origin) — the input stays selectable.
+    }
+  }
   const isAdmin = me.role === 'admin'
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -218,12 +230,24 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           {inviteUrl && (
             <div className="mx-2 mt-2 rounded border border-zinc-700 bg-zinc-900 p-2 text-xs">
               <p className="mb-1 text-zinc-400">Share this invite link:</p>
-              <input
-                readOnly
-                className="w-full bg-transparent text-sky-400"
-                value={inviteUrl}
-                onFocus={(e) => e.target.select()}
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  readOnly
+                  className="min-w-0 flex-1 bg-transparent text-sky-400"
+                  value={inviteUrl}
+                  onFocus={(e) => e.target.select()}
+                />
+                <button
+                  onClick={() => void copyInvite()}
+                  className={`shrink-0 rounded border px-2 py-0.5 transition ${
+                    inviteCopied
+                      ? 'border-emerald-600 text-emerald-400'
+                      : 'border-zinc-600 text-zinc-300 hover:border-zinc-400'
+                  }`}
+                >
+                  {inviteCopied ? '✓ copied' : 'copy'}
+                </button>
+              </div>
             </div>
           )}
         </section>
