@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   createSdkMcpServer,
@@ -333,6 +333,23 @@ async function prepareBrowserProfile(profileDir: string): Promise<void> {
   }
 }
 
+const CHROME_PATHS = [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser'
+]
+
+/**
+ * The agent must drive the SAME browser binary the human logs in with —
+ * cookies are encrypted with a per-browser keychain key, so Playwright's
+ * bundled Chromium cannot read a login made in real Chrome (and vice versa).
+ */
+function chromeExecutablePath(): string | null {
+  return CHROME_PATHS.find((p) => existsSync(p)) ?? null
+}
+
 function browserMcpServer(
   runEnv: RunEnv,
   cwd: string
@@ -340,17 +357,14 @@ function browserMcpServer(
   if (!runEnv.version.tools.includes(BROWSER_TOOL)) return {}
   const profileDir = join(cwd, '.browser-profile')
   mkdirSync(profileDir, { recursive: true })
+  const chrome = chromeExecutablePath()
+  const browserArgs = chrome
+    ? ['--executable-path', chrome]
+    : ['--browser', 'chrome']
   return {
     [BROWSER_MCP_SERVER]: {
       command: 'npx',
-      args: [
-        '-y',
-        '@playwright/mcp@latest',
-        '--browser',
-        'chrome',
-        '--user-data-dir',
-        profileDir
-      ]
+      args: ['-y', '@playwright/mcp@latest', ...browserArgs, '--user-data-dir', profileDir]
     }
   }
 }
