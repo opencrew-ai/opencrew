@@ -13,6 +13,17 @@ export function LoginPage({ isBootstrap, onAuthed }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Served through the opencrew.run relay: the local password form is a dead
+  // end (accounts live at opencrew.run) — send them to the portal instead.
+  if (document.cookie.includes('ocr_via_relay=1')) {
+    window.location.href = '/portal/login'
+    return (
+      <div className="bg-stage grid h-screen place-items-center text-sm text-zinc-400">
+        Redirecting to opencrew.run sign-in…
+      </div>
+    )
+  }
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
