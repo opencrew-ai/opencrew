@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { AgentVersionConfig } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { useWorkspace } from '../lib/workspace'
+import { DirPicker } from './DirPicker'
 
 interface ToolCatalogEntry {
   name: string
@@ -50,6 +51,7 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
   const [workingDir, setWorkingDir] = useState(
     initial?.config.capabilities.workingDir ?? ''
   )
+  const [showDirPicker, setShowDirPicker] = useState(false)
   const [changeNote, setChangeNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -218,12 +220,31 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
 
       <div>
         <label className="label">Working directory (optional)</label>
-        <input
-          className="input font-mono text-xs"
-          placeholder="/Users/you/projects/my-app — leave empty for the agent's own workspace"
-          value={workingDir}
-          onChange={(e) => setWorkingDir(e.target.value)}
-        />
+        <div className="flex gap-2">
+          <input
+            className="input flex-1 font-mono text-xs"
+            placeholder="/Users/you/projects/my-app — leave empty for the agent's own workspace"
+            value={workingDir}
+            onChange={(e) => setWorkingDir(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-secondary shrink-0"
+            onClick={() => setShowDirPicker((v) => !v)}
+          >
+            {showDirPicker ? 'Close' : 'Browse…'}
+          </button>
+        </div>
+        {showDirPicker && (
+          <DirPicker
+            initialPath={workingDir || undefined}
+            onSelect={(path) => {
+              setWorkingDir(path)
+              setShowDirPicker(false)
+            }}
+            onClose={() => setShowDirPicker(false)}
+          />
+        )}
         <p className="mt-1 text-xs text-zinc-500">
           Point the agent at a real repo and it builds there — sessions persist across
           messages, so you can iterate over a whole conversation.

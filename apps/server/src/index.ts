@@ -12,6 +12,7 @@ import { registerAuthRoutes } from './routes/auth'
 import { registerChannelRoutes } from './routes/channels'
 import { registerAgentRoutes } from './routes/agents'
 import { registerRunRoutes } from './routes/runs'
+import { registerFsRoutes } from './routes/fs'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
 // Side-effect import: registers the OpenCrew MCP tool plugins.
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
   registerChannelRoutes(app, ctx)
   registerAgentRoutes(app, ctx)
   registerRunRoutes(app, ctx)
+  registerFsRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
