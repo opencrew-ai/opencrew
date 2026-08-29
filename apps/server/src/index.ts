@@ -19,6 +19,7 @@ import { registerCloudLinkRoutes } from './routes/cloudlink'
 import { registerSearchRoutes } from './routes/search'
 import { registerWorkRoutes } from './routes/work'
 import { registerReactionRoutes } from './routes/reactions'
+import { registerStatsRoutes } from './routes/stats'
 import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
   registerSearchRoutes(app, ctx)
   registerWorkRoutes(app, ctx)
   registerReactionRoutes(app, ctx)
+  registerStatsRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
