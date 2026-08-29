@@ -78,8 +78,9 @@ export function buildSystemPrompt(
   channel: Channel
 ): string {
   const allChannels = db.select().from(channels).all()
+  const postAll = version.capabilities.canPostInChannels.includes('*')
   const allowedChannels = allChannels
-    .filter((c) => version.capabilities.canPostInChannels.includes(c.id))
+    .filter((c) => postAll || version.capabilities.canPostInChannels.includes(c.id))
     .map((c) => `#${c.name} (id: ${c.id})`)
   const gated = version.capabilities.requiresApprovalFor
   const teammates = db
@@ -88,6 +89,7 @@ export function buildSystemPrompt(
     .all()
     .filter((a) => a.name !== agentName && a.status === 'active')
     .map((a) => `@${a.name}`)
+  const watchesAll = (version.capabilities.watchesChannels ?? []).includes('*')
 
   return [
     version.systemPrompt,
@@ -106,6 +108,9 @@ export function buildSystemPrompt(
       : 'You cannot post to other channels.',
     teammates.length > 0
       ? `Other agents on the crew: ${teammates.join(', ')}. To hand work to one, @mention them in your reply and they will pick it up (chains are depth-limited).`
+      : '',
+    watchesAll
+      ? `You see every human message in every channel automatically. Humans who @mention a specific agent are handled by that agent — you only receive untargeted messages.`
       : ''
   ]
     .filter((line) => line !== '')

@@ -175,16 +175,27 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
         <div className="flex-1">
           <label className="label">Can post in channels</label>
           <div className="mt-1 space-y-1">
-            {channels.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={postChannels.includes(c.id)}
-                  onChange={() => toggle(postChannels, setPostChannels, c.id)}
-                />
-                # {c.name}
-              </label>
-            ))}
+            <label className="flex items-center gap-2 text-sm text-emerald-300">
+              <input
+                type="checkbox"
+                checked={postChannels.includes('*')}
+                onChange={() =>
+                  setPostChannels(postChannels.includes('*') ? [] : ['*'])
+                }
+              />
+              All channels (incl. future ones)
+            </label>
+            {!postChannels.includes('*') &&
+              channels.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={postChannels.includes(c.id)}
+                    onChange={() => toggle(postChannels, setPostChannels, c.id)}
+                  />
+                  # {c.name}
+                </label>
+              ))}
           </div>
         </div>
         <div className="flex-1">
@@ -193,16 +204,27 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
             Auto-runs on every new human message — no @mention needed.
           </p>
           <div className="mt-1 space-y-1">
-            {channels.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={watchChannels.includes(c.id)}
-                  onChange={() => toggle(watchChannels, setWatchChannels, c.id)}
-                />
-                # {c.name}
-              </label>
-            ))}
+            <label className="flex items-center gap-2 text-sm text-emerald-300">
+              <input
+                type="checkbox"
+                checked={watchChannels.includes('*')}
+                onChange={() =>
+                  setWatchChannels(watchChannels.includes('*') ? [] : ['*'])
+                }
+              />
+              All channels (orchestrator)
+            </label>
+            {!watchChannels.includes('*') &&
+              channels.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={watchChannels.includes(c.id)}
+                    onChange={() => toggle(watchChannels, setWatchChannels, c.id)}
+                  />
+                  # {c.name}
+                </label>
+              ))}
           </div>
         </div>
         <div className="w-44">

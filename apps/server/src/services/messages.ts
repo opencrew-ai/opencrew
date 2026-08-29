@@ -70,7 +70,9 @@ export function createMessage(ctx: AppContext, input: CreateMessageInput): Messa
     }
     const version = getVersion(db, input.agentVersionId)
     if (!version) throw new GuardrailViolation('unknown agent version')
-    if (!version.capabilities.canPostInChannels.includes(input.channelId)) {
+    // '*' = explicitly granted all channels (e.g. an orchestrator agent).
+    const allowed = version.capabilities.canPostInChannels
+    if (!allowed.includes('*') && !allowed.includes(input.channelId)) {
       throw new GuardrailViolation(
         `agent is not allowed to post in #${channel.name}`
       )

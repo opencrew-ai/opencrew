@@ -54,11 +54,14 @@ export function enqueueMentionRuns(
   }
 
   if (message.authorType !== 'human') return
+  // A human who @mentions an agent has chosen their recipient — watchers
+  // (including the orchestrator) stay out of it.
+  if (mentioned.length > 0) return
   for (const agent of allAgents) {
-    if (mentioned.includes(agent.name)) continue
     const full = getAgentWithVersion(ctx.db, agent.id)
     const watched = full?.currentVersion.capabilities.watchesChannels ?? []
-    if (full && watched.includes(message.channelId)) {
+    // '*' = watches every channel (orchestrator pattern).
+    if (full && (watched.includes('*') || watched.includes(message.channelId))) {
       enqueueRun(ctx, agent.id, message, 0, 'watch')
     }
   }

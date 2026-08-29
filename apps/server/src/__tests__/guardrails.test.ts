@@ -248,6 +248,58 @@ describe('channel watchers', () => {
     expect(all).toHaveLength(1)
   })
 
+  it("'*' watches every channel, but explicit mentions silence all watchers", () => {
+    const ctx = makeTestCtx()
+    const userId = seedUser(ctx.db)
+    const channelId = seedChannel(ctx.db)
+    seedAgent(ctx.db, userId, {
+      name: 'Orchestrator',
+      capabilities: { canPostInChannels: ['*'], watchesChannels: ['*'] }
+    })
+    seedAgent(ctx.db, userId, {
+      name: 'Specialist',
+      capabilities: { canPostInChannels: [channelId] }
+    })
+
+    const plain = createMessage(ctx, {
+      channelId,
+      authorType: 'human',
+      authorId: userId,
+      content: 'can someone look into the flaky deploy?'
+    })
+    enqueueMentionRuns(ctx, plain, 0)
+    expect(ctx.db.select().from(runs).all()).toHaveLength(1) // orchestrator only
+
+    // Directly-addressed message: the specialist runs, the watcher stays out.
+    const targeted = createMessage(ctx, {
+      channelId,
+      authorType: 'human',
+      authorId: userId,
+      content: '@Specialist take a look please'
+    })
+    enqueueMentionRuns(ctx, targeted, 0)
+    const all = ctx.db.select().from(runs).all()
+    expect(all).toHaveLength(2)
+    expect(all.filter((r) => r.triggerType === 'mention')).toHaveLength(1)
+  })
+
+  it("agents with '*' canPostInChannels may post anywhere", () => {
+    const ctx = makeTestCtx()
+    const userId = seedUser(ctx.db)
+    const channelId = seedChannel(ctx.db)
+    const { agentId, versionId } = seedAgent(ctx.db, userId, {
+      capabilities: { canPostInChannels: ['*'] }
+    })
+    const message = createMessage(ctx, {
+      channelId,
+      authorType: 'agent',
+      authorId: agentId,
+      agentVersionId: versionId,
+      content: 'orchestrator says hi'
+    })
+    expect(message.channelId).toBe(channelId)
+  })
+
   it('a mention supersedes the watch — no duplicate run', () => {
     const ctx = makeTestCtx()
     const userId = seedUser(ctx.db)

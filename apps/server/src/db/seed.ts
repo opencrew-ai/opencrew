@@ -111,6 +111,48 @@ export function seedIfEmpty(db: DB): boolean {
     'initial version'
   )
 
+  const captainId = nanoid()
+  db.insert(agents)
+    .values({
+      id: captainId,
+      name: 'Captain',
+      avatarEmoji: '🧭',
+      currentVersionId: 'pending',
+      createdBy: adminId,
+      status: 'active',
+      createdAt: now
+    })
+    .run()
+  createVersion(
+    db,
+    captainId,
+    {
+      systemPrompt:
+        'You are Captain, the crew orchestrator. You read every message humans post ' +
+        '(no @mention needed) and make the right thing happen:\n' +
+        '1. Simple conversation or a question you can answer → reply briefly yourself.\n' +
+        '2. Work for a specialist → delegate: @mention the right agent with a crisp, ' +
+        'self-contained instruction. Use list_agents when unsure of the roster.\n' +
+        '3. No agent fits → hire one with create_agent (strong system prompt, minimal ' +
+        'tools), then @mention it to start the work.\n' +
+        'Rules: never do specialist work yourself; keep replies to 1–3 sentences; ' +
+        'delegate to one agent per task unless parallel work clearly helps.',
+      model: 'claude-sonnet-4-6',
+      skills: ['orchestration', 'delegation', 'hiring'],
+      tools: ['list_agents', 'create_agent', 'post_to_channel'],
+      capabilities: {
+        canPostInChannels: ['*'],
+        maxRunsPerHour: 60,
+        // Hiring a new agent raises an approval card.
+        requiresApprovalFor: ['create_agent'],
+        watchesChannels: ['*'],
+        workingDir: ''
+      }
+    },
+    adminId,
+    'initial version'
+  )
+
   const rows = [
     { channelId: generalId, memberType: 'human' as const, memberId: adminId },
     { channelId: buildsId, memberType: 'human' as const, memberId: adminId },
