@@ -32,7 +32,8 @@ export function registerStatsRoutes(app: FastifyInstance, ctx: AppContext): void
     }
     const byDay = new Map(series.map((s) => [s.day, s]))
     for (const row of recent) {
-      byDay.get(dayStart(row.createdAt))?.count!++
+      const bucket = byDay.get(dayStart(row.createdAt))
+      if (bucket) bucket.count += 1
     }
 
     return ok({
