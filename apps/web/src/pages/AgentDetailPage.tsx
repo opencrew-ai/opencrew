@@ -23,18 +23,25 @@ export function AgentDetailPage() {
   const [openRunId, setOpenRunId] = useState<string | null>(null)
   const [browserUrl, setBrowserUrl] = useState('https://x.com')
   const [browserStatus, setBrowserStatus] = useState<string | null>(null)
+  const [rules, setRules] = useState<
+    { id: string; toolName: string; createdAt: number }[]
+  >([])
   const isAdmin = me.role === 'admin'
 
   const reload = useCallback(async () => {
     if (!agentId) return
-    const [a, v, r] = await Promise.all([
+    const [a, v, r, rl] = await Promise.all([
       api.get<AgentWithVersion>(`/api/agents/${agentId}`),
       api.get<AgentVersion[]>(`/api/agents/${agentId}/versions`),
-      api.get<Run[]>(`/api/agents/${agentId}/runs`)
+      api.get<Run[]>(`/api/agents/${agentId}/runs`),
+      api.get<{ id: string; toolName: string; createdAt: number }[]>(
+        `/api/agents/${agentId}/approval-rules`
+      )
     ])
     setAgent(a)
     setVersions(v)
     setRuns(r)
+    setRules(rl)
     await refreshAgents()
   }, [agentId, refreshAgents])
 
@@ -131,6 +138,39 @@ export function AgentDetailPage() {
 
         {tab === 'config' && (
           <div className="mt-6">
+            {rules.length > 0 && (
+              <div className="mb-6 max-w-2xl rounded-lg border border-amber-900/50 bg-amber-950/10 p-4">
+                <h3 className="font-semibold">⚡ Auto-approve rules</h3>
+                <p className="mt-1 text-sm text-zinc-400">
+                  These gated tools no longer wait for a click — every use is still fully
+                  audited in the run terminal.
+                </p>
+                <div className="mt-2 space-y-1">
+                  {rules.map((rule) => (
+                    <div key={rule.id} className="flex items-center gap-3 text-sm">
+                      <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs">
+                        {rule.toolName}
+                      </code>
+                      <span className="text-xs text-zinc-500">
+                        since {new Date(rule.createdAt).toLocaleString()}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          className="ml-auto text-xs text-red-400 hover:underline"
+                          onClick={() =>
+                            void api
+                              .delete(`/api/approval-rules/${rule.id}`)
+                              .then(() => reload())
+                          }
+                        >
+                          revoke
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {agent.currentVersion.tools.includes('Browser') && (
               <div className="mb-6 max-w-2xl rounded-lg border border-sky-900/60 bg-sky-950/20 p-4">
                 <h3 className="flex items-center gap-2 font-semibold">

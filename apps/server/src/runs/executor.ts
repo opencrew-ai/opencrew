@@ -34,7 +34,11 @@ import {
   buildIncrementalTranscript,
   buildSystemPrompt
 } from './context'
-import { assertToolInvocationAllowed, evaluateToolUse } from './guardrails'
+import {
+  assertToolInvocationAllowed,
+  evaluateToolUse,
+  findAutoApproveRule
+} from './guardrails'
 import {
   BROWSER_MCP_SERVER,
   BROWSER_TOOL,
@@ -523,6 +527,40 @@ async function gateToolUse(
   const verdict = evaluateToolUse(runEnv.version, name)
   if (verdict === 'deny') return 'forbidden'
   if (verdict === 'allow') return 'allowed'
+
+  // Standing auto-approve rule: skip the human click, keep the full audit.
+  const rule = findAutoApproveRule(ctx.db, runEnv.agentId, name)
+  if (rule) {
+    const autoId = nanoid()
+    ctx.db
+      .insert(approvals)
+      .values({
+        id: autoId,
+        runId: runEnv.runId,
+        toolName: name,
+        toolInput: JSON.stringify(input),
+        status: 'approved',
+        resolvedBy: `rule:${rule.createdBy}`,
+        resolvedAt: Date.now(),
+        createdAt: Date.now()
+      })
+      .run()
+    recordStep(ctx, runEnv.runId, 'approval_requested', {
+      approvalId: autoId,
+      tool: name,
+      input,
+      autoApproved: true
+    })
+    recordStep(ctx, runEnv.runId, 'approval_resolved', {
+      approvalId: autoId,
+      tool: name,
+      decision: 'approved',
+      resolvedBy: `rule:${rule.createdBy}`,
+      autoApproved: true
+    })
+    assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, autoId)
+    return 'allowed'
+  }
 
   const approvalId = nanoid()
   ctx.db

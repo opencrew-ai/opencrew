@@ -1,14 +1,19 @@
 import type { FastifyInstance } from 'fastify'
 import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { nanoid } from 'nanoid'
 import type { AppContext } from '../context'
-import { approvals, runs, runSteps } from '../db/schema'
+import { approvalRules, approvals, runs, runSteps } from '../db/schema'
 import { resolveApproval, toApproval } from '../services/approvals'
 import { adminGuard, authGuard, fail, ok } from './helpers'
 
 const RECENT_RUNS_LIMIT = 50
 
-const resolveSchema = z.object({ decision: z.enum(['approved', 'denied']) })
+const resolveSchema = z.object({
+  decision: z.enum(['approved', 'denied']),
+  // "Approve + always allow": also create a standing auto-approve rule.
+  always: z.boolean().default(false)
+})
 
 function toRun(row: typeof runs.$inferSelect) {
   return {
@@ -88,12 +93,65 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       const parsed = resolveSchema.safeParse(req.body)
       if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
       try {
+        if (parsed.data.decision === 'approved' && parsed.data.always) {
+          const row = ctx.db
+            .select()
+            .from(approvals)
+            .where(eq(approvals.id, approvalId))
+            .get()
+          const run = row
+            ? ctx.db.select().from(runs).where(eq(runs.id, row.runId)).get()
+            : undefined
+          if (row && run) {
+            const existing = ctx.db
+              .select()
+              .from(approvalRules)
+              .all()
+              .find((r) => r.agentId === run.agentId && r.toolName === row.toolName)
+            if (!existing) {
+              ctx.db
+                .insert(approvalRules)
+                .values({
+                  id: nanoid(),
+                  agentId: run.agentId,
+                  toolName: row.toolName,
+                  createdBy: req.user!.id,
+                  createdAt: Date.now()
+                })
+                .run()
+            }
+          }
+        }
         return ok(resolveApproval(ctx, approvalId, parsed.data.decision, req.user!.id))
       } catch (err) {
         return reply
           .code(400)
           .send(fail(err instanceof Error ? err.message : 'resolve failed'))
       }
+    }
+  )
+
+  app.get(
+    '/api/agents/:agentId/approval-rules',
+    { preHandler: authGuard(ctx) },
+    async (req) => {
+      const { agentId } = req.params as { agentId: string }
+      const rules = ctx.db
+        .select()
+        .from(approvalRules)
+        .where(eq(approvalRules.agentId, agentId))
+        .all()
+      return ok(rules)
+    }
+  )
+
+  app.delete(
+    '/api/approval-rules/:ruleId',
+    { preHandler: adminGuard(ctx) },
+    async (req) => {
+      const { ruleId } = req.params as { ruleId: string }
+      ctx.db.delete(approvalRules).where(eq(approvalRules.id, ruleId)).run()
+      return ok(null)
     }
   )
 }

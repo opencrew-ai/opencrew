@@ -5,9 +5,10 @@ import {
   ApprovalRequiredError,
   ToolForbiddenError,
   assertToolInvocationAllowed,
-  evaluateToolUse
+  evaluateToolUse,
+  findAutoApproveRule
 } from '../runs/guardrails'
-import { approvals, runs, runSteps, messages } from '../db/schema'
+import { approvalRules, approvals, runs, runSteps, messages } from '../db/schema'
 import { createVersion, getVersion } from '../services/agents'
 import { createMessage, GuardrailViolation } from '../services/messages'
 import { enqueueMentionRuns } from '../runs/enqueue'
@@ -126,6 +127,32 @@ describe('tool allowlist and approval gates', () => {
     expect(() =>
       assertToolInvocationAllowed(ctx.db, version, runId, 'Bash', nanoid())
     ).toThrow(ToolForbiddenError)
+  })
+})
+
+describe('auto-approve rules', () => {
+  it('rule lookup matches only the exact agent+tool pair', () => {
+    const ctx = makeTestCtx()
+    const userId = seedUser(ctx.db)
+    const { agentId } = seedAgent(ctx.db, userId, {
+      tools: ['Bash'],
+      capabilities: { requiresApprovalFor: ['Bash'] }
+    })
+    expect(findAutoApproveRule(ctx.db, agentId, 'Bash')).toBeNull()
+
+    ctx.db
+      .insert(approvalRules)
+      .values({
+        id: nanoid(),
+        agentId,
+        toolName: 'Bash',
+        createdBy: userId,
+        createdAt: Date.now()
+      })
+      .run()
+    expect(findAutoApproveRule(ctx.db, agentId, 'Bash')?.createdBy).toBe(userId)
+    expect(findAutoApproveRule(ctx.db, agentId, 'Browser')).toBeNull()
+    expect(findAutoApproveRule(ctx.db, 'other-agent', 'Bash')).toBeNull()
   })
 })
 

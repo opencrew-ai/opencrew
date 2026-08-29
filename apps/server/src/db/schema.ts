@@ -141,6 +141,16 @@ export const agentSessions = sqliteTable(
   })
 )
 
+// Standing admin consent: gated tool calls matching a rule auto-approve
+// (an approvals row + audit steps are still written — nothing goes silent).
+export const approvalRules = sqliteTable('approval_rules', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull(),
+  toolName: text('tool_name').notNull(),
+  createdBy: text('created_by').notNull(),
+  createdAt: integer('created_at').notNull()
+})
+
 export const invites = sqliteTable('invites', {
   id: text('id').primaryKey(),
   token: text('token').notNull().unique(),

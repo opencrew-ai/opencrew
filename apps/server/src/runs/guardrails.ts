@@ -1,7 +1,7 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { AgentVersion } from '@opencrew/shared'
 import type { DB } from '../db'
-import { approvals } from '../db/schema'
+import { approvalRules, approvals } from '../db/schema'
 
 export class ToolForbiddenError extends Error {}
 export class ApprovalRequiredError extends Error {}
@@ -30,6 +30,24 @@ export function evaluateToolUse(version: AgentVersion, toolName: string): ToolUs
   if (ALWAYS_ALLOWED_META.includes(toolName)) return 'allow'
   if (!version.tools.includes(toolName)) return 'deny'
   return isToolGated(version, toolName) ? 'needs_approval' : 'allow'
+}
+
+/**
+ * Standing admin consent for (agent, tool). When present, a gated call is
+ * auto-approved: the approvals row and audit steps are still written, only
+ * the human click is skipped. Revocable any time from the agent page.
+ */
+export function findAutoApproveRule(
+  db: DB,
+  agentId: string,
+  toolName: string
+): { id: string; createdBy: string } | null {
+  const rule = db
+    .select()
+    .from(approvalRules)
+    .where(and(eq(approvalRules.agentId, agentId), eq(approvalRules.toolName, toolName)))
+    .get()
+  return rule ? { id: rule.id, createdBy: rule.createdBy } : null
 }
 
 /**

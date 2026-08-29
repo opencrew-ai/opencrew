@@ -24,10 +24,10 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
 
   if (!approval) return null
 
-  const resolve = async (decision: 'approved' | 'denied') => {
+  const resolve = async (decision: 'approved' | 'denied', always = false) => {
     setBusy(true)
     try {
-      await api.post(`/api/approvals/${approvalId}/resolve`, { decision })
+      await api.post(`/api/approvals/${approvalId}/resolve`, { decision, always })
     } catch (err) {
       alert(err instanceof Error ? err.message : 'failed')
     } finally {
@@ -54,9 +54,17 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
         {JSON.stringify(approval.toolInput, null, 2)}
       </pre>
       {approval.status === 'pending' && me.role === 'admin' && (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button className="btn-primary" disabled={busy} onClick={() => void resolve('approved')}>
             Approve
+          </button>
+          <button
+            className="btn-secondary"
+            disabled={busy}
+            title="Approve and auto-approve this tool for this agent from now on (revocable on the agent page)"
+            onClick={() => void resolve('approved', true)}
+          >
+            Approve + always allow
           </button>
           <button className="btn-danger" disabled={busy} onClick={() => void resolve('denied')}>
             Deny
