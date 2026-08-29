@@ -100,6 +100,12 @@ export function WorkspaceProvider({
 
   const logout = useCallback(async () => {
     await api.post('/api/auth/logout')
+    // Behind the relay the identity header re-authenticates every request —
+    // signing out means ending the opencrew.run session, not the local one.
+    if (document.cookie.includes('ocr_via_relay=1')) {
+      window.location.href = '/portal/logout'
+      return
+    }
     onLoggedOut()
   }, [onLoggedOut])
 

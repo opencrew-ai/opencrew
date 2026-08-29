@@ -35,6 +35,18 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        // Behind the opencrew.run relay this origin also serves the account
+        // portal, auth, link/join, and connector routes — the SPA's offline
+        // navigation fallback must never swallow those.
+        navigateFallbackDenylist: [
+          /^\/portal/,
+          /^\/link/,
+          /^\/join/,
+          /^\/invite/,
+          /^\/api/,
+          /^\/connector-api/,
+          /^\/healthz/
+        ],
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
