@@ -49,6 +49,7 @@ export function WorkspaceProvider({
   onLoggedOut: () => void
   children: ReactNode
 }) {
+  const [meState, setMeState] = useState<User>(me)
   const [channels, setChannels] = useState<Channel[]>([])
   const [agents, setAgents] = useState<AgentWithVersion[]>([])
   const [users, setUsers] = useState<User[]>([])
@@ -86,6 +87,9 @@ export function WorkspaceProvider({
           const rest = prev.filter((a) => a.id !== event.agent.id)
           return [...rest, event.agent].sort((a, b) => a.name.localeCompare(b.name))
         })
+      } else if (event.type === 'user_updated') {
+        setUsers((prev) => prev.map((u) => (u.id === event.user.id ? event.user : u)))
+        setMeState((prev) => (prev.id === event.user.id ? event.user : prev))
       }
     })
     return () => {
@@ -101,7 +105,7 @@ export function WorkspaceProvider({
 
   const value = useMemo(
     () => ({
-      me,
+      me: meState,
       channels,
       agents,
       users,
@@ -110,7 +114,7 @@ export function WorkspaceProvider({
       refreshAgents,
       logout
     }),
-    [me, channels, agents, users, presence, refreshChannels, refreshAgents, logout]
+    [meState, channels, agents, users, presence, refreshChannels, refreshAgents, logout]
   )
 
   if (!loaded) {

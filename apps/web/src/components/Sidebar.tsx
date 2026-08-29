@@ -28,6 +28,16 @@ export function Sidebar({ activeChannelId }: { activeChannelId?: string }) {
     setInviteUrl(`${location.origin}${path}`)
   }
 
+  const renameMe = async () => {
+    const name = prompt('Your display name:', me.name)
+    if (!name || name.trim() === me.name) return
+    try {
+      await api.post('/api/users/me', { name: name.trim() })
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'rename failed')
+    }
+  }
+
   const stateOf = (type: 'human' | 'agent', id: string) =>
     presence.get(presenceKey(type, id))?.state ?? (type === 'human' ? 'offline' : 'idle')
 
@@ -134,7 +144,13 @@ export function Sidebar({ activeChannelId }: { activeChannelId?: string }) {
 
       <div className="border-t border-zinc-800 px-4 py-3 text-sm">
         <div className="flex items-center justify-between">
-          <span className="text-zinc-300">{me.name}</span>
+          <button
+            onClick={() => void renameMe()}
+            className="text-zinc-300 hover:text-white"
+            title="Click to change your display name"
+          >
+            {me.name} <span className="text-xs text-zinc-600">✎</span>
+          </button>
           <button onClick={() => void logout()} className="text-xs text-zinc-500 hover:text-white">
             Sign out
           </button>

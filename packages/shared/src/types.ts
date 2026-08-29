@@ -159,6 +159,7 @@ export type ServerEvent =
   | { type: 'run_step'; agentId: string; step: RunStep }
   | { type: 'channel_created'; channel: Channel }
   | { type: 'agent_updated'; agent: AgentWithVersion }
+  | { type: 'user_updated'; user: User }
 
 /** Client → server WebSocket events. */
 export type ClientEvent = { type: 'ping' }

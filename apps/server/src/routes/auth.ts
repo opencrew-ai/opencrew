@@ -108,6 +108,19 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
     return ok(ctx.db.select().from(users).all().map(publicUser))
   })
 
+  app.post('/api/users/me', { preHandler: authGuard(ctx) }, async (req, reply) => {
+    const parsed = z.object({ name: z.string().min(1).max(80) }).safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+    ctx.db
+      .update(users)
+      .set({ name: parsed.data.name.trim() })
+      .where(eq(users.id, req.user!.id))
+      .run()
+    const updated = ctx.db.select().from(users).where(eq(users.id, req.user!.id)).get()!
+    ctx.hub.broadcast({ type: 'user_updated', user: publicUser(updated) })
+    return ok(publicUser(updated))
+  })
+
   app.post('/api/invites', { preHandler: adminGuard(ctx) }, async (req) => {
     const invite = {
       id: nanoid(),
