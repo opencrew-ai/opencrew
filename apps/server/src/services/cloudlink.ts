@@ -43,13 +43,38 @@ const state: CloudState = {
   pendingApproveUrl: null
 }
 
-export function cloudStatus(ctx: AppContext) {
+export async function cloudStatus(ctx: AppContext) {
   return {
-    linked: Boolean(getRawSetting(ctx.db, KEYS.linkSecret)),
+    linked: Boolean(await getRawSetting(ctx.db, KEYS.linkSecret)),
     connected: state.connected,
-    slug: getRawSetting(ctx.db, KEYS.slug),
-    relayUrl: getRawSetting(ctx.db, KEYS.relayUrl) ?? env.relayUrl,
+    slug: await getRawSetting(ctx.db, KEYS.slug),
+    relayUrl: (await getRawSetting(ctx.db, KEYS.relayUrl)) ?? env.relayUrl,
     pendingApproveUrl: state.pendingApproveUrl
+  }
+}
+
+/**
+ * When cloud-linked, fetch the crew's standing opencrew.run join URL —
+ * the invite link that works from anywhere. Null when unlinked or offline.
+ */
+export async function ensureRelayInviteUrl(ctx: AppContext): Promise<string | null> {
+  const [relayUrl, workspaceId, secret] = await Promise.all([
+    getRawSetting(ctx.db, KEYS.relayUrl),
+    getRawSetting(ctx.db, KEYS.workspaceId),
+    getRawSetting(ctx.db, KEYS.linkSecret)
+  ])
+  if (!relayUrl || !workspaceId || !secret) return null
+  try {
+    const res = await fetch(`${relayUrl}/connector-api/share/ensure`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId, secret })
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { joinUrl?: string }
+    return data.joinUrl ?? null
+  } catch {
+    return null
   }
 }
 
@@ -87,10 +112,10 @@ export async function startLinking(
           linkSecret?: string
         }
         if (data.status === 'approved' && data.workspaceId && data.linkSecret) {
-          setRawSetting(ctx.db, KEYS.relayUrl, relayUrl)
-          setRawSetting(ctx.db, KEYS.workspaceId, data.workspaceId)
-          setRawSetting(ctx.db, KEYS.linkSecret, data.linkSecret)
-          setRawSetting(ctx.db, KEYS.slug, data.slug ?? '')
+          await setRawSetting(ctx.db, KEYS.relayUrl, relayUrl)
+          await setRawSetting(ctx.db, KEYS.workspaceId, data.workspaceId)
+          await setRawSetting(ctx.db, KEYS.linkSecret, data.linkSecret)
+          await setRawSetting(ctx.db, KEYS.slug, data.slug ?? '')
           state.pendingApproveUrl = null
           startCloudLink(ctx)
           return
@@ -105,56 +130,58 @@ export async function startLinking(
   return { approveUrl, code }
 }
 
-export function unlink(ctx: AppContext): void {
+export async function unlink(ctx: AppContext): Promise<void> {
   state.stopping = true
   state.socket?.close()
   state.socket = null
   state.connected = false
-  for (const key of Object.values(KEYS)) clearSetting(ctx.db, key)
+  await Promise.all(Object.values(KEYS).map((key) => clearSetting(ctx.db, key)))
   state.stopping = false
 }
 
 /** Connect (and keep connected) when link credentials exist. */
 export function startCloudLink(ctx: AppContext): void {
-  const relayUrl = getRawSetting(ctx.db, KEYS.relayUrl)
-  const workspaceId = getRawSetting(ctx.db, KEYS.workspaceId)
-  const secret = getRawSetting(ctx.db, KEYS.linkSecret)
-  if (!relayUrl || !workspaceId || !secret) return
-  if (state.socket) return // already connecting/connected
+  void (async () => {
+    const relayUrl = await getRawSetting(ctx.db, KEYS.relayUrl)
+    const workspaceId = await getRawSetting(ctx.db, KEYS.workspaceId)
+    const secret = await getRawSetting(ctx.db, KEYS.linkSecret)
+    if (!relayUrl || !workspaceId || !secret) return
+    if (state.socket) return // already connecting/connected
 
-  const wsUrl = relayUrl.replace(/^http/, 'ws') + '/connector-api/ws'
-  const socket = new WebSocket(wsUrl)
-  state.socket = socket
-  let heartbeat: NodeJS.Timeout | null = null
+    const wsUrl = relayUrl.replace(/^http/, 'ws') + '/connector-api/ws'
+    const socket = new WebSocket(wsUrl)
+    state.socket = socket
+    let heartbeat: NodeJS.Timeout | null = null
 
-  socket.on('open', () => {
-    socket.send(JSON.stringify({ type: 'auth', workspaceId, secret }))
-    heartbeat = setInterval(() => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'ping' }))
+    socket.on('open', () => {
+      socket.send(JSON.stringify({ type: 'auth', workspaceId, secret }))
+      heartbeat = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'ping' }))
+        }
+      }, HEARTBEAT_MS)
+    })
+
+    socket.on('message', (raw: Buffer) => {
+      void handleFrame(ctx, socket, raw)
+    })
+
+    socket.on('close', () => {
+      if (heartbeat) clearInterval(heartbeat)
+      state.connected = false
+      state.socket = null
+      for (const stream of state.streams.values()) stream.close()
+      state.streams.clear()
+      if (!state.stopping) {
+        setTimeout(() => startCloudLink(ctx), state.reconnectDelay)
+        state.reconnectDelay = Math.min(state.reconnectDelay * 2, RECONNECT_MAX_MS)
       }
-    }, HEARTBEAT_MS)
-  })
+    })
 
-  socket.on('message', (raw: Buffer) => {
-    void handleFrame(ctx, socket, raw)
-  })
-
-  socket.on('close', () => {
-    if (heartbeat) clearInterval(heartbeat)
-    state.connected = false
-    state.socket = null
-    for (const stream of state.streams.values()) stream.close()
-    state.streams.clear()
-    if (!state.stopping) {
-      setTimeout(() => startCloudLink(ctx), state.reconnectDelay)
-      state.reconnectDelay = Math.min(state.reconnectDelay * 2, RECONNECT_MAX_MS)
-    }
-  })
-
-  socket.on('error', () => {
-    // close handler drives the reconnect.
-  })
+    socket.on('error', () => {
+      // close handler drives the reconnect.
+    })
+  })()
 }
 
 async function handleFrame(ctx: AppContext, socket: WebSocket, raw: Buffer): Promise<void> {
@@ -184,7 +211,10 @@ async function handleFrame(ctx: AppContext, socket: WebSocket, raw: Buffer): Pro
         const response = await fetch(`http://127.0.0.1:${env.port}${path}`, {
           method,
           headers,
-          body: body && method !== 'GET' && method !== 'HEAD' ? Buffer.from(body, 'base64') : undefined
+          body:
+            body && method !== 'GET' && method !== 'HEAD'
+              ? Buffer.from(body, 'base64')
+              : undefined
         })
         const payload = Buffer.from(await response.arrayBuffer())
         socket.send(
@@ -203,9 +233,9 @@ async function handleFrame(ctx: AppContext, socket: WebSocket, raw: Buffer): Pro
             id,
             status: 502,
             headers: { 'content-type': 'application/json' },
-            body: Buffer.from(
-              JSON.stringify({ success: false, error: String(err) })
-            ).toString('base64')
+            body: Buffer.from(JSON.stringify({ success: false, error: String(err) })).toString(
+              'base64'
+            )
           })
         )
       }
@@ -267,14 +297,14 @@ export interface RelayIdentity {
  * Verify the relay's signed identity header. Only forgeable with the link
  * secret, which exists solely on this machine and (in memory) at the relay.
  */
-export function verifyRelayIdentity(
+export async function verifyRelayIdentity(
   ctx: AppContext,
   headers: Record<string, string | string[] | undefined>
-): RelayIdentity | null {
+): Promise<RelayIdentity | null> {
   const payload = headers['x-opencrew-identity']
   const signature = headers['x-opencrew-signature']
   if (typeof payload !== 'string' || typeof signature !== 'string') return null
-  const secret = getRawSetting(ctx.db, KEYS.linkSecret)
+  const secret = await getRawSetting(ctx.db, KEYS.linkSecret)
   if (!secret) return null
 
   const expected = createHmac('sha256', secret).update(payload).digest('hex')
@@ -291,15 +321,23 @@ export function verifyRelayIdentity(
     }
     if (!identity.email || !identity.ts) return null
     if (Math.abs(Date.now() - identity.ts) > IDENTITY_MAX_SKEW_MS) return null
-    return { email: identity.email, name: identity.name ?? identity.email, owner: Boolean(identity.owner) }
+    return {
+      email: identity.email,
+      name: identity.name ?? identity.email,
+      owner: Boolean(identity.owner)
+    }
   } catch {
     return null
   }
 }
 
 /** Map a relay identity onto a local user (created on first contact). */
-export function resolveRelayUser(ctx: AppContext, identity: RelayIdentity) {
-  const existing = ctx.db.select().from(users).where(eq(users.email, identity.email)).get()
+export async function resolveRelayUser(ctx: AppContext, identity: RelayIdentity) {
+  const [existing] = await ctx.db
+    .select()
+    .from(users)
+    .where(eq(users.email, identity.email))
+    .limit(1)
   if (existing) return existing
   const user = {
     id: nanoid(),
@@ -310,6 +348,6 @@ export function resolveRelayUser(ctx: AppContext, identity: RelayIdentity) {
     role: identity.owner ? ('admin' as const) : ('member' as const),
     createdAt: Date.now()
   }
-  ctx.db.insert(users).values(user).run()
+  await ctx.db.insert(users).values(user)
   return user
 }

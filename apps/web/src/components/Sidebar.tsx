@@ -81,8 +81,12 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   }
 
   const createInvite = async () => {
-    const { path } = await api.post<{ path: string }>('/api/invites')
-    setInviteUrl(`${location.origin}${path}`)
+    const { path, relayJoinUrl } = await api.post<{ path: string; relayJoinUrl?: string | null }>(
+      '/api/invites'
+    )
+    // Cloud-linked: hand out the opencrew.run join link — it works from
+    // anywhere. The local /invite path only works on this network.
+    setInviteUrl(relayJoinUrl ?? `${location.origin}${path}`)
   }
 
   const renameMe = async () => {
