@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS approval_rules (
   id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, tool_name TEXT NOT NULL,
   created_by TEXT NOT NULL, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS invites (
   id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL,
   created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_by TEXT

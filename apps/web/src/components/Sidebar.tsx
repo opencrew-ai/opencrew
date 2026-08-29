@@ -59,11 +59,19 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
         <span className="font-bold" style={{ fontFamily: 'var(--font-display)' }}>
           OpenCrew HQ
         </span>
+        <Link
+          to="/settings"
+          onClick={onClose}
+          className="ml-auto text-zinc-500 hover:text-white"
+          title="Workspace settings"
+        >
+          ⚙
+        </Link>
         {/* Close button — mobile only */}
         {onClose && (
           <button
             onClick={onClose}
-            className="ml-auto text-zinc-400 hover:text-white md:hidden"
+            className="text-zinc-400 hover:text-white md:hidden"
             aria-label="Close menu"
           >
             ✕

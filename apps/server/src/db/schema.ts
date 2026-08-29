@@ -151,6 +151,13 @@ export const approvalRules = sqliteTable('approval_rules', {
   createdAt: integer('created_at').notNull()
 })
 
+// Workspace-level settings, editable from the UI (key → JSON-encoded value).
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: integer('updated_at').notNull()
+})
+
 export const invites = sqliteTable('invites', {
   id: text('id').primaryKey(),
   token: text('token').notNull().unique(),

@@ -11,6 +11,7 @@ import {
 import { approvalRules, approvals, runs, runSteps, messages } from '../db/schema'
 import { createVersion, getVersion } from '../services/agents'
 import { createMessage, GuardrailViolation } from '../services/messages'
+import { getMaxMentionDepth, setSetting } from '../services/settings'
 import { enqueueMentionRuns } from '../runs/enqueue'
 import { recordStep } from '../runs/audit'
 import { makeTestCtx, seedAgent, seedChannel, seedUser } from './helpers'
@@ -346,6 +347,40 @@ describe('channel watchers', () => {
     const all = ctx.db.select().from(runs).all()
     expect(all).toHaveLength(1)
     expect(all[0]!.triggerType).toBe('mention')
+  })
+})
+
+describe('workspace settings', () => {
+  it('mention-chain depth limit comes from the settings table', () => {
+    const ctx = makeTestCtx()
+    const userId = seedUser(ctx.db)
+    const channelId = seedChannel(ctx.db)
+    seedAgent(ctx.db, userId, {
+      name: 'Chainy',
+      capabilities: { canPostInChannels: [channelId] }
+    })
+    setSetting(ctx.db, 'maxMentionDepth', 1)
+    expect(getMaxMentionDepth(ctx.db)).toBe(1)
+
+    // depth 1 == the configured limit → chain stops, no run created.
+    const msg = createMessage(ctx, {
+      channelId,
+      authorType: 'human',
+      authorId: userId,
+      content: 'hey @Chainy'
+    })
+    enqueueMentionRuns(ctx, msg, 1)
+    expect(ctx.db.select().from(runs).all()).toHaveLength(0)
+    const notice = ctx.db
+      .select()
+      .from(messages)
+      .all()
+      .find((m) => m.authorType === 'system' && m.content.includes('depth limit (1)'))
+    expect(notice).toBeDefined()
+
+    // Below the limit → run created.
+    enqueueMentionRuns(ctx, msg, 0)
+    expect(ctx.db.select().from(runs).all()).toHaveLength(1)
   })
 })
 

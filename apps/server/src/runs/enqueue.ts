@@ -5,12 +5,7 @@ import type { AppContext } from '../context'
 import { agents, runs } from '../db/schema'
 import { getAgentWithVersion, toAgent } from '../services/agents'
 import { postSystemMessage } from '../services/messages'
-import { env } from '../env'
-
-// Agent→agent chains make the crew feel alive; the cap plus maxRunsPerHour
-// keeps them from spiraling into infinite loops. Configurable via
-// OPENCREW_MAX_MENTION_DEPTH in .env.
-const MAX_MENTION_DEPTH = env.maxMentionDepth
+import { getMaxMentionDepth } from '../services/settings'
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -38,11 +33,14 @@ export function enqueueMentionRuns(
   const names = allAgents.map((a) => a.name)
   const mentioned = extractMentions(message.content, names)
 
-  if (mentioned.length > 0 && depth >= MAX_MENTION_DEPTH) {
+  // Agent→agent chains make the crew feel alive; the cap (Workspace
+  // settings in the UI) plus maxRunsPerHour keeps loops impossible.
+  const maxDepth = getMaxMentionDepth(ctx.db)
+  if (mentioned.length > 0 && depth >= maxDepth) {
     postSystemMessage(
       ctx,
       message.channelId,
-      `Mention chain depth limit (${MAX_MENTION_DEPTH}) reached — not triggering further agents.`,
+      `Mention chain depth limit (${maxDepth}) reached — not triggering further agents. Adjust it in Workspace settings.`,
       { threadRootId: message.threadRootId }
     )
   } else {
