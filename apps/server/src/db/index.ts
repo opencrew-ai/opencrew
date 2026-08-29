@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages (thread_root_id);
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, agent_version_id TEXT NOT NULL,
   trigger_message_id TEXT NOT NULL, status TEXT NOT NULL, error TEXT,
+  trigger_type TEXT NOT NULL DEFAULT 'mention',
   depth INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
   started_at INTEGER, finished_at INTEGER
 );
@@ -64,6 +65,14 @@ CREATE TABLE IF NOT EXISTS invites (
 );
 `
 
+/** Additive migrations for databases created before a column existed. */
+function applyMigrations(sqlite: InstanceType<typeof Database>): void {
+  const runColumns = sqlite.prepare(`PRAGMA table_info(runs)`).all() as { name: string }[]
+  if (!runColumns.some((c) => c.name === 'trigger_type')) {
+    sqlite.exec(`ALTER TABLE runs ADD COLUMN trigger_type TEXT NOT NULL DEFAULT 'mention'`)
+  }
+}
+
 export type DB = ReturnType<typeof createDb>['db']
 
 export function createDb(path: string) {
@@ -74,6 +83,7 @@ export function createDb(path: string) {
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
   sqlite.exec(DDL)
+  applyMigrations(sqlite)
   const db = drizzle(sqlite, { schema })
   return { db, sqlite }
 }

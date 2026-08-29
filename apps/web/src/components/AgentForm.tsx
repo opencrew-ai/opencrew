@@ -41,6 +41,9 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
   const [postChannels, setPostChannels] = useState<string[]>(
     initial?.config.capabilities.canPostInChannels ?? channels.map((c) => c.id)
   )
+  const [watchChannels, setWatchChannels] = useState<string[]>(
+    initial?.config.capabilities.watchesChannels ?? []
+  )
   const [maxRunsPerHour, setMaxRunsPerHour] = useState(
     initial?.config.capabilities.maxRunsPerHour ?? 20
   )
@@ -75,7 +78,8 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
           capabilities: {
             canPostInChannels: postChannels,
             maxRunsPerHour,
-            requiresApprovalFor: gated.filter((g) => tools.includes(g))
+            requiresApprovalFor: gated.filter((g) => tools.includes(g)),
+            watchesChannels: watchChannels
           }
         },
         changeNote: changeNote || (mode === 'create' ? 'initial version' : 'config update')
@@ -171,6 +175,24 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
                   type="checkbox"
                   checked={postChannels.includes(c.id)}
                   onChange={() => toggle(postChannels, setPostChannels, c.id)}
+                />
+                # {c.name}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex-1">
+          <label className="label">Watches channels</label>
+          <p className="mb-1 text-xs text-zinc-500">
+            Auto-runs on every new human message — no @mention needed.
+          </p>
+          <div className="mt-1 space-y-1">
+            {channels.map((c) => (
+              <label key={c.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={watchChannels.includes(c.id)}
+                  onChange={() => toggle(watchChannels, setWatchChannels, c.id)}
                 />
                 # {c.name}
               </label>

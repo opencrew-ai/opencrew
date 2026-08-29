@@ -13,7 +13,12 @@ export const BUILTIN_TOOLS: Array<{ name: string; description: string }> = [
   { name: 'Edit', description: 'Edit files in the agent workspace' },
   { name: 'Glob', description: 'Find files by pattern' },
   { name: 'Grep', description: 'Search file contents' },
-  { name: 'TodoWrite', description: 'Track a task list while working' }
+  { name: 'TodoWrite', description: 'Track a task list while working' },
+  {
+    name: 'Browser',
+    description:
+      'Drive a real local Chrome (persistent per-agent profile) — navigate, click, type. Log into sites once, the session sticks.'
+  }
 ]
 
 export interface ToolCatalogEntry {

@@ -31,6 +31,12 @@ export interface AgentCapabilities {
   maxRunsPerHour: number
   /** Tool names that pause the run for human approval. */
   requiresApprovalFor: string[]
+  /**
+   * Channel ids the agent watches: every new HUMAN message there triggers a
+   * run without an @mention (agent/system messages never trigger watchers,
+   * which keeps watch loops impossible). Optional for back-compat.
+   */
+  watchesChannels?: string[]
 }
 
 export interface AgentVersionConfig {
@@ -87,11 +93,14 @@ export interface Message {
   runId?: string
 }
 
+export type RunTriggerType = 'mention' | 'watch'
+
 export interface Run {
   id: string
   agentId: string
   agentVersionId: string
   triggerMessageId: string
+  triggerType?: RunTriggerType
   status: RunStatus
   error: string | null
   startedAt: number | null

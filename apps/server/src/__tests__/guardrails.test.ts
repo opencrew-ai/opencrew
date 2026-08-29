@@ -206,6 +206,68 @@ describe('maxRunsPerHour', () => {
   })
 })
 
+describe('channel watchers', () => {
+  it('watcher runs on human messages, never on agent or system messages', () => {
+    const ctx = makeTestCtx()
+    const userId = seedUser(ctx.db)
+    const channelId = seedChannel(ctx.db)
+    const { agentId: watcherId, versionId } = seedAgent(ctx.db, userId, {
+      name: 'Watcher',
+      capabilities: { canPostInChannels: [channelId], watchesChannels: [channelId] }
+    })
+    const { agentId: otherId, versionId: otherVersionId } = seedAgent(ctx.db, userId, {
+      name: 'Other',
+      capabilities: { canPostInChannels: [channelId] }
+    })
+
+    const humanMsg = createMessage(ctx, {
+      channelId,
+      authorType: 'human',
+      authorId: userId,
+      content: 'shipped the new onboarding flow'
+    })
+    enqueueMentionRuns(ctx, humanMsg, 0)
+    let all = ctx.db.select().from(runs).all()
+    expect(all).toHaveLength(1)
+    expect(all[0]!.agentId).toBe(watcherId)
+    expect(all[0]!.triggerType).toBe('watch')
+    expect(all[0]!.agentVersionId).toBe(versionId)
+
+    // Another agent posting in the watched channel must NOT trigger the watcher.
+    const agentMsg = createMessage(ctx, {
+      channelId,
+      authorType: 'agent',
+      authorId: otherId,
+      agentVersionId: otherVersionId,
+      content: 'status update from an agent'
+    })
+    enqueueMentionRuns(ctx, agentMsg, 1)
+    all = ctx.db.select().from(runs).all()
+    expect(all).toHaveLength(1)
+  })
+
+  it('a mention supersedes the watch — no duplicate run', () => {
+    const ctx = makeTestCtx()
+    const userId = seedUser(ctx.db)
+    const channelId = seedChannel(ctx.db)
+    seedAgent(ctx.db, userId, {
+      name: 'Watchy',
+      capabilities: { canPostInChannels: [channelId], watchesChannels: [channelId] }
+    })
+
+    const msg = createMessage(ctx, {
+      channelId,
+      authorType: 'human',
+      authorId: userId,
+      content: 'hey @Watchy do the thing'
+    })
+    enqueueMentionRuns(ctx, msg, 0)
+    const all = ctx.db.select().from(runs).all()
+    expect(all).toHaveLength(1)
+    expect(all[0]!.triggerType).toBe('mention')
+  })
+})
+
 describe('version pinning', () => {
   it('runs stay pinned to the version at enqueue time across config edits', () => {
     const ctx = makeTestCtx()

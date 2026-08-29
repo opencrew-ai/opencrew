@@ -18,7 +18,8 @@ import { adminGuard, authGuard, fail, ok } from './helpers'
 const capabilitiesSchema = z.object({
   canPostInChannels: z.array(z.string()),
   maxRunsPerHour: z.number().int().min(1).max(1000),
-  requiresApprovalFor: z.array(z.string())
+  requiresApprovalFor: z.array(z.string()),
+  watchesChannels: z.array(z.string()).default([])
 })
 
 const configSchema = z.object({

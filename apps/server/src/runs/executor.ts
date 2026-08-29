@@ -25,6 +25,8 @@ import { recordStep } from './audit'
 import { buildContextTranscript, buildSystemPrompt } from './context'
 import { assertToolInvocationAllowed, evaluateToolUse } from './guardrails'
 import {
+  BROWSER_MCP_SERVER,
+  BROWSER_TOOL,
   MCP_SERVER_NAME,
   fromSdkToolName,
   listOpenCrewTools,
@@ -50,6 +52,7 @@ interface RunEnv {
   channel: Channel
   threadRootId: string | null
   depth: number
+  triggerType: 'mention' | 'watch'
 }
 
 interface ReplyState {
@@ -106,7 +109,8 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     version,
     channel: { ...channelRow, isPrivate: Boolean(channelRow.isPrivate) },
     threadRootId: trigger.threadRootId,
-    depth: run.depth
+    depth: run.depth,
+    triggerType: run.triggerType
   }
 
   const abort = new AbortController()
@@ -146,8 +150,12 @@ async function runSession(
   )
   const prompt =
     `Recent conversation in #${runEnv.channel.name}:\n\n${transcript}\n\n` +
-    `You were @mentioned. Do what was asked (use your tools if needed), ` +
-    `then write your reply message.`
+    (runEnv.triggerType === 'watch'
+      ? `A new message was just posted in #${runEnv.channel.name}, a channel you watch ` +
+        `(you were NOT @mentioned). Follow your standing instructions for handling new ` +
+        `posts in this channel, then write a short status reply.`
+      : `You were @mentioned. Do what was asked (use your tools if needed), ` +
+        `then write your reply message.`)
 
   const reply: ReplyState = { messageId: null, text: '' }
   let cancelled = false
@@ -175,7 +183,10 @@ async function runSession(
       settingSources: [],
       permissionMode: 'default',
       env: sessionEnv(),
-      mcpServers: { [MCP_SERVER_NAME]: buildMcpServer(toolCtx) },
+      mcpServers: {
+        [MCP_SERVER_NAME]: buildMcpServer(toolCtx),
+        ...browserMcpServer(runEnv, cwd)
+      },
       allowedTools: allowedToolsFor(runEnv.version),
       disallowedTools: disallowedToolsFor(runEnv.version),
       // GUARDRAIL: the PreToolUse hook fires for EVERY tool call — including
@@ -274,6 +285,34 @@ function sessionEnv(): Record<string, string> {
     clean[key] = value
   }
   return clean
+}
+
+/**
+ * The "Browser" capability: a Playwright MCP server driving the locally
+ * installed Chrome with a persistent profile inside the agent's workspace.
+ * The human logs into sites (e.g. x.com) once in that profile — every later
+ * run reuses the session. Runs headed, so you can literally watch it work.
+ */
+function browserMcpServer(
+  runEnv: RunEnv,
+  cwd: string
+): Record<string, { command: string; args: string[] }> {
+  if (!runEnv.version.tools.includes(BROWSER_TOOL)) return {}
+  const profileDir = join(cwd, '.browser-profile')
+  mkdirSync(profileDir, { recursive: true })
+  return {
+    [BROWSER_MCP_SERVER]: {
+      command: 'npx',
+      args: [
+        '-y',
+        '@playwright/mcp@latest',
+        '--browser',
+        'chrome',
+        '--user-data-dir',
+        profileDir
+      ]
+    }
+  }
 }
 
 function allowedToolsFor(version: AgentVersion): string[] {

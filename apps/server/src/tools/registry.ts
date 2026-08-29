@@ -45,12 +45,24 @@ export function listOpenCrewTools(): OpenCrewToolDef[] {
   return [...openCrewTools.values()]
 }
 
+/**
+ * "Browser" is a virtual tool: granting it attaches a Playwright MCP server
+ * (a real local Chrome with a persistent per-agent profile) to the session.
+ * All mcp__playwright__* tools map back to this one name, so the allowlist
+ * and approval gate treat the whole browser as a single capability.
+ */
+export const BROWSER_TOOL = 'Browser'
+export const BROWSER_MCP_SERVER = 'playwright'
+const BROWSER_PREFIX = `mcp__${BROWSER_MCP_SERVER}`
+
 /** Friendly name ("post_to_channel") → SDK tool name ("mcp__opencrew__..."). */
 export function toSdkToolName(name: string): string {
+  if (name === BROWSER_TOOL) return BROWSER_PREFIX
   return openCrewTools.has(name) ? `${MCP_PREFIX}${name}` : name
 }
 
 /** SDK tool name → friendly name used in agent configs and guardrails. */
 export function fromSdkToolName(sdkName: string): string {
+  if (sdkName.startsWith(BROWSER_PREFIX)) return BROWSER_TOOL
   return sdkName.startsWith(MCP_PREFIX) ? sdkName.slice(MCP_PREFIX.length) : sdkName
 }

@@ -85,6 +85,9 @@ export const runs = sqliteTable('runs', {
     enum: ['queued', 'running', 'awaiting_approval', 'done', 'failed', 'cancelled']
   }).notNull(),
   error: text('error'),
+  triggerType: text('trigger_type', { enum: ['mention', 'watch'] })
+    .notNull()
+    .default('mention'),
   depth: integer('depth').notNull().default(0),
   createdAt: integer('created_at').notNull(),
   startedAt: integer('started_at'),

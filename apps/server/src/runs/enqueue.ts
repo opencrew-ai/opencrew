@@ -1,6 +1,6 @@
 import { and, eq, gt } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { extractMentions, type Message } from '@opencrew/shared'
+import { extractMentions, type Message, type RunTriggerType } from '@opencrew/shared'
 import type { AppContext } from '../context'
 import { agents, runs } from '../db/schema'
 import { getAgentWithVersion, toAgent } from '../services/agents'
@@ -21,8 +21,11 @@ function runsInLastHour(ctx: AppContext, agentId: string): number {
 }
 
 /**
- * Scan a new message for @agent mentions and enqueue a run per mentioned
- * agent. Depth caps agent→agent chains at MAX_MENTION_DEPTH to prevent loops.
+ * Trigger runs for a new message:
+ *  - every @mentioned agent runs (depth-capped for agent→agent chains)
+ *  - agents WATCHING this channel run on new human messages, without a
+ *    mention. Watchers never fire on agent/system messages, so a watcher
+ *    posting its own confirmation can't re-trigger itself or others.
  */
 export function enqueueMentionRuns(
   ctx: AppContext,
@@ -32,24 +35,32 @@ export function enqueueMentionRuns(
   const allAgents = ctx.db.select().from(agents).all().map(toAgent)
   const names = allAgents.map((a) => a.name)
   const mentioned = extractMentions(message.content, names)
-  if (mentioned.length === 0) return
 
-  if (depth >= MAX_MENTION_DEPTH) {
+  if (mentioned.length > 0 && depth >= MAX_MENTION_DEPTH) {
     postSystemMessage(
       ctx,
       message.channelId,
       `Mention chain depth limit (${MAX_MENTION_DEPTH}) reached — not triggering further agents.`,
       { threadRootId: message.threadRootId }
     )
-    return
+  } else {
+    for (const name of mentioned) {
+      const agent = allAgents.find((a) => a.name === name)
+      if (!agent) continue
+      // An agent mentioning itself must not re-trigger itself.
+      if (message.authorType === 'agent' && message.authorId === agent.id) continue
+      enqueueRun(ctx, agent.id, message, depth, 'mention')
+    }
   }
 
-  for (const name of mentioned) {
-    const agent = allAgents.find((a) => a.name === name)
-    if (!agent) continue
-    // An agent mentioning itself must not re-trigger itself.
-    if (message.authorType === 'agent' && message.authorId === agent.id) continue
-    enqueueRun(ctx, agent.id, message, depth)
+  if (message.authorType !== 'human') return
+  for (const agent of allAgents) {
+    if (mentioned.includes(agent.name)) continue
+    const full = getAgentWithVersion(ctx.db, agent.id)
+    const watched = full?.currentVersion.capabilities.watchesChannels ?? []
+    if (full && watched.includes(message.channelId)) {
+      enqueueRun(ctx, agent.id, message, 0, 'watch')
+    }
   }
 }
 
@@ -57,18 +68,21 @@ function enqueueRun(
   ctx: AppContext,
   agentId: string,
   triggerMessage: Message,
-  depth: number
+  depth: number,
+  triggerType: RunTriggerType
 ): void {
   const agent = getAgentWithVersion(ctx.db, agentId)
   if (!agent) return
 
   if (agent.status === 'paused') {
-    postSystemMessage(
-      ctx,
-      triggerMessage.channelId,
-      `${agent.avatarEmoji} **${agent.name}** is paused and won't respond.`,
-      { threadRootId: triggerMessage.threadRootId }
-    )
+    if (triggerType === 'mention') {
+      postSystemMessage(
+        ctx,
+        triggerMessage.channelId,
+        `${agent.avatarEmoji} **${agent.name}** is paused and won't respond.`,
+        { threadRootId: triggerMessage.threadRootId }
+      )
+    }
     return
   }
 
@@ -93,6 +107,7 @@ function enqueueRun(
       agentId,
       agentVersionId: agent.currentVersionId,
       triggerMessageId: triggerMessage.id,
+      triggerType,
       status: 'queued',
       depth,
       createdAt: Date.now()
