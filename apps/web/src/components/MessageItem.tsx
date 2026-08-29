@@ -111,12 +111,12 @@ export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps)
               {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
             </button>
           )}
-          {/* Reply / collapse — hover only */}
+          {/* Reply / collapse — always visible */}
           <button
             onClick={() => setThreadOpen((v) => !v)}
-            className="invisible text-xs text-zinc-500 transition-colors hover:text-zinc-300 group-hover:visible"
+            className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
           >
-            {threadOpen ? 'collapse' : message.replyCount ? 'open thread' : 'reply'}
+            {threadOpen ? 'collapse ↑' : message.replyCount ? 'open thread' : 'reply ↓'}
           </button>
         </div>
       )}
