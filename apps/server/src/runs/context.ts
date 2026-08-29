@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import type { AgentVersion, Channel } from '@opencrew/shared'
 import type { DB } from '../db'
 import { agents, channels, messages } from '../db/schema'
@@ -38,6 +38,38 @@ export function buildContextTranscript(
   return lines.join('\n')
 }
 
+/**
+ * For a RESUMED session: only what happened since the agent's last turn —
+ * the session itself already holds everything earlier.
+ */
+export function buildIncrementalTranscript(
+  db: DB,
+  channelId: string,
+  threadRootId: string | null,
+  sinceTs: number,
+  triggerMessageId: string
+): string {
+  const scope = threadRootId
+    ? and(
+        or(eq(messages.id, threadRootId), eq(messages.threadRootId, threadRootId)),
+        gt(messages.createdAt, sinceTs)
+      )
+    : and(
+        eq(messages.channelId, channelId),
+        isNull(messages.threadRootId),
+        gt(messages.createdAt, sinceTs)
+      )
+
+  const rows = db.select().from(messages).where(scope).orderBy(asc(messages.createdAt)).all()
+  const lines = rows.map((row) => {
+    const m = enrichMessage(db, row)
+    const time = new Date(m.createdAt).toISOString().slice(11, 16)
+    const marker = m.id === triggerMessageId ? ' ← you were triggered here' : ''
+    return `[${time}] ${m.authorName} (${m.authorType}): ${m.content}${marker}`
+  })
+  return lines.join('\n')
+}
+
 /** System prompt: the versioned prompt plus identity, crew, and guardrails. */
 export function buildSystemPrompt(
   db: DB,
@@ -62,7 +94,7 @@ export function buildSystemPrompt(
     '',
     '---',
     `You are "${agentName}", an AI teammate in the OpenCrew workspace, currently replying in #${channel.name}.`,
-    `Your session runs in your own workspace directory; everything you do is streamed live to the crew's terminal panel.`,
+    `You are persistent: this conversation resumes the same session every turn, and your working directory persists — you can build things across many messages. Everything you do is streamed live to the crew's terminal panel.`,
     `Your final text IS your chat reply — write conversational markdown, no preamble about being an AI.`,
     version.skills.length > 0 ? `Your skills: ${version.skills.join(', ')}.` : '',
     `Tools you may use: ${version.tools.join(', ') || '(none)'}.`,

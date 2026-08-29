@@ -47,6 +47,9 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
   const [maxRunsPerHour, setMaxRunsPerHour] = useState(
     initial?.config.capabilities.maxRunsPerHour ?? 20
   )
+  const [workingDir, setWorkingDir] = useState(
+    initial?.config.capabilities.workingDir ?? ''
+  )
   const [changeNote, setChangeNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -79,7 +82,8 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
             canPostInChannels: postChannels,
             maxRunsPerHour,
             requiresApprovalFor: gated.filter((g) => tools.includes(g)),
-            watchesChannels: watchChannels
+            watchesChannels: watchChannels,
+            workingDir: workingDir.trim()
           }
         },
         changeNote: changeNote || (mode === 'create' ? 'initial version' : 'config update')
@@ -210,6 +214,20 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
             onChange={(e) => setMaxRunsPerHour(Number(e.target.value))}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="label">Working directory (optional)</label>
+        <input
+          className="input font-mono text-xs"
+          placeholder="/Users/you/projects/my-app — leave empty for the agent's own workspace"
+          value={workingDir}
+          onChange={(e) => setWorkingDir(e.target.value)}
+        />
+        <p className="mt-1 text-xs text-zinc-500">
+          Point the agent at a real repo and it builds there — sessions persist across
+          messages, so you can iterate over a whole conversation.
+        </p>
       </div>
 
       {mode === 'edit' && (

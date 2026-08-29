@@ -23,7 +23,12 @@ const capabilitiesSchema = z.object({
   canPostInChannels: z.array(z.string()),
   maxRunsPerHour: z.number().int().min(1).max(1000),
   requiresApprovalFor: z.array(z.string()),
-  watchesChannels: z.array(z.string()).default([])
+  watchesChannels: z.array(z.string()).default([]),
+  workingDir: z
+    .string()
+    .max(500)
+    .refine((p) => p === '' || p.startsWith('/'), 'must be an absolute path')
+    .default('')
 })
 
 const configSchema = z.object({

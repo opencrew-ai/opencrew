@@ -9,11 +9,17 @@ import {
   type SDKAssistantMessage,
   type SDKUserMessage
 } from '@anthropic-ai/claude-agent-sdk'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { AgentVersion, Channel, RunStatus } from '@opencrew/shared'
 import type { AppContext, ApprovalDecision } from '../context'
-import { approvals, channels, messages as messagesTable, runs } from '../db/schema'
+import {
+  agentSessions,
+  approvals,
+  channels,
+  messages as messagesTable,
+  runs
+} from '../db/schema'
 import { getAgent, getVersion } from '../services/agents'
 import {
   createMessage,
@@ -23,7 +29,11 @@ import {
 } from '../services/messages'
 import { enqueueMentionRuns } from './enqueue'
 import { recordStep } from './audit'
-import { buildContextTranscript, buildSystemPrompt } from './context'
+import {
+  buildContextTranscript,
+  buildIncrementalTranscript,
+  buildSystemPrompt
+} from './context'
 import { assertToolInvocationAllowed, evaluateToolUse } from './guardrails'
 import {
   BROWSER_MCP_SERVER,
@@ -38,7 +48,8 @@ import {
 import { broadcastPresence } from '../services/presence'
 import { env } from '../env'
 
-const RUN_TIMEOUT_MS = 15 * 60 * 1000
+// Build sessions can legitimately run long.
+const RUN_TIMEOUT_MS = 30 * 60 * 1000
 const MAX_TURNS = 50
 const STEP_CONTENT_LIMIT = 4000
 
@@ -132,22 +143,24 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     }
   }
 
-  // A Chrome profile supports one instance at a time — browser runs for the
-  // same agent execute strictly one after another.
-  if (runEnv.version.tools.includes(BROWSER_TOOL)) {
-    const prev = ctx.agentLocks.get(runEnv.agentId) ?? Promise.resolve()
-    const current = prev.then(runGuarded) // runGuarded never rejects
-    ctx.agentLocks.set(runEnv.agentId, current)
-    await current
-    if (ctx.agentLocks.get(runEnv.agentId) === current) {
-      ctx.agentLocks.delete(runEnv.agentId)
-    }
-  } else {
-    await runGuarded()
+  // Every agent's runs execute strictly in order: resumed sessions and
+  // Chrome profiles both break under concurrent access, and ordered turns
+  // are what a conversation means anyway. Different agents still run in
+  // parallel.
+  const prev = ctx.agentLocks.get(runEnv.agentId) ?? Promise.resolve()
+  const current = prev.then(runGuarded) // runGuarded never rejects
+  ctx.agentLocks.set(runEnv.agentId, current)
+  await current
+  if (ctx.agentLocks.get(runEnv.agentId) === current) {
+    ctx.agentLocks.delete(runEnv.agentId)
   }
 }
 
-/** One run = one headless Claude Code session in the agent's workspace dir. */
+/**
+ * One run = one TURN of a persistent Claude Code session. The session for
+ * (agent, channel, thread) is resumed if it exists — the agent keeps its
+ * full working context across turns, like a teammate you keep talking to.
+ */
 async function runSession(
   ctx: AppContext,
   runEnv: RunEnv,
@@ -155,21 +168,74 @@ async function runSession(
   abort: AbortController
 ): Promise<void> {
   setRunStatus(ctx, runEnv, 'running', { startedAt: Date.now() })
+  const threadKey = runEnv.threadRootId ?? 'main'
+  const existing = ctx.db
+    .select()
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.agentId, runEnv.agentId),
+        eq(agentSessions.channelId, runEnv.channel.id),
+        eq(agentSessions.threadKey, threadKey)
+      )
+    )
+    .get()
 
-  const cwd = join(env.workspacesDir, runEnv.agentId)
-  mkdirSync(cwd, { recursive: true })
+  try {
+    await runSessionAttempt(ctx, runEnv, triggerMessageId, abort, existing ?? null)
+  } catch (err) {
+    // A stale/corrupt session must not strand the conversation — drop it and
+    // run the turn fresh once.
+    if (existing) {
+      ctx.db
+        .delete(agentSessions)
+        .where(
+          and(
+            eq(agentSessions.agentId, runEnv.agentId),
+            eq(agentSessions.channelId, runEnv.channel.id),
+            eq(agentSessions.threadKey, threadKey)
+          )
+        )
+        .run()
+      recordStep(ctx, runEnv.runId, 'llm_call', {
+        phase: 'session_resume_failed',
+        error: err instanceof Error ? err.message : String(err)
+      })
+      await runSessionAttempt(ctx, runEnv, triggerMessageId, abort, null)
+    } else {
+      throw err
+    }
+  }
+}
+
+async function runSessionAttempt(
+  ctx: AppContext,
+  runEnv: RunEnv,
+  triggerMessageId: string,
+  abort: AbortController,
+  session: { sessionId: string; updatedAt: number } | null
+): Promise<void> {
+  const promptBuiltAt = Date.now()
+  const cwd = resolveWorkingDir(runEnv)
   if (runEnv.version.tools.includes(BROWSER_TOOL)) {
-    await prepareBrowserProfile(join(cwd, '.browser-profile'))
+    await prepareBrowserProfile(join(env.workspacesDir, runEnv.agentId, '.browser-profile'))
   }
 
-  const transcript = buildContextTranscript(
-    ctx.db,
-    runEnv.channel.id,
-    runEnv.threadRootId,
-    triggerMessageId
-  )
+  const transcript = session
+    ? buildIncrementalTranscript(
+        ctx.db,
+        runEnv.channel.id,
+        runEnv.threadRootId,
+        session.updatedAt,
+        triggerMessageId
+      )
+    : buildContextTranscript(ctx.db, runEnv.channel.id, runEnv.threadRootId, triggerMessageId)
+
+  const intro = session
+    ? `The conversation in #${runEnv.channel.name} continues. New messages since your last turn:`
+    : `Recent conversation in #${runEnv.channel.name}:`
   const prompt =
-    `Recent conversation in #${runEnv.channel.name}:\n\n${transcript}\n\n` +
+    `${intro}\n\n${transcript}\n\n` +
     (runEnv.triggerType === 'watch'
       ? `A new message was just posted in #${runEnv.channel.name}, a channel you watch ` +
         `(you were NOT @mentioned). Follow your standing instructions for handling new ` +
@@ -190,7 +256,7 @@ async function runSession(
     depth: runEnv.depth
   }
 
-  const session = query({
+  const stream = query({
     prompt,
     options: {
       model: runEnv.version.model,
@@ -198,6 +264,8 @@ async function runSession(
       cwd,
       maxTurns: MAX_TURNS,
       abortController: abort,
+      // Continue the persistent conversation session when one exists.
+      ...(session ? { resume: session.sessionId } : {}),
       // GUARDRAIL: never load the host user's ~/.claude or project settings —
       // their allow rules would shadow canUseTool and bypass approval gates.
       settingSources: [],
@@ -205,7 +273,7 @@ async function runSession(
       env: sessionEnv(),
       mcpServers: {
         [MCP_SERVER_NAME]: buildMcpServer(toolCtx),
-        ...browserMcpServer(runEnv, cwd)
+        ...browserMcpServer(runEnv)
       },
       allowedTools: allowedToolsFor(runEnv.version),
       disallowedTools: disallowedToolsFor(runEnv.version),
@@ -265,7 +333,9 @@ async function runSession(
   })
 
   let resultError: string | null = null
-  for await (const msg of session) {
+  let capturedSessionId: string | null = null
+  for await (const msg of stream) {
+    capturedSessionId ??= msg.session_id ?? null
     if (msg.type === 'assistant') {
       handleAssistantMessage(ctx, runEnv, reply, msg)
     } else if (msg.type === 'user') {
@@ -283,12 +353,49 @@ async function runSession(
     }
   }
 
+  if (capturedSessionId) {
+    saveSession(ctx, runEnv, capturedSessionId, promptBuiltAt)
+  }
   if (cancelled) return
   if (resultError) {
     failRun(ctx, runEnv, `session ended with ${resultError}`, reply)
     return
   }
   finalizeRun(ctx, runEnv, reply)
+}
+
+/** Remember the session so the NEXT turn in this conversation resumes it. */
+function saveSession(
+  ctx: AppContext,
+  runEnv: RunEnv,
+  sessionId: string,
+  promptBuiltAt: number
+): void {
+  ctx.db
+    .insert(agentSessions)
+    .values({
+      agentId: runEnv.agentId,
+      channelId: runEnv.channel.id,
+      threadKey: runEnv.threadRootId ?? 'main',
+      sessionId,
+      updatedAt: promptBuiltAt
+    })
+    .onConflictDoUpdate({
+      target: [agentSessions.agentId, agentSessions.channelId, agentSessions.threadKey],
+      set: { sessionId, updatedAt: promptBuiltAt }
+    })
+    .run()
+}
+
+/** Point the agent at a real repo when configured; its workspace otherwise. */
+function resolveWorkingDir(runEnv: RunEnv): string {
+  const configured = runEnv.version.capabilities.workingDir?.trim()
+  if (configured && configured.startsWith('/') && existsSync(configured)) {
+    return configured
+  }
+  const fallback = join(env.workspacesDir, runEnv.agentId)
+  mkdirSync(fallback, { recursive: true })
+  return fallback
 }
 
 /**
@@ -351,11 +458,12 @@ function chromeExecutablePath(): string | null {
 }
 
 function browserMcpServer(
-  runEnv: RunEnv,
-  cwd: string
+  runEnv: RunEnv
 ): Record<string, { command: string; args: string[] }> {
   if (!runEnv.version.tools.includes(BROWSER_TOOL)) return {}
-  const profileDir = join(cwd, '.browser-profile')
+  // The browser profile always lives in the agent workspace, even when the
+  // session itself runs in a configured project directory.
+  const profileDir = join(env.workspacesDir, runEnv.agentId, '.browser-profile')
   mkdirSync(profileDir, { recursive: true })
   const chrome = chromeExecutablePath()
   const browserArgs = chrome

@@ -59,6 +59,11 @@ CREATE TABLE IF NOT EXISTS approvals (
   tool_input TEXT NOT NULL, status TEXT NOT NULL, resolved_by TEXT,
   resolved_at INTEGER, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS agent_sessions (
+  agent_id TEXT NOT NULL, channel_id TEXT NOT NULL, thread_key TEXT NOT NULL,
+  session_id TEXT NOT NULL, updated_at INTEGER NOT NULL,
+  PRIMARY KEY (agent_id, channel_id, thread_key)
+);
 CREATE TABLE IF NOT EXISTS invites (
   id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL,
   created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_by TEXT

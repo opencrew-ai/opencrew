@@ -124,6 +124,23 @@ export const approvals = sqliteTable('approvals', {
   createdAt: integer('created_at').notNull()
 })
 
+// One persistent Claude Code session per (agent, channel, thread): follow-up
+// messages RESUME the session, so agents keep full build context across turns.
+export const agentSessions = sqliteTable(
+  'agent_sessions',
+  {
+    agentId: text('agent_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    // threadRootId, or 'main' for channel-level conversation.
+    threadKey: text('thread_key').notNull(),
+    sessionId: text('session_id').notNull(),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.channelId, t.threadKey] })
+  })
+)
+
 export const invites = sqliteTable('invites', {
   id: text('id').primaryKey(),
   token: text('token').notNull().unique(),

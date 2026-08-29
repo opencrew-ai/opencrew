@@ -37,6 +37,11 @@ export interface AgentCapabilities {
    * which keeps watch loops impossible). Optional for back-compat.
    */
   watchesChannels?: string[]
+  /**
+   * Absolute path the agent's sessions run in — point it at a real repo to
+   * build there. Empty/unset = the agent's private workspace directory.
+   */
+  workingDir?: string
 }
 
 export interface AgentVersionConfig {
