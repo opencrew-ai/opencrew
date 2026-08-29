@@ -25,9 +25,9 @@ import { broadcastPresence, computePresence } from './services/presence'
 import './tools'
 
 async function main(): Promise<void> {
-  const { db } = createDb(env.dbPath)
-  failInterruptedRuns(db)
-  const seeded = seedIfEmpty(db)
+  const { db } = await createDb(env.databaseUrl)
+  await failInterruptedRuns(db)
+  const seeded = await seedIfEmpty(db)
 
   const hub = new Hub()
   const queue = new RunQueue()

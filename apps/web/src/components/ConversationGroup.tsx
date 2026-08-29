@@ -6,18 +6,18 @@ import { MessageItem } from './MessageItem'
 // Status pill — derived from run statuses across all agent responses
 // ---------------------------------------------------------------------------
 
-type GroupStatus = 'not_started' | 'in_progress' | 'waiting' | 'done'
+export type GroupStatus = 'not_started' | 'in_progress' | 'waiting' | 'done' | 'failed'
 
-function deriveGroupStatus(responses: Message[]): GroupStatus {
+export function deriveGroupStatus(responses: Message[]): GroupStatus {
   const statuses = responses.map((m) => m.runStatus).filter(Boolean) as RunStatus[]
   if (statuses.length === 0) return 'not_started'
   if (statuses.some((s) => s === 'awaiting_approval')) return 'waiting'
   if (statuses.some((s) => s === 'running' || s === 'queued')) return 'in_progress'
-  if (statuses.every((s) => s === 'done' || s === 'failed' || s === 'cancelled')) return 'done'
-  return 'in_progress'
+  if (statuses.some((s) => s === 'failed')) return 'failed'
+  return 'done'
 }
 
-function StatusPill({ status }: { status: GroupStatus }) {
+export function StatusPill({ status }: { status: GroupStatus }) {
   if (status === 'not_started') {
     return (
       <span className="flex items-center gap-1 text-xs text-zinc-600">
@@ -39,6 +39,14 @@ function StatusPill({ status }: { status: GroupStatus }) {
       <span className="flex items-center gap-1 text-xs text-amber-400">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
         ⏸ Waiting
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-red-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+        ✗ Failed
       </span>
     )
   }
@@ -99,9 +107,10 @@ interface ConversationGroupProps {
   group: MessageGroup
   channelId: string
   onOpenRun: (runId: string) => void
+  targetThreadId?: string
 }
 
-export function ConversationGroup({ group, channelId, onOpenRun }: ConversationGroupProps) {
+export function ConversationGroup({ group, channelId, onOpenRun, targetThreadId }: ConversationGroupProps) {
   const [expanded, setExpanded] = useState(false)
   const { trigger, responses } = group
 
@@ -117,7 +126,12 @@ export function ConversationGroup({ group, channelId, onOpenRun }: ConversationG
         <div className="pointer-events-none absolute right-3 top-2 z-10">
           <StatusPill status={groupStatus} />
         </div>
-        <MessageItem message={trigger} channelId={channelId} onOpenRun={onOpenRun} />
+        <MessageItem
+          message={trigger}
+          channelId={channelId}
+          onOpenRun={onOpenRun}
+          autoOpenThread={targetThreadId === trigger.id}
+        />
       </div>
     ) : null
   }
@@ -133,7 +147,12 @@ export function ConversationGroup({ group, channelId, onOpenRun }: ConversationG
 
       {/* Human trigger message */}
       {trigger && (
-        <MessageItem message={trigger} channelId={channelId} onOpenRun={onOpenRun} />
+        <MessageItem
+          message={trigger}
+          channelId={channelId}
+          onOpenRun={onOpenRun}
+          autoOpenThread={targetThreadId === trigger.id}
+        />
       )}
 
       {/* Agent / system responses — indented with left rule */}
@@ -146,7 +165,13 @@ export function ConversationGroup({ group, channelId, onOpenRun }: ConversationG
           .join(' ')}
       >
         {visibleResponses.map((m) => (
-          <MessageItem key={m.id} message={m} channelId={channelId} onOpenRun={onOpenRun} />
+          <MessageItem
+            key={m.id}
+            message={m}
+            channelId={channelId}
+            onOpenRun={onOpenRun}
+            autoOpenThread={targetThreadId === m.id}
+          />
         ))}
 
         {/* Collapse toggle */}

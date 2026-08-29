@@ -8,13 +8,13 @@ export const SEED_ADMIN_EMAIL = 'admin@opencrew.local'
 export const SEED_ADMIN_PASSWORD = 'opencrew'
 
 /** Boot the workspace into something alive: admin, channels, two demo agents. */
-export function seedIfEmpty(db: DB): boolean {
-  const hasUsers = db.select().from(users).all().length > 0
+export async function seedIfEmpty(db: DB): Promise<boolean> {
+  const hasUsers = (await db.select().from(users)).length > 0
   if (hasUsers) return false
 
   const now = Date.now()
   const adminId = nanoid()
-  db.insert(users)
+  await db.insert(users)
     .values({
       id: adminId,
       name: 'Admin',
@@ -23,31 +23,29 @@ export function seedIfEmpty(db: DB): boolean {
       role: 'admin',
       createdAt: now
     })
-    .run()
 
   const generalId = nanoid()
   const buildsId = nanoid()
-  db.insert(channels)
+  await db.insert(channels)
     .values([
       {
         id: generalId,
         name: 'general',
         topic: 'OpenCrew HQ — humans and agents, one room',
-        isPrivate: 0,
+        isPrivate: false,
         createdAt: now
       },
       {
         id: buildsId,
         name: 'builds',
         topic: 'Build output, experiments, and code runs',
-        isPrivate: 0,
+        isPrivate: false,
         createdAt: now
       }
     ])
-    .run()
 
   const scoutId = nanoid()
-  db.insert(agents)
+  await db.insert(agents)
     .values({
       id: scoutId,
       name: 'Scout',
@@ -57,8 +55,7 @@ export function seedIfEmpty(db: DB): boolean {
       status: 'active',
       createdAt: now
     })
-    .run()
-  createVersion(
+  await createVersion(
     db,
     scoutId,
     {
@@ -79,7 +76,7 @@ export function seedIfEmpty(db: DB): boolean {
   )
 
   const coderId = nanoid()
-  db.insert(agents)
+  await db.insert(agents)
     .values({
       id: coderId,
       name: 'Coder',
@@ -89,8 +86,7 @@ export function seedIfEmpty(db: DB): boolean {
       status: 'active',
       createdAt: now
     })
-    .run()
-  createVersion(
+  await createVersion(
     db,
     coderId,
     {
@@ -112,7 +108,7 @@ export function seedIfEmpty(db: DB): boolean {
   )
 
   const captainId = nanoid()
-  db.insert(agents)
+  await db.insert(agents)
     .values({
       id: captainId,
       name: 'Captain',
@@ -122,8 +118,7 @@ export function seedIfEmpty(db: DB): boolean {
       status: 'active',
       createdAt: now
     })
-    .run()
-  createVersion(
+  await createVersion(
     db,
     captainId,
     {
@@ -166,7 +161,7 @@ export function seedIfEmpty(db: DB): boolean {
     { channelId: generalId, memberType: 'agent' as const, memberId: coderId },
     { channelId: buildsId, memberType: 'agent' as const, memberId: coderId }
   ]
-  db.insert(memberships).values(rows).run()
+  await db.insert(memberships).values(rows)
 
   return true
 }

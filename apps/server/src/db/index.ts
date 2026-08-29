@@ -16,7 +16,7 @@ export type DB = PostgresJsDatabase<typeof schema>
 // DDL — runs once on startup to ensure all tables exist.
 // ---------------------------------------------------------------------------
 
-const DDL = `
+export const DDL = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   workspace_slug TEXT NOT NULL DEFAULT 'default',
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS invites (
 // Uses `IF NOT EXISTS` / error-swallow patterns safe for both pg and pglite.
 // ---------------------------------------------------------------------------
 
-const MIGRATIONS = `
+export const MIGRATIONS = `
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_thread_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_channel_id TEXT;
 `

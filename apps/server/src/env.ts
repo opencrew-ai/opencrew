@@ -32,7 +32,22 @@ if (!process.env.SESSION_SECRET) {
 export const env = {
   port: Number(process.env.PORT ?? 3001),
   sessionSecret: process.env.SESSION_SECRET,
+  /**
+   * Postgres connection URL, e.g. postgres://user:pass@localhost/opencrew.
+   * Omit (or use a bare file path) to run with embedded PGlite — no Postgres
+   * server needed for local dev. Full Postgres unlocks multiplayer isolation.
+   */
+  databaseUrl:
+    process.env.DATABASE_URL ??
+    resolve(process.cwd(), '../../data/opencrew.pgdata'),
+  /** Deprecated: legacy SQLite path kept for the migration script only. */
   dbPath: process.env.OPENCREW_DB ?? resolve(process.cwd(), '../../data/opencrew.sqlite'),
+  /**
+   * Identifies this workspace in a shared Postgres cluster. Used as the
+   * workspace_slug column value — each workspace's rows are tagged with this.
+   * Defaults to 'default' for single-workspace installs.
+   */
+  workspaceSlug: process.env.OPENCREW_WORKSPACE_SLUG ?? 'default',
   /** Each agent gets its own working directory for its Claude Code sessions. */
   workspacesDir:
     process.env.OPENCREW_WORKSPACES ?? resolve(process.cwd(), '../../data/workspaces'),
