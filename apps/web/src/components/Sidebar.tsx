@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
@@ -18,6 +18,35 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const isAdmin = me.role === 'admin'
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Focus trap: when the mobile overlay opens, keep keyboard/screen-reader
+  // focus inside the panel (WCAG 2.1 SC 2.1.2 No Keyboard Trap).
+  useEffect(() => {
+    if (!open) return
+    const panel = panelRef.current
+    if (!panel) return
+
+    const focusable = panel.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])'
+    )
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+
+    first?.focus()
+
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      if (focusable.length === 0) { e.preventDefault(); return }
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last?.focus() }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first?.focus() }
+      }
+    }
+    panel.addEventListener('keydown', trap)
+    return () => panel.removeEventListener('keydown', trap)
+  }, [open])
 
   const createChannel = async () => {
     const name = prompt('Channel name (lowercase, dashes):')
@@ -209,6 +238,10 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
         )}
         {/* Slide-in panel */}
         <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
           className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col transition-transform duration-300 ${
             open ? 'translate-x-0' : '-translate-x-full'
           }`}

@@ -61,10 +61,11 @@ export function useMessages(channelId: string | undefined, thread: string | null
   }, [channelId, thread])
 
   const post = useCallback(
-    async (content: string) => {
+    async (content: string, images: string[] = []) => {
       if (!channelId) return
       await api.post<Message>(`/api/channels/${channelId}/messages`, {
         content,
+        images,
         threadRootId: thread ?? undefined
       })
     },

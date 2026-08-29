@@ -71,6 +71,8 @@ export const messages = sqliteTable('messages', {
   authorType: text('author_type', { enum: ['human', 'agent', 'system'] }).notNull(),
   authorId: text('author_id'),
   content: text('content').notNull(),
+  /** JSON-encoded string[] of base64 data-URL images. Null means no images. */
+  images: text('images'),
   approvalId: text('approval_id'),
   runId: text('run_id'),
   createdAt: integer('created_at').notNull()

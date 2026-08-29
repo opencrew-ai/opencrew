@@ -12,6 +12,8 @@ export interface CreateMessageInput {
   authorType: AuthorType
   authorId?: string | null
   content: string
+  /** Base64 data-URL images attached to this message. */
+  images?: string[]
   approvalId?: string | null
   runId?: string | null
   /** For agent authors: the pinned version whose capabilities apply. */
@@ -34,6 +36,10 @@ function resolveAuthor(db: DB, authorType: AuthorType, authorId: string | null) 
 
 export function enrichMessage(db: DB, row: typeof messages.$inferSelect): Message {
   const author = resolveAuthor(db, row.authorType, row.authorId)
+  let images: string[] | undefined
+  if (row.images) {
+    try { images = JSON.parse(row.images) as string[] } catch { /* ignore */ }
+  }
   return {
     id: row.id,
     channelId: row.channelId,
@@ -41,6 +47,7 @@ export function enrichMessage(db: DB, row: typeof messages.$inferSelect): Messag
     authorType: row.authorType,
     authorId: row.authorId,
     content: row.content,
+    images: images?.length ? images : undefined,
     createdAt: row.createdAt,
     authorName: author.name,
     authorEmoji: author.emoji,
@@ -86,6 +93,7 @@ export function createMessage(ctx: AppContext, input: CreateMessageInput): Messa
     authorType: input.authorType,
     authorId: input.authorId ?? null,
     content: input.content,
+    images: input.images?.length ? JSON.stringify(input.images) : null,
     approvalId: input.approvalId ?? null,
     runId: input.runId ?? null,
     createdAt: Date.now()

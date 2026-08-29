@@ -19,10 +19,15 @@ const createChannelSchema = z.object({
   topic: z.string().max(200).default('')
 })
 
-const postMessageSchema = z.object({
-  content: z.string().min(1).max(20_000),
-  threadRootId: z.string().optional()
-})
+const postMessageSchema = z
+  .object({
+    content: z.string().max(20_000).optional().default(''),
+    images: z.array(z.string()).max(10).optional().default([]),
+    threadRootId: z.string().optional()
+  })
+  .refine((d) => d.content.length > 0 || d.images.length > 0, {
+    message: 'message must have content or at least one image'
+  })
 
 export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/channels', { preHandler: authGuard(ctx) }, async () => {
@@ -119,7 +124,8 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
         threadRootId: parsed.data.threadRootId ?? null,
         authorType: 'human',
         authorId: req.user!.id,
-        content: parsed.data.content
+        content: parsed.data.content,
+        images: parsed.data.images?.length ? parsed.data.images : undefined
       })
       return ok(message)
     }

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS memberships (
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, thread_root_id TEXT,
   author_type TEXT NOT NULL, author_id TEXT, content TEXT NOT NULL,
-  approval_id TEXT, run_id TEXT, created_at INTEGER NOT NULL
+  images TEXT, approval_id TEXT, run_id TEXT, created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages (channel_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages (thread_root_id);
@@ -82,6 +82,10 @@ function applyMigrations(sqlite: InstanceType<typeof Database>): void {
   const runColumns = sqlite.prepare(`PRAGMA table_info(runs)`).all() as { name: string }[]
   if (!runColumns.some((c) => c.name === 'trigger_type')) {
     sqlite.exec(`ALTER TABLE runs ADD COLUMN trigger_type TEXT NOT NULL DEFAULT 'mention'`)
+  }
+  const msgColumns = sqlite.prepare(`PRAGMA table_info(messages)`).all() as { name: string }[]
+  if (!msgColumns.some((c) => c.name === 'images')) {
+    sqlite.exec(`ALTER TABLE messages ADD COLUMN images TEXT`)
   }
 }
 

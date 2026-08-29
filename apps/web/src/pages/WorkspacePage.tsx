@@ -41,7 +41,7 @@ export function WorkspacePage() {
 
   if (!channel) {
     return (
-      <div className="flex h-screen">
+      <div className="flex h-dvh">
         <Sidebar />
         <div className="grid flex-1 place-items-center text-zinc-500">No channels yet.</div>
       </div>
@@ -49,15 +49,19 @@ export function WorkspacePage() {
   }
 
   return (
-    <div className="flex h-screen flex-col md:flex-row">
+    <div className="flex h-dvh flex-col md:flex-row">
       {/* Mobile top bar — hidden on desktop */}
       <header className="flex items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-2 md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="text-xl text-zinc-400 hover:text-white"
+          className="flex h-11 w-11 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-white"
           aria-label="Open menu"
         >
-          ☰
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="2" y="5" width="16" height="1.5" rx="0.75" fill="currentColor" />
+            <rect x="2" y="9.25" width="16" height="1.5" rx="0.75" fill="currentColor" />
+            <rect x="2" y="13.5" width="16" height="1.5" rx="0.75" fill="currentColor" />
+          </svg>
         </button>
         <span className="flex-1 font-semibold text-zinc-200"># {channel.name}</span>
         {runId && (

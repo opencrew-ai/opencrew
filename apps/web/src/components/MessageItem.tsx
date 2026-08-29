@@ -65,6 +65,19 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
           <span className="italic text-zinc-500">thinking…</span>
         )}
       </div>
+      {message.images && message.images.length > 0 && (
+        <div className="ml-7 mt-1.5 flex flex-wrap gap-2">
+          {message.images.map((src, i) => (
+            <a key={i} href={src} target="_blank" rel="noopener noreferrer">
+              <img
+                src={src}
+                alt={`attachment ${i + 1}`}
+                className="max-h-60 max-w-xs rounded-md border border-zinc-700 object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+              />
+            </a>
+          ))}
+        </div>
+      )}
       <div className="ml-7 mt-0.5 flex gap-3">
         {onOpenThread && (
           <button

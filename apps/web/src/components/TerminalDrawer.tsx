@@ -42,12 +42,9 @@ export function TerminalDrawer({ runId, onClose }: { runId: string; onClose: () 
     // Mobile: fixed bottom sheet (full-width, 60vh, slides up from bottom)
     <div className="
       fixed inset-x-0 bottom-0 z-50 flex h-[60vh] flex-col border-t border-zinc-800 bg-black
-      md:relative md:inset-auto md:h-auto md:w-[30rem] md:shrink-0 md:border-l md:border-t-0
+      pb-[env(safe-area-inset-bottom)]
+      md:relative md:inset-auto md:h-auto md:w-[30rem] md:shrink-0 md:border-l md:border-t-0 md:pb-0
     ">
-      {/* Drag handle — visible on mobile only */}
-      <div className="flex justify-center pt-2 pb-1 md:hidden">
-        <div className="h-1 w-10 rounded-full bg-zinc-700" />
-      </div>
       <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
         <div className="flex items-center gap-2 text-sm">
           <span className="flex gap-1">

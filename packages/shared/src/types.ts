@@ -88,6 +88,8 @@ export interface Message {
   authorType: AuthorType
   authorId: string | null
   content: string
+  /** Base64 data-URL images attached to this message. */
+  images?: string[]
   createdAt: number
   /** Populated server-side for convenience. */
   authorName?: string
