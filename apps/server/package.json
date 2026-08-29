@@ -17,11 +17,13 @@
     "drizzle-orm": "^0.36.4",
     "fastify": "^5.1.0",
     "nanoid": "^5.0.9",
+    "ws": "^8.21.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.1",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

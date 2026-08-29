@@ -3,6 +3,7 @@ import type { ApiResponse } from '@opencrew/shared'
 import type { users } from '../db/schema'
 import type { AppContext } from '../context'
 import { getSessionUser, SESSION_COOKIE } from '../auth/sessions'
+import { resolveRelayUser, verifyRelayIdentity } from '../services/cloudlink'
 
 export type UserRow = typeof users.$inferSelect
 
@@ -21,6 +22,12 @@ export function fail(error: string): ApiResponse<never> {
 }
 
 export function currentUser(ctx: AppContext, req: FastifyRequest): UserRow | null {
+  // Cloud Link: requests forwarded by the opencrew.run relay carry a signed
+  // identity header instead of a cookie. Verification requires the link
+  // secret, so nothing outside the relay can mint one.
+  const identity = verifyRelayIdentity(ctx, req.headers)
+  if (identity) return resolveRelayUser(ctx, identity)
+
   const cookies = (req as FastifyRequest & { cookies: Record<string, string> }).cookies
   return getSessionUser(ctx.db, cookies?.[SESSION_COOKIE])
 }

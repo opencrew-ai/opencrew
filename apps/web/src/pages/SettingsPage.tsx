@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { Sidebar } from '../components/Sidebar'
+import { CloudLinkCard } from '../components/CloudLinkCard'
 import { DeviceAccessCard } from '../components/DeviceAccessCard'
 import { useWorkspace } from '../lib/workspace'
 
@@ -112,6 +113,8 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        <CloudLinkCard />
 
         <DeviceAccessCard />
 

@@ -15,6 +15,8 @@ import { registerRunRoutes } from './routes/runs'
 import { registerFsRoutes } from './routes/fs'
 import { registerSettingsRoutes } from './routes/settings'
 import { registerNetworkRoutes } from './routes/network'
+import { registerCloudLinkRoutes } from './routes/cloudlink'
+import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
 // Side-effect import: registers the OpenCrew MCP tool plugins.
@@ -51,6 +53,7 @@ async function main(): Promise<void> {
   registerFsRoutes(app, ctx)
   registerSettingsRoutes(app, ctx)
   registerNetworkRoutes(app, ctx)
+  registerCloudLinkRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
@@ -78,6 +81,9 @@ async function main(): Promise<void> {
       })
     })
   })
+
+  // Reconnect to opencrew.run if this instance is cloud-linked.
+  startCloudLink(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })
   console.log(`\n⚓ OpenCrew server on http://localhost:${env.port}`)

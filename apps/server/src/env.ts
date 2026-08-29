@@ -50,5 +50,7 @@ export const env = {
    * a random trycloudflare.com URL.
    */
   tunnelToken: process.env.OPENCREW_TUNNEL_TOKEN ?? '',
-  tunnelUrl: process.env.OPENCREW_TUNNEL_URL ?? ''
+  tunnelUrl: process.env.OPENCREW_TUNNEL_URL ?? '',
+  /** opencrew.run relay for Cloud Link (dev: http://localhost:4100). */
+  relayUrl: (process.env.OPENCREW_RELAY_URL ?? 'https://relay.opencrew.run').replace(/\/$/, '')
 }

@@ -41,3 +41,16 @@ export function getMaxMentionDepth(db: DB): number {
 export function clearSetting(db: DB, key: string): void {
   db.delete(settings).where(eq(settings.key, key)).run()
 }
+
+/** Untyped string settings (used by e.g. cloud-link credentials). */
+export function getRawSetting(db: DB, key: string): string | null {
+  const row = db.select().from(settings).where(eq(settings.key, key)).get()
+  return row?.value ?? null
+}
+
+export function setRawSetting(db: DB, key: string, value: string): void {
+  db.insert(settings)
+    .values({ key, value, updatedAt: Date.now() })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: Date.now() } })
+    .run()
+}
