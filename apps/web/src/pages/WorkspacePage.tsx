@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import { ChannelView } from '../components/ChannelView'
-import { ThreadPanel } from '../components/ThreadPanel'
 import { TerminalDrawer } from '../components/TerminalDrawer'
 import { useWorkspace } from '../lib/workspace'
 
@@ -10,7 +9,6 @@ export function WorkspacePage() {
   const { channels } = useWorkspace()
   const { channelId } = useParams<{ channelId: string }>()
   const navigate = useNavigate()
-  const [threadRootId, setThreadRootId] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -22,9 +20,8 @@ export function WorkspacePage() {
     }
   }, [channel, channels, navigate])
 
-  // Close panels when switching channels.
+  // Close sidebar when switching channels.
   useEffect(() => {
-    setThreadRootId(null)
     setSidebarOpen(false)
   }, [channelId])
 
@@ -85,17 +82,8 @@ export function WorkspacePage() {
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
         <ChannelView
           channel={channel}
-          onOpenThread={setThreadRootId}
           onOpenRun={setRunId}
         />
-        {threadRootId && (
-          <ThreadPanel
-            channelId={channel.id}
-            rootId={threadRootId}
-            onClose={() => setThreadRootId(null)}
-            onOpenRun={setRunId}
-          />
-        )}
         {runId && <TerminalDrawer runId={runId} onClose={() => setRunId(null)} />}
       </div>
     </div>

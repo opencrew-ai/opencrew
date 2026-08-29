@@ -48,11 +48,11 @@ const COLLAPSE_AT = 3 // show first N responses, collapse the rest
 
 interface ConversationGroupProps {
   group: MessageGroup
-  onOpenThread: (rootId: string) => void
+  channelId: string
   onOpenRun: (runId: string) => void
 }
 
-export function ConversationGroup({ group, onOpenThread, onOpenRun }: ConversationGroupProps) {
+export function ConversationGroup({ group, channelId, onOpenRun }: ConversationGroupProps) {
   const [expanded, setExpanded] = useState(false)
   const { trigger, responses } = group
 
@@ -64,7 +64,7 @@ export function ConversationGroup({ group, onOpenThread, onOpenRun }: Conversati
   if (responses.length === 0) {
     return trigger ? (
       <div className="mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/20">
-        <MessageItem message={trigger} onOpenThread={onOpenThread} onOpenRun={onOpenRun} />
+        <MessageItem message={trigger} channelId={channelId} onOpenRun={onOpenRun} />
       </div>
     ) : null
   }
@@ -73,7 +73,7 @@ export function ConversationGroup({ group, onOpenThread, onOpenRun }: Conversati
     <div className="mx-3 mb-3 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/30">
       {/* Human trigger message */}
       {trigger && (
-        <MessageItem message={trigger} onOpenThread={onOpenThread} onOpenRun={onOpenRun} />
+        <MessageItem message={trigger} channelId={channelId} onOpenRun={onOpenRun} />
       )}
 
       {/* Agent / system responses — indented with left rule */}
@@ -86,7 +86,7 @@ export function ConversationGroup({ group, onOpenThread, onOpenRun }: Conversati
           .join(' ')}
       >
         {visibleResponses.map((m) => (
-          <MessageItem key={m.id} message={m} onOpenThread={onOpenThread} onOpenRun={onOpenRun} />
+          <MessageItem key={m.id} message={m} channelId={channelId} onOpenRun={onOpenRun} />
         ))}
 
         {/* Collapse toggle */}

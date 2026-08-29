@@ -6,11 +6,10 @@ import { MessageInput } from './MessageInput'
 
 interface ChannelViewProps {
   channel: Channel
-  onOpenThread: (rootId: string) => void
   onOpenRun: (runId: string) => void
 }
 
-export function ChannelView({ channel, onOpenThread, onOpenRun }: ChannelViewProps) {
+export function ChannelView({ channel, onOpenRun }: ChannelViewProps) {
   const { messages, loading, post } = useMessages(channel.id, null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -41,7 +40,7 @@ export function ChannelView({ channel, onOpenThread, onOpenRun }: ChannelViewPro
           <ConversationGroup
             key={group.trigger?.id ?? `group-${i}`}
             group={group}
-            onOpenThread={onOpenThread}
+            channelId={channel.id}
             onOpenRun={onOpenRun}
           />
         ))}

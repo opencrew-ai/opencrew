@@ -1,13 +1,20 @@
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Message } from '@opencrew/shared'
 import { ApprovalCard } from './ApprovalCard'
+import { InlineThread } from './InlineThread'
 
 const MD_PLUGINS = [remarkGfm]
 
 interface MessageItemProps {
   message: Message
-  onOpenThread?: (rootId: string) => void
+  /**
+   * When provided, reply counts and "reply" buttons are shown and clicking
+   * them expands an inline thread. Omit for messages already inside a thread
+   * (prevents infinite nesting).
+   */
+  channelId?: string
   onOpenRun?: (runId: string) => void
 }
 
@@ -15,7 +22,9 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemProps) {
+export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps) {
+  const [threadOpen, setThreadOpen] = useState(false)
+
   if (message.authorType === 'system') {
     return (
       <div className="px-4 py-1">
@@ -39,8 +48,11 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
   }
 
   const isAgent = message.authorType === 'agent'
+  const threadRootId = message.threadRootId ?? message.id
+
   return (
     <div className="group px-4 py-1.5 hover:bg-zinc-900/40">
+      {/* Header row */}
       <div className="flex items-baseline gap-2">
         <span className="text-base">{isAgent ? message.authorEmoji : '👤'}</span>
         <span className={`text-sm font-semibold ${isAgent ? 'text-violet-300' : 'text-zinc-100'}`}>
@@ -61,6 +73,8 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
           </button>
         )}
       </div>
+
+      {/* Message content */}
       <div className="md-content ml-7 text-sm leading-relaxed text-zinc-200">
         {message.content ? (
           <ReactMarkdown remarkPlugins={MD_PLUGINS}>{message.content}</ReactMarkdown>
@@ -68,6 +82,8 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
           <span className="italic text-zinc-500">thinking…</span>
         )}
       </div>
+
+      {/* Attached images */}
       {message.images && message.images.length > 0 && (
         <div className="ml-7 mt-1.5 flex flex-wrap gap-2">
           {message.images.map((src, i) => (
@@ -75,32 +91,40 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
               <img
                 src={src}
                 alt={`attachment ${i + 1}`}
-                className="max-h-60 max-w-xs rounded-md border border-zinc-700 object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                className="max-h-60 max-w-xs cursor-zoom-in rounded-md border border-zinc-700 object-cover transition-opacity hover:opacity-90"
               />
             </a>
           ))}
         </div>
       )}
-      <div className="ml-7 mt-0.5 flex items-center gap-3">
-        {/* Reply count — always visible when > 0 */}
-        {onOpenThread && !!message.replyCount && (
+
+      {/* Thread actions — only shown when channelId is provided */}
+      {channelId && (
+        <div className="ml-7 mt-0.5 flex items-center gap-3">
+          {/* Reply count — always visible when > 0 */}
+          {!!message.replyCount && (
+            <button
+              onClick={() => setThreadOpen((v) => !v)}
+              className="text-xs font-medium text-sky-400 hover:underline"
+            >
+              {threadOpen ? '▲ ' : ''}
+              {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
+            </button>
+          )}
+          {/* Reply / collapse — hover only */}
           <button
-            onClick={() => onOpenThread(message.threadRootId ?? message.id)}
-            className="text-xs font-medium text-sky-400 hover:underline"
-          >
-            {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
-          </button>
-        )}
-        {/* "reply in thread" — hover only */}
-        {onOpenThread && (
-          <button
-            onClick={() => onOpenThread(message.threadRootId ?? message.id)}
+            onClick={() => setThreadOpen((v) => !v)}
             className="invisible text-xs text-zinc-500 transition-colors hover:text-zinc-300 group-hover:visible"
           >
-            {message.replyCount ? 'open thread' : 'reply in thread'}
+            {threadOpen ? 'collapse' : message.replyCount ? 'open thread' : 'reply'}
           </button>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Inline thread — expands below the message */}
+      {channelId && threadOpen && (
+        <InlineThread channelId={channelId} rootId={threadRootId} onOpenRun={onOpenRun} />
+      )}
     </div>
   )
 }
