@@ -14,8 +14,10 @@ registerOpenCrewTool({
   name: 'create_agent',
   description:
     'Hire a new agent onto the crew: name, emoji, system prompt, skills, and tools. ' +
-    'Use ONLY when no existing agent fits the job (check list_agents first). ' +
-    'The new agent is immediately active and can be @mentioned.',
+    'Prefer hiring a FOCUSED SPECIALIST (tight prompt, minimal tools, one discipline) ' +
+    'over overloading generalists — a crew of specialists beats two busy generalists. ' +
+    'Check list_agents first to avoid duplicates. The new agent is immediately active ' +
+    'and can be @mentioned.',
   inputShape: {
     name: z
       .string()
