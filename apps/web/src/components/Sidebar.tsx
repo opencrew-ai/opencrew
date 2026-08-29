@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
+import { useAgentLoad } from '../lib/useAgentLoad'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
 
@@ -16,6 +17,7 @@ interface SidebarProps {
 export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const { me, channels, agents, users, presence, logout, refreshChannels } = useWorkspace()
   const navigate = useNavigate()
+  const agentLoad = useAgentLoad()
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const isAdmin = me.role === 'admin'
   const panelRef = useRef<HTMLDivElement>(null)
@@ -148,20 +150,38 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           <div className="mt-1">
             {[...agents]
               .sort((a, b) => a.name.localeCompare(b.name))
-              .map((a) => (
-                <Link
-                  key={a.id}
-                  to={`/agents/${a.id}`}
-                  onClick={onClose}
-                  className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
-                >
-                  <PresenceDot state={stateOf('agent', a.id)} />
-                  <span>{a.avatarEmoji}</span>
-                  <span className={a.status === 'paused' ? 'line-through opacity-50' : ''}>
-                    {a.name}
-                  </span>
-                </Link>
-              ))}
+              .map((a) => {
+                const load = agentLoad.get(a.id)
+                return (
+                  <Link
+                    key={a.id}
+                    to={`/agents/${a.id}`}
+                    onClick={onClose}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+                    title={
+                      load?.status === 'rate_limited'
+                        ? `Rate limited — ${load.runsLastHour}/${load.maxRunsPerHour} runs/hr`
+                        : load?.status === 'busy'
+                          ? `${load.activeRuns} active run${load.activeRuns !== 1 ? 's' : ''}`
+                          : undefined
+                    }
+                  >
+                    <PresenceDot state={stateOf('agent', a.id)} />
+                    <span>{a.avatarEmoji}</span>
+                    <span className={`flex-1 ${a.status === 'paused' ? 'line-through opacity-50' : ''}`}>
+                      {a.name}
+                    </span>
+                    {load?.status === 'rate_limited' && (
+                      <span className="text-[10px] text-red-400" title="Rate limited">⛔</span>
+                    )}
+                    {load?.status === 'busy' && load.activeRuns >= 2 && (
+                      <span className="text-[10px] text-amber-400" title={`${load.activeRuns} active runs`}>
+                        ×{load.activeRuns}
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
             {agents.length === 0 && (
               <p className="px-2 text-xs text-zinc-600">No agents yet.</p>
             )}

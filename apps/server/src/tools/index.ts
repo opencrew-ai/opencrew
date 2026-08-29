@@ -6,6 +6,8 @@ import './list_agents'
 import './create_agent'
 import './search_threads'
 import './cite_thread'
+import './check_agent_load'
+import './spawn_parallel'
 
 export * from './registry'
 export * from './catalog'

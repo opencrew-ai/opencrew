@@ -14,9 +14,12 @@ export class RunQueue {
   private pending: string[] = []
   private active = new Map<string, string>() // runId -> agentId
   private executor: ExecutorFn = async () => {}
-  private lookupAgent: (runId: string) => string | null = () => null
+  private lookupAgent: (runId: string) => Promise<string | null> = async () => null
 
-  configure(executor: ExecutorFn, lookupAgent: (runId: string) => string | null): void {
+  configure(
+    executor: ExecutorFn,
+    lookupAgent: (runId: string) => Promise<string | null>
+  ): void {
     this.executor = executor
     this.lookupAgent = lookupAgent
   }
@@ -30,6 +33,20 @@ export class RunQueue {
     return new Set(this.active.values())
   }
 
+  /** Returns how many runs are currently in-flight for each agent. */
+  activeRunCountByAgent(): Map<string, number> {
+    const counts = new Map<string, number>()
+    for (const agentId of this.active.values()) {
+      counts.set(agentId, (counts.get(agentId) ?? 0) + 1)
+    }
+    return counts
+  }
+
+  /** Pending (queued but not yet started) run count. */
+  pendingCount(): number {
+    return this.pending.length
+  }
+
   /** Emergency stop: drop everything not yet started; returns the run ids. */
   drainPending(): string[] {
     const drained = [...this.pending]
@@ -41,8 +58,12 @@ export class RunQueue {
     while (this.active.size < CONCURRENCY && this.pending.length > 0) {
       const runId = this.pending.shift()
       if (!runId) break
-      this.active.set(runId, this.lookupAgent(runId) ?? '')
-      void this.executor(runId)
+      this.active.set(runId, '')
+      void this.lookupAgent(runId)
+        .then((agentId) => {
+          if (agentId) this.active.set(runId, agentId)
+        })
+        .then(() => this.executor(runId))
         .catch((err) => {
           // Executor handles its own failures; this is a last-resort log.
           console.error(`run ${runId} crashed outside executor error handling:`, err)
@@ -60,22 +81,22 @@ export class RunQueue {
  * Code session), so anything mid-flight when the process died is failed and
  * its pending approvals are auto-denied.
  */
-export function failInterruptedRuns(db: DB): void {
-  db.update(runs)
+export async function failInterruptedRuns(db: DB): Promise<void> {
+  await db
+    .update(runs)
     .set({ status: 'failed', error: 'server restarted mid-run', finishedAt: Date.now() })
     .where(inArray(runs.status, ['queued', 'running', 'awaiting_approval']))
-    .run()
-  db.update(approvals)
+  await db
+    .update(approvals)
     .set({ status: 'denied', resolvedBy: 'system:restart', resolvedAt: Date.now() })
     .where(eq(approvals.status, 'pending'))
-    .run()
 }
 
-export function getRunAgentId(db: DB, runId: string): string | null {
-  const row = db
+export async function getRunAgentId(db: DB, runId: string): Promise<string | null> {
+  const [row] = await db
     .select({ agentId: runs.agentId })
     .from(runs)
     .where(eq(runs.id, runId))
-    .get()
+    .limit(1)
   return row?.agentId ?? null
 }

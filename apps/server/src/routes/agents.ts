@@ -2,13 +2,13 @@ import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { diffVersions } from '@opencrew/shared'
 import { env } from '../env'
 import type { AppContext } from '../context'
-import { agents, agentVersions } from '../db/schema'
+import { agents, agentVersions, runs } from '../db/schema'
 import {
   createVersion,
   getAgentWithVersion,
@@ -60,10 +60,6 @@ const openBrowserSchema = z.object({
   url: z.string().url().startsWith('http').default('https://x.com')
 })
 
-// CRITICAL: Playwright launches Chrome with --use-mock-keychain (macOS) /
-// --password-store=basic (Linux), so agent-run cookies are encrypted with a
-// mock key, not the OS keychain. The login window must use the SAME flags —
-// otherwise the login it writes is undecryptable for agent runs.
 const COOKIE_COMPAT_FLAGS = ['--use-mock-keychain', '--password-store=basic', '--no-first-run']
 
 function launchProfileBrowser(profileDir: string, url: string): void {
@@ -76,7 +72,6 @@ function launchProfileBrowser(profileDir: string, url: string): void {
     ).unref()
     return
   }
-  // Linux: try common Chrome binaries in order.
   const candidates = ['google-chrome', 'chromium', 'chromium-browser']
   const child = spawn(candidates[0]!, [dataDirArg, ...COOKIE_COMPAT_FLAGS, url], {
     detached: true,
@@ -88,7 +83,6 @@ function launchProfileBrowser(profileDir: string, url: string): void {
       stdio: 'ignore'
     })
     fallback.on('error', () => {
-      // Last resort logged server-side; the API response already succeeded.
       console.error('could not find a Chrome/Chromium binary to open the profile')
     })
     fallback.unref()
@@ -103,7 +97,66 @@ function validateTools(tools: string[]): string | null {
 
 export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/agents', { preHandler: authGuard(ctx) }, async () => {
-    return ok(listAgentsWithVersions(ctx.db))
+    return ok(await listAgentsWithVersions(ctx.db))
+  })
+
+  /**
+   * GET /api/agents/load
+   * Returns per-agent load: idle | busy | rate_limited | paused
+   * Used by Captain (and the load tool) before delegating work.
+   */
+  app.get('/api/agents/load', { preHandler: authGuard(ctx) }, async () => {
+    const allAgents = await listAgentsWithVersions(ctx.db)
+    const oneHourAgo = Date.now() - 60 * 60 * 1000
+
+    // Active runs (queued + running + awaiting_approval) from DB
+    const activeRows = await ctx.db
+      .select({ agentId: runs.agentId, status: runs.status })
+      .from(runs)
+      .where(inArray(runs.status, ['queued', 'running', 'awaiting_approval']))
+
+    const activeByAgent = new Map<string, number>()
+    for (const r of activeRows) {
+      activeByAgent.set(r.agentId, (activeByAgent.get(r.agentId) ?? 0) + 1)
+    }
+
+    // Runs in the last hour per agent (for rate limit check)
+    const recentRows = await ctx.db
+      .select({ agentId: runs.agentId })
+      .from(runs)
+      .where(gte(runs.createdAt, oneHourAgo))
+
+    const recentByAgent = new Map<string, number>()
+    for (const r of recentRows) {
+      recentByAgent.set(r.agentId, (recentByAgent.get(r.agentId) ?? 0) + 1)
+    }
+
+    const load = allAgents.map((a) => {
+      const activeRuns = activeByAgent.get(a.id) ?? 0
+      const runsLastHour = recentByAgent.get(a.id) ?? 0
+      const maxRunsPerHour = a.currentVersion.capabilities.maxRunsPerHour
+      let status: 'idle' | 'busy' | 'rate_limited' | 'paused'
+      if (a.status === 'paused') {
+        status = 'paused'
+      } else if (runsLastHour >= maxRunsPerHour) {
+        status = 'rate_limited'
+      } else if (activeRuns > 0) {
+        status = 'busy'
+      } else {
+        status = 'idle'
+      }
+      return {
+        agentId: a.id,
+        name: a.name,
+        emoji: a.avatarEmoji,
+        status,
+        activeRuns,
+        runsLastHour,
+        maxRunsPerHour
+      }
+    })
+
+    return ok(load)
   })
 
   app.get('/api/tools', { preHandler: authGuard(ctx) }, async () => {
@@ -112,7 +165,7 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
 
   app.get('/api/agents/:agentId', { preHandler: authGuard(ctx) }, async (req, reply) => {
     const { agentId } = req.params as { agentId: string }
-    const agent = getAgentWithVersion(ctx.db, agentId)
+    const agent = await getAgentWithVersion(ctx.db, agentId)
     if (!agent) return reply.code(404).send(fail('agent not found'))
     return ok(agent)
   })
@@ -123,34 +176,30 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
     const toolError = validateTools(parsed.data.config.tools)
     if (toolError) return reply.code(400).send(fail(toolError))
 
-    const existing = ctx.db
+    const [existing] = await ctx.db
       .select()
       .from(agents)
       .where(eq(agents.name, parsed.data.name))
-      .get()
+      .limit(1)
     if (existing) return reply.code(409).send(fail('agent name already exists'))
 
     const agentId = nanoid()
-    ctx.db
-      .insert(agents)
-      .values({
-        id: agentId,
-        name: parsed.data.name,
-        avatarEmoji: parsed.data.avatarEmoji,
-        currentVersionId: 'pending',
-        createdBy: req.user!.id,
-        status: 'active',
-        createdAt: Date.now()
-      })
-      .run()
-    createVersion(ctx.db, agentId, parsed.data.config, req.user!.id, parsed.data.changeNote)
+    await ctx.db.insert(agents).values({
+      id: agentId,
+      name: parsed.data.name,
+      avatarEmoji: parsed.data.avatarEmoji,
+      currentVersionId: 'pending',
+      createdBy: req.user!.id,
+      status: 'active',
+      createdAt: Date.now()
+    })
+    await createVersion(ctx.db, agentId, parsed.data.config, req.user!.id, parsed.data.changeNote)
 
-    const agent = getAgentWithVersion(ctx.db, agentId)!
+    const agent = (await getAgentWithVersion(ctx.db, agentId))!
     ctx.hub.broadcast({ type: 'agent_updated', agent })
     return ok(agent)
   })
 
-  // Editing config = appending an immutable version. There is no PUT.
   app.post(
     '/api/agents/:agentId/versions',
     { preHandler: adminGuard(ctx) },
@@ -160,11 +209,17 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
       const toolError = validateTools(parsed.data.config.tools)
       if (toolError) return reply.code(400).send(fail(toolError))
-      if (!getAgentWithVersion(ctx.db, agentId)) {
+      if (!(await getAgentWithVersion(ctx.db, agentId))) {
         return reply.code(404).send(fail('agent not found'))
       }
-      createVersion(ctx.db, agentId, parsed.data.config, req.user!.id, parsed.data.changeNote)
-      const agent = getAgentWithVersion(ctx.db, agentId)!
+      await createVersion(
+        ctx.db,
+        agentId,
+        parsed.data.config,
+        req.user!.id,
+        parsed.data.changeNote
+      )
+      const agent = (await getAgentWithVersion(ctx.db, agentId))!
       ctx.hub.broadcast({ type: 'agent_updated', agent })
       return ok(agent)
     }
@@ -175,12 +230,11 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
     { preHandler: authGuard(ctx) },
     async (req) => {
       const { agentId } = req.params as { agentId: string }
-      const rows = ctx.db
+      const rows = await ctx.db
         .select()
         .from(agentVersions)
         .where(eq(agentVersions.agentId, agentId))
         .orderBy(asc(agentVersions.version))
-        .all()
       return ok(rows.map(toAgentVersion))
     }
   )
@@ -188,13 +242,12 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
   app.get('/api/agents/:agentId/diff', { preHandler: authGuard(ctx) }, async (req, reply) => {
     const { from, to } = req.query as { from?: string; to?: string }
     if (!from || !to) return reply.code(400).send(fail('from and to version ids required'))
-    const fromVersion = getVersion(ctx.db, from)
-    const toVersion = getVersion(ctx.db, to)
+    const fromVersion = await getVersion(ctx.db, from)
+    const toVersion = await getVersion(ctx.db, to)
     if (!fromVersion || !toVersion) return reply.code(404).send(fail('version not found'))
     return ok(diffVersions(fromVersion, toVersion))
   })
 
-  // Rollback = a NEW version copying the old config; history stays intact.
   app.post(
     '/api/agents/:agentId/rollback',
     { preHandler: adminGuard(ctx) },
@@ -202,11 +255,11 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       const { agentId } = req.params as { agentId: string }
       const { versionId } = (req.body ?? {}) as { versionId?: string }
       if (!versionId) return reply.code(400).send(fail('versionId required'))
-      const target = getVersion(ctx.db, versionId)
+      const target = await getVersion(ctx.db, versionId)
       if (!target || target.agentId !== agentId) {
         return reply.code(404).send(fail('version not found'))
       }
-      createVersion(
+      await createVersion(
         ctx.db,
         agentId,
         {
@@ -219,15 +272,12 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
         req.user!.id,
         `rollback to v${target.version}`
       )
-      const agent = getAgentWithVersion(ctx.db, agentId)!
+      const agent = (await getAgentWithVersion(ctx.db, agentId))!
       ctx.hub.broadcast({ type: 'agent_updated', agent })
       return ok(agent)
     }
   )
 
-  // Open the agent's persistent Chrome profile in a visible window so a
-  // human can log into sites (e.g. x.com) on the agent's behalf. The same
-  // profile is what Playwright drives during runs — log in once, it sticks.
   app.post(
     '/api/agents/:agentId/browser',
     { preHandler: adminGuard(ctx) },
@@ -236,7 +286,7 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       const parsed = openBrowserSchema.safeParse(req.body ?? {})
       if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
 
-      const agent = getAgentWithVersion(ctx.db, agentId)
+      const agent = await getAgentWithVersion(ctx.db, agentId)
       if (!agent) return reply.code(404).send(fail('agent not found'))
       if (!agent.currentVersion.tools.includes('Browser')) {
         return reply.code(400).send(fail('this agent does not have the Browser tool'))
@@ -267,8 +317,8 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
       if (status !== 'active' && status !== 'paused') {
         return reply.code(400).send(fail('status must be active or paused'))
       }
-      ctx.db.update(agents).set({ status }).where(eq(agents.id, agentId)).run()
-      const agent = getAgentWithVersion(ctx.db, agentId)
+      await ctx.db.update(agents).set({ status }).where(eq(agents.id, agentId))
+      const agent = await getAgentWithVersion(ctx.db, agentId)
       if (!agent) return reply.code(404).send(fail('agent not found'))
       ctx.hub.broadcast({ type: 'agent_updated', agent })
       return ok(agent)
