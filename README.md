@@ -9,15 +9,31 @@ Add an agent the way you'd invite a coworker: give it a name, a prompt, skills, 
 writing code, running commands — while you watch its terminal stream in real time. Multiple
 agents collaborate in the same channel by @mentioning each other.
 
+Or don't @mention anyone at all: **Captain** 🧭, the orchestrator agent, reads every untargeted
+message, answers the simple stuff itself, delegates real work to the right specialist, and
+**hires new specialist agents** (behind an approval card) when nobody on the crew owns the
+discipline. You just chat; the crew organizes itself.
+
 What makes this different from a chatbot in a channel:
 
 - **Guardrails** — every agent version declares which tools it may use, which of them require
   human approval (a yellow card in the channel any admin can Approve or Deny — the agent's
   session literally pauses and waits), which channels it may post to, and a max runs/hour rate
-  limit. All enforced server-side in the run executor, not in the UI.
+  limit. All enforced server-side in the run executor, not in the UI. Tired of clicking?
+  **Approve + always allow** creates a standing per-agent/per-tool rule — still fully audited,
+  revocable from the agent's page. And a floating **🛑 STOP** pill appears on every page while
+  agents are working: one click aborts every live session, cancels the queue, and denies all
+  pending approvals.
 - **Version control for agents** — every config edit creates an immutable version. You can diff
   any two versions side by side, roll back with one click, and replay any past run as a terminal.
   Every run is pinned to the version it started with and leaves a full audit log.
+- **Persistent sessions** — each conversation (channel or thread) resumes the same Claude Code
+  session for an agent, so follow-ups keep full build context: "now rename it and add a flag"
+  just works. Point an agent's **working directory** at a real repo and it builds there across
+  an entire conversation.
+- **A real browser** — grant the `Browser` tool and the agent drives your locally installed
+  Chrome with a persistent per-agent profile. Log into a site once from the agent's page
+  ("Open agent's browser") and every future run is already signed in.
 
 ---
 
@@ -40,15 +56,18 @@ Email:    admin@opencrew.local
 Password: opencrew
 ```
 
-You'll land in **OpenCrew HQ** with two channels (`#general`, `#builds`) and two starter agents:
+You'll land in **OpenCrew HQ** with two channels (`#general`, `#builds`) and three starter agents:
 
+- 🧭 **Captain** — the orchestrator. Watches every channel, delegates to specialists, and hires
+  new agents when needed (`create_agent` is gated behind your approval).
 - 🔭 **Scout** — a researcher with `WebFetch` and `WebSearch`, no approval gates.
 - 🛠️ **Coder** — an engineer with `Bash`, `Read`, and `Write`, where **every `Bash` call
   requires your approval**.
 
-Try: `@Scout what's new on Hacker News today?` — then click **terminal** on its reply to watch
-the session stream live. Then try `@Coder benchmark three ways to reverse a string in TypeScript`
-and press **Approve** when prompted.
+Try just typing `can someone check what's new on Hacker News?` — no @mention needed; Captain
+routes it. Or address an agent directly: `@Coder benchmark three ways to reverse a string in
+TypeScript`, press **Approve** when the yellow card appears, and click **terminal** on the reply
+to watch the session stream live.
 
 ---
 
@@ -82,20 +101,26 @@ opencrew/
 apps/web        React + Vite + Tailwind (dark, Slack-style, live terminal panels)
    │  REST + WebSocket (/api, /api/ws)
 apps/server     Fastify + SQLite (Drizzle) — auth, channels, agents, guardrails
-   │  spawns one headless session per run
-Claude Code     @anthropic-ai/claude-agent-sdk → query() per @mention
-   │  canUseTool() callback = approval gate choke point
-   └─ MCP server "opencrew" → OpenCrew-native tools (post_to_channel, and yours)
+   │  resumes one persistent session per (agent, conversation)
+Claude Code     @anthropic-ai/claude-agent-sdk → query({ resume }) per turn
+   │  PreToolUse hook = approval gate choke point (fires on EVERY tool call)
+   └─ MCP server "opencrew" → OpenCrew-native tools (post_to_channel,
+      list_agents, create_agent, and yours)
 ```
 
-- **@mention → run** — mentioning an agent enqueues a `run` (in-process queue, concurrency 4).
-  The executor builds context from the last 30 channel messages and starts a Claude Code session
-  with the agent's pinned versioned system prompt, model, and tool allowlist, inside the agent's
-  own workspace directory (`data/workspaces/<agent-id>`).
-- **Guardrails** — non-gated tools are pre-approved. Everything else hits `canUseTool`, which
-  denies tools outside the version's allowlist and blocks gated ones until an admin resolves the
-  approval card. The DB row is re-verified before the tool executes. `canPostInChannels` is
-  enforced at the single message-creation choke point; `maxRunsPerHour` is enforced at enqueue.
+- **Message → run** — an @mention (or, for watchers like Captain, any untargeted human message)
+  enqueues a `run` (in-process queue, concurrency 4; runs for the same agent execute in order).
+  The first turn builds context from the last 30 channel messages; follow-up turns **resume the
+  same Claude Code session** and receive only what's new. Sessions run with the agent's pinned
+  versioned system prompt, model, and tool allowlist, in its workspace directory
+  (`data/workspaces/<agent-id>`) or its configured working directory.
+- **Guardrails** — non-gated tools are pre-approved. Every tool call passes through a
+  `PreToolUse` hook (this matters: it fires even for calls Claude Code would auto-allow, like
+  sandboxable read-only Bash), which denies tools outside the version's allowlist and blocks
+  gated ones until an admin resolves the approval card — or a standing auto-approve rule
+  resolves it instantly. The approvals DB row is re-verified before the tool executes.
+  `canPostInChannels` is enforced at the single message-creation choke point; `maxRunsPerHour`
+  is enforced at enqueue.
 - **Audit** — every LLM turn, tool call, tool result, post, and approval is a `run_steps` row,
   streamed over WebSocket into the terminal drawer. There are no silent actions.
 - **Versioning** — `agent_versions` rows are immutable. Edits append; rollback appends a copy
@@ -114,7 +139,11 @@ generates `SESSION_SECRET` automatically on first boot — you don't need to set
 | `SESSION_SECRET` | *(auto-generated)* | Secret used to sign session cookies |
 | `OPENCREW_DB` | `data/opencrew.sqlite` | Path to the SQLite database file |
 | `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent working files |
+| `OPENCREW_MAX_MENTION_DEPTH` | `4` | Default agent→agent chain depth — overridable live in **⚙ Workspace settings** |
 | `ANTHROPIC_API_KEY` | *(from `claude` CLI login)* | API key for Claude — required for agents to run |
+
+Crew-wide behavior (like the mention-chain depth) is editable at runtime from the **⚙ Workspace
+settings** page — the gear next to the workspace name.
 
 ---
 
@@ -163,10 +192,14 @@ them per agent in the UI.
 
 ## Known limitations
 
-- A server restart fails any in-flight runs (approval wait state lives in-process).
+- A server restart fails any in-flight runs (approval wait state lives in-process). Persistent
+  sessions survive — the next message resumes the conversation.
+- Messages sent while an agent is mid-turn queue until that turn ends — no mid-turn steering yet.
 - DMs, file uploads, reactions, push notifications, and SSO are out of scope for now.
 - `Bash` runs with your local user in the agent's workspace directory — keep it behind an
   approval gate (the seed config does) and treat agents like interns with shell access.
+- The `Browser` tool drives your real, locally installed Chrome (headed) — sites with aggressive
+  bot detection may still fight the session.
 
 ---
 
