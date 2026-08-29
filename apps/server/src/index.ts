@@ -1,0 +1,87 @@
+import Fastify from 'fastify'
+import fastifyCookie from '@fastify/cookie'
+import fastifyWebsocket from '@fastify/websocket'
+import { env } from './env'
+import { createDb } from './db'
+import { seedIfEmpty, SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD } from './db/seed'
+import { Hub } from './hub'
+import { RunQueue, failInterruptedRuns, getRunAgentId } from './runs/queue'
+import { executeRun } from './runs/executor'
+import type { AppContext } from './context'
+import { registerAuthRoutes } from './routes/auth'
+import { registerChannelRoutes } from './routes/channels'
+import { registerAgentRoutes } from './routes/agents'
+import { registerRunRoutes } from './routes/runs'
+import { currentUser } from './routes/helpers'
+import { broadcastPresence, computePresence } from './services/presence'
+// Side-effect import: registers the OpenCrew MCP tool plugins.
+import './tools'
+
+async function main(): Promise<void> {
+  const { db } = createDb(env.dbPath)
+  failInterruptedRuns(db)
+  const seeded = seedIfEmpty(db)
+
+  const hub = new Hub()
+  const queue = new RunQueue()
+  const ctx: AppContext = {
+    db,
+    hub,
+    queue,
+    approvalWaiters: new Map(),
+    activeRuns: new Map()
+  }
+  queue.configure(
+    (runId) => executeRun(ctx, runId),
+    (runId) => getRunAgentId(db, runId)
+  )
+
+  const app = Fastify({ logger: { level: 'warn' } })
+  await app.register(fastifyCookie, { secret: env.sessionSecret })
+  await app.register(fastifyWebsocket)
+
+  registerAuthRoutes(app, ctx)
+  registerChannelRoutes(app, ctx)
+  registerAgentRoutes(app, ctx)
+  registerRunRoutes(app, ctx)
+
+  app.get('/api/health', async () => ({ ok: true }))
+
+  app.register(async (scope) => {
+    scope.get('/api/ws', { websocket: true }, (socket, req) => {
+      const user = currentUser(ctx, req)
+      if (!user) {
+        socket.close(4001, 'unauthorized')
+        return
+      }
+      hub.add(socket, user.id)
+      broadcastPresence(ctx)
+      socket.send(JSON.stringify({ type: 'presence', entries: computePresence(ctx) }))
+      socket.on('message', (raw: Buffer) => {
+        try {
+          const event = JSON.parse(raw.toString())
+          if (event.type === 'ping') socket.send(JSON.stringify({ type: 'pong' }))
+        } catch {
+          // Ignore malformed frames.
+        }
+      })
+      socket.on('close', () => {
+        hub.remove(socket)
+        broadcastPresence(ctx)
+      })
+    })
+  })
+
+  await app.listen({ port: env.port, host: '127.0.0.1' })
+  console.log(`\n⚓ OpenCrew server on http://localhost:${env.port}`)
+  console.log('   Agents run as local Claude Code sessions (uses your `claude` login or ANTHROPIC_API_KEY).')
+  if (seeded) {
+    console.log(`   Seeded workspace "OpenCrew HQ".`)
+    console.log(`   Admin login: ${SEED_ADMIN_EMAIL} / ${SEED_ADMIN_PASSWORD}`)
+  }
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

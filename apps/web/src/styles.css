@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+}
+
+.input {
+  @apply w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-sky-600;
+}
+.btn-primary {
+  @apply rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50;
+}
+.btn-secondary {
+  @apply rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50;
+}
+.label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-400;
+}
+.btn-danger {
+  @apply rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50;
+}
+
+/* Markdown message content */
+.md-content :is(p, ul, ol, pre, blockquote) {
+  @apply my-1;
+}
+.md-content ul {
+  @apply list-disc pl-5;
+}
+.md-content ol {
+  @apply list-decimal pl-5;
+}
+.md-content code {
+  @apply rounded bg-zinc-800 px-1 py-0.5 text-[13px] text-amber-200;
+}
+.md-content pre {
+  @apply overflow-x-auto rounded-md bg-zinc-900 p-3 text-[13px];
+}
+.md-content pre code {
+  @apply bg-transparent p-0 text-zinc-200;
+}
+.md-content a {
+  @apply text-sky-400 underline;
+}
+.md-content blockquote {
+  @apply border-l-2 border-zinc-700 pl-3 text-zinc-400;
+}
+.md-content h1,
+.md-content h2,
+.md-content h3 {
+  @apply mt-2 font-semibold;
+}
