@@ -9,6 +9,7 @@ import { WorkspacePage } from './pages/WorkspacePage'
 import { AgentsPage } from './pages/AgentsPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { CrewActivityBar } from './components/CrewActivityBar'
 
 type AuthState =
   | { kind: 'loading' }
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/channels" replace />} />
       </Routes>
+      <CrewActivityBar />
     </WorkspaceProvider>
   )
 }
