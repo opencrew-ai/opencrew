@@ -120,7 +120,7 @@ export function AgentDetailPage() {
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm capitalize ${
                 tab === t
-                  ? 'border-b-2 border-sky-500 font-semibold text-white'
+                  ? 'border-b-2 border-emerald-400 font-semibold text-white'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
@@ -230,7 +230,7 @@ export function AgentDetailPage() {
                   key={v.id}
                   className={`flex items-center gap-3 rounded-md border p-3 text-sm ${
                     v.id === agent.currentVersionId
-                      ? 'border-sky-800 bg-sky-950/20'
+                      ? 'border-emerald-800/70 bg-emerald-950/20'
                       : 'border-zinc-800'
                   }`}
                 >
@@ -240,11 +240,13 @@ export function AgentDetailPage() {
                     {new Date(v.createdAt).toLocaleString()}
                   </span>
                   {v.id === agent.currentVersionId ? (
-                    <span className="rounded bg-sky-900/60 px-2 py-0.5 text-xs">current</span>
+                    <span className="rounded bg-emerald-900/50 px-2 py-0.5 text-xs text-emerald-200">
+                      current
+                    </span>
                   ) : (
                     isAdmin && (
                       <button
-                        className="text-xs text-sky-400 hover:underline"
+                        className="text-xs text-emerald-400 hover:underline"
                         onClick={() => void rollback(v)}
                       >
                         roll back

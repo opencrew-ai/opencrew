@@ -32,10 +32,14 @@ export function Sidebar({ activeChannelId }: { activeChannelId?: string }) {
     presence.get(presenceKey(type, id))?.state ?? (type === 'human' ? 'offline' : 'idle')
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-925 bg-zinc-900/50">
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
-        <span className="text-lg">⚓</span>
-        <span className="font-bold">OpenCrew HQ</span>
+    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800/70 bg-zinc-950/60">
+      <div className="flex items-center gap-2.5 border-b border-zinc-800/70 px-4 py-3">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-base">
+          ⚓
+        </span>
+        <span className="font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+          OpenCrew HQ
+        </span>
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-2 py-4">
@@ -53,10 +57,10 @@ export function Sidebar({ activeChannelId }: { activeChannelId?: string }) {
                 <Link
                   key={c.id}
                   to={`/channels/${c.id}`}
-                  className={`block rounded px-2 py-1 text-sm ${
+                  className={`block rounded-md px-2 py-1 text-sm ${
                     c.id === activeChannelId
-                      ? 'bg-sky-900/60 text-white'
-                      : 'text-zinc-300 hover:bg-zinc-800'
+                      ? 'bg-emerald-500/15 font-medium text-emerald-100'
+                      : 'text-zinc-300 hover:bg-zinc-800/80'
                   }`}
                 >
                   # {c.name}
