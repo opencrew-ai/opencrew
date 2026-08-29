@@ -170,9 +170,51 @@ async function runSession(
       cwd,
       maxTurns: MAX_TURNS,
       abortController: abort,
+      // GUARDRAIL: never load the host user's ~/.claude or project settings —
+      // their allow rules would shadow canUseTool and bypass approval gates.
+      settingSources: [],
+      permissionMode: 'default',
+      env: sessionEnv(),
       mcpServers: { [MCP_SERVER_NAME]: buildMcpServer(toolCtx) },
       allowedTools: allowedToolsFor(runEnv.version),
       disallowedTools: disallowedToolsFor(runEnv.version),
+      // GUARDRAIL: the PreToolUse hook fires for EVERY tool call — including
+      // ones Claude Code would auto-allow (e.g. sandboxable read-only Bash) —
+      // so the allowlist + approval gate cannot be sidestepped by the
+      // runtime's own permission shortcuts.
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              async (input) => {
+                const hookInput = input as {
+                  tool_name: string
+                  tool_input: Record<string, unknown>
+                }
+                const decision = await gateToolUse(
+                  ctx,
+                  runEnv,
+                  hookInput.tool_name,
+                  hookInput.tool_input
+                )
+                if (decision === 'denied_by_admin') {
+                  cancelled = true
+                  cancelRun(ctx, runEnv, reply)
+                  return permissionHookOutput('deny', 'Denied by admin. Stop working.')
+                }
+                if (decision === 'forbidden') {
+                  return permissionHookOutput(
+                    'deny',
+                    `Tool ${fromSdkToolName(hookInput.tool_name)} is not permitted for this agent.`
+                  )
+                }
+                return permissionHookOutput('allow', 'opencrew guardrails')
+              }
+            ]
+          }
+        ]
+      },
+      // Fallback choke point if a permission prompt ever reaches this far.
       canUseTool: async (sdkName, input): Promise<PermissionResult> => {
         const decision = await gateToolUse(ctx, runEnv, sdkName, input)
         if (decision === 'denied_by_admin') {
@@ -218,6 +260,22 @@ async function runSession(
   finalizeRun(ctx, runEnv, reply)
 }
 
+/**
+ * GUARDRAIL: strip Claude Code session markers from the environment. When the
+ * OpenCrew server itself runs inside a Claude Code terminal, inherited
+ * CLAUDECODE / CLAUDE_ / IS_SANDBOX vars make spawned agent sessions
+ * auto-trust tool calls and skip the canUseTool approval gate entirely.
+ */
+function sessionEnv(): Record<string, string> {
+  const clean: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue
+    if (/^(CLAUDECODE|CLAUDE_|IS_SANDBOX)/.test(key)) continue
+    clean[key] = value
+  }
+  return clean
+}
+
 function allowedToolsFor(version: AgentVersion): string[] {
   return version.tools
     .filter((t) => !version.capabilities.requiresApprovalFor.includes(t))
@@ -234,6 +292,16 @@ function disallowedToolsFor(version: AgentVersion): string[] {
 }
 
 type GateOutcome = 'allowed' | 'forbidden' | 'denied_by_admin'
+
+function permissionHookOutput(decision: 'allow' | 'deny', reason: string) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse' as const,
+      permissionDecision: decision,
+      permissionDecisionReason: reason
+    }
+  }
+}
 
 /**
  * GUARDRAIL choke point: the SDK consults this for tool calls not already
