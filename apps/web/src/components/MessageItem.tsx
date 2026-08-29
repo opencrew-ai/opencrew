@@ -5,6 +5,7 @@ import type { Message } from '@opencrew/shared'
 import { ApprovalCard } from './ApprovalCard'
 import { InlineThread } from './InlineThread'
 import { ThreadRefCard } from './ThreadRefCard'
+import { ImageLightbox } from './ImageLightbox'
 
 const MD_PLUGINS = [remarkGfm]
 
@@ -25,6 +26,7 @@ function formatTime(ts: number): string {
 
 export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps) {
   const [threadOpen, setThreadOpen] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   if (message.authorType === 'system') {
     return (
@@ -95,19 +97,40 @@ export function MessageItem({ message, channelId, onOpenRun }: MessageItemProps)
         </div>
       )}
 
-      {/* Attached images */}
+      {/* Attached images — click opens lightbox */}
       {message.images && message.images.length > 0 && (
         <div className="ml-7 mt-1.5 flex flex-wrap gap-2">
           {message.images.map((src, i) => (
-            <a key={i} href={src} target="_blank" rel="noopener noreferrer">
+            <button
+              key={i}
+              type="button"
+              onClick={() => setLightboxSrc(src)}
+              className="group/img relative overflow-hidden rounded-md border border-zinc-700 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label={`View attachment ${i + 1}`}
+            >
               <img
                 src={src}
                 alt={`attachment ${i + 1}`}
-                className="max-h-60 max-w-xs cursor-zoom-in rounded-md border border-zinc-700 object-cover transition-opacity hover:opacity-90"
+                className="max-h-60 max-w-xs cursor-zoom-in object-cover"
               />
-            </a>
+              {/* Zoom hint overlay */}
+              <span className="absolute inset-0 flex items-end justify-end bg-black/0 p-1.5 opacity-0 transition-all group-hover/img:bg-black/20 group-hover/img:opacity-100">
+                <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                  click to expand
+                </span>
+              </span>
+            </button>
           ))}
         </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <ImageLightbox
+          src={lightboxSrc}
+          alt="Attachment"
+          onClose={() => setLightboxSrc(null)}
+        />
       )}
 
       {/* Thread actions — only shown when channelId is provided */}

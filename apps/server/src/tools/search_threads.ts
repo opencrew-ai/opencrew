@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ilike, isNull, or, desc } from 'drizzle-orm'
+import { and, desc, eq, ilike, isNull } from 'drizzle-orm'
 import { registerOpenCrewTool } from './registry'
 import { messages, channels } from '../db/schema'
 import { enrichMessage } from '../services/messages'
@@ -8,9 +8,9 @@ registerOpenCrewTool({
   name: 'search_threads',
   description:
     'Search past conversations across all channels by keyword. Returns thread summaries ' +
-    '(channel, date, trigger message, reply count, snippet). Use this when a user asks about ' +
+    '(channel, date, author, snippet, reply count). Use this when a user asks about ' +
     'a previous decision, discussion, or topic — find the thread, then use cite_thread to ' +
-    'surface it inline.',
+    'surface it inline in the current conversation.',
   inputShape: {
     query: z.string().min(2).max(200).describe('Keyword or phrase to search for'),
     limit: z
@@ -26,21 +26,14 @@ registerOpenCrewTool({
     const db = ctx.app.db
     const pattern = `%${query}%`
 
-    // Search top-level messages (thread roots) whose content matches.
-    const rows = await db
+    // Directly search thread roots (threadRootId IS NULL) whose content matches.
+    // Using `and` so the DB does the filtering — no JS post-filter needed.
+    const matched = await db
       .select()
       .from(messages)
-      .where(
-        // threadRootId IS NULL means it's a root message; ilike matches content
-        isNull(messages.threadRootId)
-      )
+      .where(and(isNull(messages.threadRootId), ilike(messages.content, pattern)))
       .orderBy(desc(messages.createdAt))
-      .limit(limit * 10)
-
-    // Filter by actual content match (drizzle doesn't compose isNull + ilike cleanly here)
-    const matched = rows
-      .filter((m) => m.content.toLowerCase().includes(query.toLowerCase()))
-      .slice(0, limit)
+      .limit(limit)
 
     if (matched.length === 0) {
       return `No threads found matching "${query}".`
@@ -55,7 +48,7 @@ registerOpenCrewTool({
         const replies = await db
           .select({ id: messages.id })
           .from(messages)
-          .where(ilike(messages.threadRootId, root.id))
+          .where(eq(messages.threadRootId, root.id))
 
         return {
           threadRootId: root.id,
