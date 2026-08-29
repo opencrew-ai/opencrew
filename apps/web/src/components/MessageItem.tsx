@@ -81,19 +81,23 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
           ))}
         </div>
       )}
-      <div className="ml-7 mt-0.5 flex gap-3">
+      <div className="ml-7 mt-0.5 flex items-center gap-3">
+        {/* Reply count — always visible when > 0 */}
+        {onOpenThread && !!message.replyCount && (
+          <button
+            onClick={() => onOpenThread(message.threadRootId ?? message.id)}
+            className="text-xs font-medium text-sky-400 hover:underline"
+          >
+            {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
+          </button>
+        )}
+        {/* "reply in thread" — hover only */}
         {onOpenThread && (
           <button
             onClick={() => onOpenThread(message.threadRootId ?? message.id)}
-            className={`text-xs ${
-              message.replyCount
-                ? 'text-sky-400 hover:underline'
-                : 'invisible text-zinc-500 hover:underline group-hover:visible'
-            }`}
+            className="invisible text-xs text-zinc-500 transition-colors hover:text-zinc-300 group-hover:visible"
           >
-            {message.replyCount
-              ? `${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}`
-              : 'reply in thread'}
+            {message.replyCount ? 'open thread' : 'reply in thread'}
           </button>
         )}
       </div>

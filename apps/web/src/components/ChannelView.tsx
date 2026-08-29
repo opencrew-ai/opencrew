@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Channel } from '@opencrew/shared'
 import { useMessages } from '../lib/useMessages'
-import { MessageItem } from './MessageItem'
+import { ConversationGroup, groupIntoConversations } from './ConversationGroup'
 import { MessageInput } from './MessageInput'
 
 interface ChannelViewProps {
@@ -17,6 +17,8 @@ export function ChannelView({ channel, onOpenThread, onOpenRun }: ChannelViewPro
   useEffect(() => {
     bottomRef.current?.scrollIntoView()
   }, [messages])
+
+  const groups = groupIntoConversations(messages)
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -35,8 +37,13 @@ export function ChannelView({ channel, onOpenThread, onOpenRun }: ChannelViewPro
             </p>
           </div>
         )}
-        {messages.map((m) => (
-          <MessageItem key={m.id} message={m} onOpenThread={onOpenThread} onOpenRun={onOpenRun} />
+        {groups.map((group, i) => (
+          <ConversationGroup
+            key={group.trigger?.id ?? `group-${i}`}
+            group={group}
+            onOpenThread={onOpenThread}
+            onOpenRun={onOpenRun}
+          />
         ))}
         <div ref={bottomRef} />
       </div>
