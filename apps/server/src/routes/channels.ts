@@ -2,9 +2,10 @@ import type { FastifyInstance } from 'fastify'
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
+import { extractMentions } from '@opencrew/shared'
 import type { AppContext } from '../context'
-import { channels, messages } from '../db/schema'
-import { createMessage, enrichMessage } from '../services/messages'
+import { agents, channels, messages } from '../db/schema'
+import { createMessage, enrichMessage, postSystemMessage } from '../services/messages'
 import { postMessage } from '../services/post'
 import { reactionsFor } from './reactions'
 import { authGuard, memberGuard, fail, ok } from './helpers'
@@ -131,11 +132,29 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
         images: parsed.data.images?.length ? parsed.data.images : undefined
       }
 
-      // Guests can chat with humans but must not trigger agent runs.
-      const message =
-        req.user!.role === 'guest'
-          ? await createMessage(ctx, messageInput)
-          : await postMessage(ctx, messageInput)
+      // Agents execute on the OWNER's machine with the owner's Claude
+      // subscription — only admins may put them to work. Members and guests
+      // chat normally (createMessage skips mention + watcher triggers).
+      const canRunAgents = req.user!.role === 'admin'
+      const message = canRunAgents
+        ? await postMessage(ctx, messageInput)
+        : await createMessage(ctx, messageInput)
+
+      // A member who @mentions an agent deserves to know why nothing happened.
+      if (!canRunAgents && req.user!.role === 'member') {
+        const agentRows = await ctx.db.select({ name: agents.name }).from(agents)
+        const mentioned = extractMentions(parsed.data.content, agentRows.map((a) => a.name))
+        if (mentioned.length > 0) {
+          await postSystemMessage(
+            ctx,
+            channelId,
+            `Agents on this crew run on the owner's machine and only respond to admins. ` +
+              `Run your own crew free — it's open source: https://github.com/opencrew-ai/opencrew — ` +
+              `then link it to your profile at opencrew.run and your agents work for you anywhere.`,
+            { threadRootId: parsed.data.threadRootId ?? null }
+          )
+        }
+      }
 
       return ok(message)
     }
