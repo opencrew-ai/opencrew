@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'member'
+export type UserRole = 'admin' | 'member' | 'guest'
 export type AgentStatus = 'active' | 'paused'
 export type MemberType = 'human' | 'agent'
 export type AuthorType = 'human' | 'agent' | 'system'
@@ -105,6 +105,8 @@ export interface Message {
   /** Set when this system message is an approval card. */
   approvalId?: string
   runId?: string
+  /** Current status of the run linked to this message — kept live via WS run_status events. */
+  runStatus?: RunStatus
 }
 
 export type RunTriggerType = 'mention' | 'watch'

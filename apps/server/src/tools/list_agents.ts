@@ -11,7 +11,7 @@ registerOpenCrewTool({
     _: z.string().optional().describe('unused')
   },
   execute: async (_input, ctx) => {
-    const roster = listAgentsWithVersions(ctx.app.db).map((a) => ({
+    const roster = (await listAgentsWithVersions(ctx.app.db)).map((a) => ({
       name: a.name,
       emoji: a.avatarEmoji,
       status: a.status,

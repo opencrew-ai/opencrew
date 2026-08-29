@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import type { AuthorType, Message } from '@opencrew/shared'
-import { agents, channels, messages, users } from '../db/schema'
+import type { AuthorType, Message, RunStatus } from '@opencrew/shared'
+import { agents, channels, messages, runs, users } from '../db/schema'
 import type { DB } from '../db'
 import type { AppContext } from '../context'
 import { getVersion, getAgent } from './agents'
@@ -22,23 +22,30 @@ export interface CreateMessageInput {
 
 export class GuardrailViolation extends Error {}
 
-function resolveAuthor(db: DB, authorType: AuthorType, authorId: string | null) {
+async function resolveAuthor(db: DB, authorType: AuthorType, authorId: string | null) {
   if (authorType === 'human' && authorId) {
-    const user = db.select().from(users).where(eq(users.id, authorId)).get()
+    const [user] = await db.select().from(users).where(eq(users.id, authorId)).limit(1)
     return { name: user?.name ?? 'Unknown', emoji: '' }
   }
   if (authorType === 'agent' && authorId) {
-    const agent = getAgent(db, authorId)
+    const agent = await getAgent(db, authorId)
     return { name: agent?.name ?? 'Unknown agent', emoji: agent?.avatarEmoji ?? '🤖' }
   }
   return { name: 'OpenCrew', emoji: '⚙️' }
 }
 
-export function enrichMessage(db: DB, row: typeof messages.$inferSelect): Message {
-  const author = resolveAuthor(db, row.authorType, row.authorId)
-  let images: string[] | undefined
+export async function enrichMessage(
+  db: DB,
+  row: typeof messages.$inferSelect
+): Promise<Message> {
+  const author = await resolveAuthor(db, row.authorType, row.authorId)
+  let imgs: string[] | undefined
   if (row.images) {
-    try { images = JSON.parse(row.images) as string[] } catch { /* ignore */ }
+    try {
+      imgs = JSON.parse(row.images) as string[]
+    } catch {
+      /* ignore */
+    }
   }
   return {
     id: row.id,
@@ -47,12 +54,16 @@ export function enrichMessage(db: DB, row: typeof messages.$inferSelect): Messag
     authorType: row.authorType,
     authorId: row.authorId,
     content: row.content,
-    images: images?.length ? images : undefined,
+    images: imgs?.length ? imgs : undefined,
     createdAt: row.createdAt,
     authorName: author.name,
     authorEmoji: author.emoji,
     approvalId: row.approvalId ?? undefined,
-    runId: row.runId ?? undefined
+    runId: row.runId ?? undefined,
+    runStatus: row.runId
+      ? (db.select({ status: runs.status }).from(runs).where(eq(runs.id, row.runId)).get()
+          ?.status as RunStatus | undefined)
+      : undefined
   }
 }
 
@@ -61,28 +72,29 @@ export function enrichMessage(db: DB, row: typeof messages.$inferSelect): Messag
  * message into a channel outside its version's canPostInChannels is rejected
  * here, so no code path can bypass it.
  */
-export function createMessage(ctx: AppContext, input: CreateMessageInput): Message {
+export async function createMessage(
+  ctx: AppContext,
+  input: CreateMessageInput
+): Promise<Message> {
   const { db } = ctx
 
-  const channel = db
+  const [channel] = await db
     .select()
     .from(channels)
     .where(eq(channels.id, input.channelId))
-    .get()
+    .limit(1)
   if (!channel) throw new Error(`channel not found: ${input.channelId}`)
 
   if (input.authorType === 'agent') {
     if (!input.authorId || !input.agentVersionId) {
       throw new GuardrailViolation('agent posts must carry an agentVersionId')
     }
-    const version = getVersion(db, input.agentVersionId)
+    const version = await getVersion(db, input.agentVersionId)
     if (!version) throw new GuardrailViolation('unknown agent version')
     // '*' = explicitly granted all channels (e.g. an orchestrator agent).
     const allowed = version.capabilities.canPostInChannels
     if (!allowed.includes('*') && !allowed.includes(input.channelId)) {
-      throw new GuardrailViolation(
-        `agent is not allowed to post in #${channel.name}`
-      )
+      throw new GuardrailViolation(`agent is not allowed to post in #${channel.name}`)
     }
   }
 
@@ -98,31 +110,38 @@ export function createMessage(ctx: AppContext, input: CreateMessageInput): Messa
     runId: input.runId ?? null,
     createdAt: Date.now()
   }
-  db.insert(messages).values(row).run()
-  const message = enrichMessage(db, row)
+  await db.insert(messages).values(row)
+  const message = await enrichMessage(db, row)
   ctx.hub.broadcast({ type: 'message_created', message })
   return message
 }
 
 /** Replace a streaming placeholder's content and notify clients. */
-export function updateMessageContent(
+export async function updateMessageContent(
   ctx: AppContext,
   messageId: string,
   content: string
-): void {
-  ctx.db.update(messages).set({ content }).where(eq(messages.id, messageId)).run()
-  const row = ctx.db.select().from(messages).where(eq(messages.id, messageId)).get()
+): Promise<void> {
+  await ctx.db.update(messages).set({ content }).where(eq(messages.id, messageId))
+  const [row] = await ctx.db
+    .select()
+    .from(messages)
+    .where(eq(messages.id, messageId))
+    .limit(1)
   if (row) {
-    ctx.hub.broadcast({ type: 'message_updated', message: enrichMessage(ctx.db, row) })
+    ctx.hub.broadcast({
+      type: 'message_updated',
+      message: await enrichMessage(ctx.db, row)
+    })
   }
 }
 
-export function postSystemMessage(
+export async function postSystemMessage(
   ctx: AppContext,
   channelId: string,
   content: string,
   extra?: { threadRootId?: string | null; approvalId?: string; runId?: string }
-): Message {
+): Promise<Message> {
   return createMessage(ctx, {
     channelId,
     threadRootId: extra?.threadRootId ?? null,

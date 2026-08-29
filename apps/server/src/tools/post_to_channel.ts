@@ -15,7 +15,7 @@ registerOpenCrewTool({
   execute: async ({ channelId, content }, ctx) => {
     // postMessage → createMessage enforces canPostInChannels for agent
     // authors; a GuardrailViolation surfaces to the session as a tool error.
-    const message = postMessage(
+    const message = await postMessage(
       ctx.app,
       {
         channelId,

@@ -54,18 +54,18 @@ registerOpenCrewTool({
     if (unknown.length > 0) {
       throw new Error(`unknown tools: ${unknown.join(', ')} — use names from the catalog`)
     }
-    const existing = ctx.app.db
+    const [existing] = await ctx.app.db
       .select()
       .from(agents)
       .where(eq(agents.name, input.name))
-      .get()
+      .limit(1)
     if (existing) throw new Error(`agent "${input.name}" already exists`)
 
     const gated = (input.gatedTools ?? DEFAULT_GATED).filter((t) =>
       input.tools.includes(t)
     )
     const agentId = nanoid()
-    ctx.app.db
+    await ctx.app.db
       .insert(agents)
       .values({
         id: agentId,
@@ -76,8 +76,7 @@ registerOpenCrewTool({
         status: 'active',
         createdAt: Date.now()
       })
-      .run()
-    createVersion(
+    await createVersion(
       ctx.app.db,
       agentId,
       {
@@ -98,7 +97,7 @@ registerOpenCrewTool({
       `hired by agent via create_agent`
     )
 
-    const created = getAgentWithVersion(ctx.app.db, agentId)
+    const created = await getAgentWithVersion(ctx.app.db, agentId)
     if (created) ctx.app.hub.broadcast({ type: 'agent_updated', agent: created })
     recordStep(ctx.app, ctx.runId, 'post_message', {
       via: 'create_agent',

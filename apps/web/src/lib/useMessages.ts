@@ -56,6 +56,11 @@ export function useMessages(channelId: string | undefined, thread: string | null
         setMessages((prev) =>
           prev.map((x) => (x.id === event.messageId ? { ...x, content: event.content } : x))
         )
+      } else if (event.type === 'run_status') {
+        // Keep status pills live — update runStatus on any message tied to this run
+        setMessages((prev) =>
+          prev.map((x) => (x.runId === event.runId ? { ...x, runStatus: event.status } : x))
+        )
       }
     })
   }, [channelId, thread])
