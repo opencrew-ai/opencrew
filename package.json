@@ -7,9 +7,13 @@
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "seed": "pnpm --filter @opencrew/server run seed"
+    "seed": "pnpm --filter @opencrew/server run seed",
+    "tweet": "npx tsx tools/post-to-x.ts"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }
