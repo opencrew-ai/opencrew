@@ -73,32 +73,87 @@ h3 {
 
 /* ---------- markdown message content ---------- */
 
-.md-content :is(p, ul, ol, pre, blockquote) {
-  @apply my-1;
+.md-content :is(p, ul, ol, pre, blockquote, table, hr) {
+  @apply my-1.5;
 }
-.md-content ul {
-  @apply list-disc pl-5;
+.md-content p + p {
+  @apply mt-2;
 }
-.md-content ol {
-  @apply list-decimal pl-5;
+
+/* Inline emphasis */
+.md-content strong { @apply font-semibold text-zinc-100; }
+.md-content em     { @apply italic text-zinc-300; }
+.md-content del    { @apply line-through text-zinc-500; }
+
+/* Lists */
+.md-content ul { @apply list-disc pl-5 space-y-0.5; }
+.md-content ol { @apply list-decimal pl-5 space-y-0.5; }
+.md-content li > ul,
+.md-content li > ol { @apply mt-0.5 mb-0; }
+
+/* Task list (GFM) */
+.md-content input[type="checkbox"] {
+  @apply mr-1.5 accent-emerald-500;
 }
+
+/* Code */
 .md-content code {
   @apply rounded bg-zinc-800/90 px-1 py-0.5 font-mono text-[13px] text-amber-200;
 }
 .md-content pre {
-  @apply overflow-x-auto rounded-lg border border-zinc-800/70 bg-black/60 p-3 text-[13px];
+  @apply overflow-x-auto rounded-lg border border-zinc-800/70 bg-black/60 p-3 text-[13px] my-2;
 }
 .md-content pre code {
   @apply bg-transparent p-0 text-zinc-200;
 }
+
+/* Links */
 .md-content a {
   @apply text-sky-400 underline decoration-sky-800 underline-offset-2 hover:decoration-sky-400;
 }
+
+/* Blockquote */
 .md-content blockquote {
-  @apply border-l-2 border-emerald-800/70 pl-3 text-zinc-400;
+  @apply border-l-2 border-emerald-700/60 pl-3 text-zinc-400 italic my-2;
 }
-.md-content h1,
-.md-content h2,
+
+/* Horizontal rule */
+.md-content hr {
+  @apply border-zinc-800 my-3;
+}
+
+/* Headings — size hierarchy */
+.md-content h1 {
+  @apply mt-3 mb-1 text-lg font-bold text-zinc-100 leading-snug;
+}
+.md-content h2 {
+  @apply mt-3 mb-1 text-base font-bold text-zinc-100 leading-snug;
+}
 .md-content h3 {
-  @apply mt-2 font-semibold;
+  @apply mt-2 mb-0.5 text-sm font-bold text-zinc-200 leading-snug;
+}
+.md-content h4,
+.md-content h5,
+.md-content h6 {
+  @apply mt-2 mb-0.5 text-sm font-semibold text-zinc-300;
+}
+
+/* Tables (GFM — requires remark-gfm) */
+.md-content table {
+  @apply w-full border-collapse text-sm my-2;
+}
+.md-content thead {
+  @apply bg-zinc-800/60;
+}
+.md-content th {
+  @apply border border-zinc-700/60 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-zinc-400;
+}
+.md-content td {
+  @apply border border-zinc-800 px-3 py-1.5 text-zinc-300;
+}
+.md-content tbody tr:nth-child(even) {
+  @apply bg-zinc-900/40;
+}
+.md-content tbody tr:hover {
+  @apply bg-zinc-800/30;
 }

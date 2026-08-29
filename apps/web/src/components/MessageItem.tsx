@@ -1,6 +1,9 @@
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Message } from '@opencrew/shared'
 import { ApprovalCard } from './ApprovalCard'
+
+const MD_PLUGINS = [remarkGfm]
 
 interface MessageItemProps {
   message: Message
@@ -19,7 +22,7 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
         <div className="text-xs text-zinc-500">
           <span className="mr-2">{formatTime(message.createdAt)}</span>
           <span className="md-content inline-block align-middle text-zinc-400">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={MD_PLUGINS}>{message.content}</ReactMarkdown>
           </span>
         </div>
         {message.approvalId && <ApprovalCard approvalId={message.approvalId} />}
@@ -60,7 +63,7 @@ export function MessageItem({ message, onOpenThread, onOpenRun }: MessageItemPro
       </div>
       <div className="md-content ml-7 text-sm leading-relaxed text-zinc-200">
         {message.content ? (
-          <ReactMarkdown>{message.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={MD_PLUGINS}>{message.content}</ReactMarkdown>
         ) : (
           <span className="italic text-zinc-500">thinking…</span>
         )}
