@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { AppContext } from '../context'
 import { approvalRules, approvals, runs, runSteps } from '../db/schema'
 import { resolveApproval, toApproval } from '../services/approvals'
+import { broadcastPresence } from '../services/presence'
 import { adminGuard, authGuard, fail, ok } from './helpers'
 
 const RECENT_RUNS_LIMIT = 50
@@ -67,6 +69,74 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       return ok(rows.map(toRun))
     }
   )
+
+  // 🛑 Emergency stop: cancel queued runs, deny pending approvals, abort
+  // every live session. The red button.
+  app.post('/api/runs/stop-all', { preHandler: adminGuard(ctx) }, async (req) => {
+    // 1. Queued (never started): drop from the scheduler, mark cancelled.
+    ctx.queue.drainPending()
+    const queued = ctx.db
+      .select()
+      .from(runs)
+      .where(inArray(runs.status, ['queued']))
+      .all()
+    for (const run of queued) {
+      ctx.db
+        .update(runs)
+        .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
+        .where(eq(runs.id, run.id))
+        .run()
+      ctx.hub.broadcast({
+        type: 'run_status',
+        runId: run.id,
+        agentId: run.agentId,
+        status: 'cancelled'
+      })
+    }
+
+    // 2. Pending approvals: deny — resolving wakes blocked sessions, which
+    // then cancel themselves cleanly (full audit trail kept).
+    const pendingApprovals = ctx.db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.status, 'pending'))
+      .all()
+    for (const approval of pendingApprovals) {
+      try {
+        resolveApproval(ctx, approval.id, 'denied', req.user!.id)
+      } catch {
+        // Already resolved in a race — fine.
+      }
+    }
+
+    // 3. Live sessions: pre-mark cancelled (suppresses failure spam), then abort.
+    let aborted = 0
+    for (const [runId, controller] of ctx.activeRuns) {
+      const run = ctx.db.select().from(runs).where(eq(runs.id, runId)).get()
+      if (run && ['running', 'awaiting_approval'].includes(run.status)) {
+        ctx.db
+          .update(runs)
+          .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
+          .where(eq(runs.id, runId))
+          .run()
+        ctx.hub.broadcast({
+          type: 'run_status',
+          runId,
+          agentId: run.agentId,
+          status: 'cancelled'
+        })
+        controller.abort()
+        aborted++
+      }
+    }
+    broadcastPresence(ctx)
+
+    return ok({
+      cancelledQueued: queued.length,
+      deniedApprovals: pendingApprovals.length,
+      abortedRuns: aborted
+    })
+  })
 
   app.get(
     '/api/approvals/:approvalId',

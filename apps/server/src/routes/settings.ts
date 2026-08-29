@@ -4,8 +4,9 @@ import type { AppContext } from '../context'
 import { getSettings, setSetting } from '../services/settings'
 import { adminGuard, authGuard, fail, ok } from './helpers'
 
+// No upper bound — the user decides; per-agent maxRunsPerHour is the loop guard.
 const updateSchema = z.object({
-  maxMentionDepth: z.number().int().min(1).max(20).optional()
+  maxMentionDepth: z.number().int().min(1).optional()
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): void {

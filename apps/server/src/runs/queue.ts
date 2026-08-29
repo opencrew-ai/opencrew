@@ -30,6 +30,13 @@ export class RunQueue {
     return new Set(this.active.values())
   }
 
+  /** Emergency stop: drop everything not yet started; returns the run ids. */
+  drainPending(): string[] {
+    const drained = [...this.pending]
+    this.pending = []
+    return drained
+  }
+
   private pump(): void {
     while (this.active.size < CONCURRENCY && this.pending.length > 0) {
       const runId = this.pending.shift()
