@@ -21,6 +21,8 @@ export function AgentDetailPage() {
   const [diffTo, setDiffTo] = useState<string>('')
   const [diff, setDiff] = useState<VersionDiff | null>(null)
   const [openRunId, setOpenRunId] = useState<string | null>(null)
+  const [browserUrl, setBrowserUrl] = useState('https://x.com')
+  const [browserStatus, setBrowserStatus] = useState<string | null>(null)
   const isAdmin = me.role === 'admin'
 
   const reload = useCallback(async () => {
@@ -65,6 +67,18 @@ export function AgentDetailPage() {
       status: agent.status === 'active' ? 'paused' : 'active'
     })
     await reload()
+  }
+
+  const openAgentBrowser = async () => {
+    setBrowserStatus(null)
+    try {
+      await api.post(`/api/agents/${agent!.id}/browser`, { url: browserUrl })
+      setBrowserStatus(
+        '✅ Window opened on this machine. Log in, then close it before the agent runs — Chrome locks the profile.'
+      )
+    } catch (err) {
+      setBrowserStatus(`❌ ${err instanceof Error ? err.message : 'failed'}`)
+    }
   }
 
   const rollback = async (version: AgentVersion) => {
@@ -117,6 +131,37 @@ export function AgentDetailPage() {
 
         {tab === 'config' && (
           <div className="mt-6">
+            {agent.currentVersion.tools.includes('Browser') && (
+              <div className="mb-6 max-w-2xl rounded-lg border border-sky-900/60 bg-sky-950/20 p-4">
+                <h3 className="flex items-center gap-2 font-semibold">
+                  🌐 Agent browser
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-zinc-400">
+                    persistent profile
+                  </span>
+                </h3>
+                <p className="mt-1 text-sm text-zinc-400">
+                  This agent drives its own Chrome profile. Open it here to log into sites
+                  (X, Gmail, …) on the agent&apos;s behalf — the login sticks for every
+                  future run. The agent is instructed to never touch login forms itself.
+                </p>
+                {isAdmin && (
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      className="input flex-1"
+                      value={browserUrl}
+                      onChange={(e) => setBrowserUrl(e.target.value)}
+                      placeholder="https://x.com"
+                    />
+                    <button className="btn-primary shrink-0" onClick={() => void openAgentBrowser()}>
+                      Open agent&apos;s browser
+                    </button>
+                  </div>
+                )}
+                {browserStatus && (
+                  <p className="mt-2 text-sm text-zinc-300">{browserStatus}</p>
+                )}
+              </div>
+            )}
             {isAdmin ? (
               <>
                 <p className="mb-4 text-sm text-zinc-500">
