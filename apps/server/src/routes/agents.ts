@@ -54,23 +54,30 @@ const openBrowserSchema = z.object({
   url: z.string().url().startsWith('http').default('https://x.com')
 })
 
+// CRITICAL: Playwright launches Chrome with --use-mock-keychain (macOS) /
+// --password-store=basic (Linux), so agent-run cookies are encrypted with a
+// mock key, not the OS keychain. The login window must use the SAME flags —
+// otherwise the login it writes is undecryptable for agent runs.
+const COOKIE_COMPAT_FLAGS = ['--use-mock-keychain', '--password-store=basic', '--no-first-run']
+
 function launchProfileBrowser(profileDir: string, url: string): void {
   const dataDirArg = `--user-data-dir=${profileDir}`
   if (process.platform === 'darwin') {
-    spawn('open', ['-na', 'Google Chrome', '--args', dataDirArg, url], {
-      detached: true,
-      stdio: 'ignore'
-    }).unref()
+    spawn(
+      'open',
+      ['-na', 'Google Chrome', '--args', dataDirArg, ...COOKIE_COMPAT_FLAGS, url],
+      { detached: true, stdio: 'ignore' }
+    ).unref()
     return
   }
   // Linux: try common Chrome binaries in order.
   const candidates = ['google-chrome', 'chromium', 'chromium-browser']
-  const child = spawn(candidates[0]!, [dataDirArg, url], {
+  const child = spawn(candidates[0]!, [dataDirArg, ...COOKIE_COMPAT_FLAGS, url], {
     detached: true,
     stdio: 'ignore'
   })
   child.on('error', () => {
-    const fallback = spawn(candidates[1]!, [dataDirArg, url], {
+    const fallback = spawn(candidates[1]!, [dataDirArg, ...COOKIE_COMPAT_FLAGS, url], {
       detached: true,
       stdio: 'ignore'
     })
