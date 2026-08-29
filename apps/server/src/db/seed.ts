@@ -70,7 +70,7 @@ export function seedIfEmpty(db: DB): boolean {
       tools: ['WebFetch', 'WebSearch', 'post_to_channel'],
       capabilities: {
         canPostInChannels: [generalId, buildsId],
-        maxRunsPerHour: 30,
+        maxRunsPerHour: 1000,
         requiresApprovalFor: []
       }
     },
@@ -102,7 +102,7 @@ export function seedIfEmpty(db: DB): boolean {
       tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'post_to_channel'],
       capabilities: {
         canPostInChannels: [generalId, buildsId],
-        maxRunsPerHour: 20,
+        maxRunsPerHour: 1000,
         // Demo of the approval gate: every shell command run pauses for an admin.
         requiresApprovalFor: ['Bash']
       }
@@ -147,7 +147,7 @@ export function seedIfEmpty(db: DB): boolean {
       tools: ['list_agents', 'create_agent', 'post_to_channel'],
       capabilities: {
         canPostInChannels: ['*'],
-        maxRunsPerHour: 60,
+        maxRunsPerHour: 1000,
         // Hiring a new agent raises an approval card.
         requiresApprovalFor: ['create_agent'],
         watchesChannels: ['*'],

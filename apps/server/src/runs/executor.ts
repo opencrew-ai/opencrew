@@ -222,7 +222,7 @@ async function runSessionAttempt(
   const promptBuiltAt = Date.now()
   const cwd = resolveWorkingDir(runEnv)
   if (runEnv.version.tools.includes(BROWSER_TOOL)) {
-    await prepareBrowserProfile(join(env.workspacesDir, runEnv.agentId, '.browser-profile'))
+    await prepareBrowserProfile(browserProfileDir(runEnv))
   }
 
   const transcript = session
@@ -461,13 +461,24 @@ function chromeExecutablePath(): string | null {
   return CHROME_PATHS.find((p) => existsSync(p)) ?? null
 }
 
+/**
+ * Resolves the Chrome profile directory for a run.
+ * When useSharedBrowserProfile is true the agent uses the workspace-level
+ * _shared profile (Anup logs in once; every shared-profile agent reuses it).
+ * Otherwise the agent gets its own isolated profile (default / existing behaviour).
+ */
+function browserProfileDir(runEnv: RunEnv): string {
+  if (runEnv.version.capabilities.useSharedBrowserProfile) {
+    return join(env.workspacesDir, '_shared', '.browser-profile')
+  }
+  return join(env.workspacesDir, runEnv.agentId, '.browser-profile')
+}
+
 function browserMcpServer(
   runEnv: RunEnv
 ): Record<string, { command: string; args: string[] }> {
   if (!runEnv.version.tools.includes(BROWSER_TOOL)) return {}
-  // The browser profile always lives in the agent workspace, even when the
-  // session itself runs in a configured project directory.
-  const profileDir = join(env.workspacesDir, runEnv.agentId, '.browser-profile')
+  const profileDir = browserProfileDir(runEnv)
   mkdirSync(profileDir, { recursive: true })
   const chrome = chromeExecutablePath()
   const browserArgs = chrome

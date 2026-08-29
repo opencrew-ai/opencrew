@@ -42,6 +42,13 @@ export interface AgentCapabilities {
    * build there. Empty/unset = the agent's private workspace directory.
    */
   workingDir?: string
+  /**
+   * When true, the agent's Playwright MCP server uses the workspace-level
+   * _shared/.browser-profile instead of the agent's own profile. Anup logs
+   * in once (X, Gmail, LinkedIn…) and every agent with this flag set can
+   * reuse those sessions immediately — no per-agent login required.
+   */
+  useSharedBrowserProfile?: boolean
 }
 
 export interface AgentVersionConfig {

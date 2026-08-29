@@ -88,7 +88,7 @@ registerOpenCrewTool({
         capabilities: {
           // New hires may speak everywhere; tighten by editing the version.
           canPostInChannels: ['*'],
-          maxRunsPerHour: 20,
+          maxRunsPerHour: 1000,
           requiresApprovalFor: gated,
           watchesChannels: input.watchesChannels ?? [],
           workingDir: input.workingDir ?? ''

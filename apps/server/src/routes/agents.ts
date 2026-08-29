@@ -28,7 +28,8 @@ const capabilitiesSchema = z.object({
     .string()
     .max(500)
     .refine((p) => p === '' || p.startsWith('/'), 'must be an absolute path')
-    .default('')
+    .default(''),
+  useSharedBrowserProfile: z.boolean().optional()
 })
 
 const configSchema = z.object({
