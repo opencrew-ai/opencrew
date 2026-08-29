@@ -35,5 +35,10 @@ export const env = {
   dbPath: process.env.OPENCREW_DB ?? resolve(process.cwd(), '../../data/opencrew.sqlite'),
   /** Each agent gets its own working directory for its Claude Code sessions. */
   workspacesDir:
-    process.env.OPENCREW_WORKSPACES ?? resolve(process.cwd(), '../../data/workspaces')
+    process.env.OPENCREW_WORKSPACES ?? resolve(process.cwd(), '../../data/workspaces'),
+  /**
+   * Agent→agent mention chains stop at this depth (loop protection; rate
+   * limits are the second line of defense). Raise for chattier crews.
+   */
+  maxMentionDepth: Number(process.env.OPENCREW_MAX_MENTION_DEPTH ?? 4)
 }

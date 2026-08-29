@@ -5,10 +5,12 @@ import type { AppContext } from '../context'
 import { agents, runs } from '../db/schema'
 import { getAgentWithVersion, toAgent } from '../services/agents'
 import { postSystemMessage } from '../services/messages'
+import { env } from '../env'
 
 // Agent→agent chains make the crew feel alive; the cap plus maxRunsPerHour
-// keeps them from spiraling into infinite loops.
-const MAX_MENTION_DEPTH = 4
+// keeps them from spiraling into infinite loops. Configurable via
+// OPENCREW_MAX_MENTION_DEPTH in .env.
+const MAX_MENTION_DEPTH = env.maxMentionDepth
 
 const HOUR_MS = 60 * 60 * 1000
 
