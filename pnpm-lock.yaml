@@ -65,13 +65,16 @@ importers:
         version: 11.10.0
       drizzle-orm:
         specifier: ^0.36.4
-        version: 0.36.4(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)
+        version: 0.36.4(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(postgres@3.4.9)
       fastify:
         specifier: ^5.1.0
         version: 5.12.1
       nanoid:
         specifier: ^5.0.9
         version: 5.1.16
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       ws:
         specifier: ^8.21.3
         version: 8.21.3
@@ -79,6 +82,9 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
@@ -1356,6 +1362,9 @@ packages:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
     dev: true
+
+  /@electric-sql/pglite@0.5.8:
+    resolution: {integrity: sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q==}
 
   /@esbuild/aix-ppc64@0.21.5:
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -3428,7 +3437,7 @@ packages:
     resolution: {integrity: sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==}
     dev: false
 
-  /drizzle-orm@0.36.4(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0):
+  /drizzle-orm@0.36.4(@electric-sql/pglite@0.5.8)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(postgres@3.4.9):
     resolution: {integrity: sha512-1OZY3PXD7BR00Gl61UUOFihslDldfH4NFRH2MbP54Yxi0G/PKn4HfO65JYZ7c16DeP3SpM3Aw+VXVG9j6CRSXA==}
     peerDependencies:
       '@aws-sdk/client-rds-data': '>=3'
@@ -3520,8 +3529,10 @@ packages:
       sqlite3:
         optional: true
     dependencies:
+      '@electric-sql/pglite': 0.5.8
       '@types/better-sqlite3': 7.6.13
       better-sqlite3: 11.10.0
+      postgres: 3.4.9
     dev: false
 
   /dunder-proto@1.0.1:
@@ -5627,6 +5638,11 @@ packages:
       picocolors: 1.1.1
       source-map-js: 1.2.1
     dev: true
+
+  /postgres@3.4.9:
+    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
+    engines: {node: '>=12'}
+    dev: false
 
   /prebuild-install@7.1.3:
     resolution: {integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==}

@@ -128,6 +128,13 @@ export interface Message {
   refThreadId?: string
   /** Channel the cited thread lives in (required when refThreadId is set). */
   refChannelId?: string
+  /**
+   * For agent/system messages produced by a run: the HUMAN message that
+   * ultimately triggered it (walking up agent→agent chains). Lets the feed
+   * group responses under the conversation they belong to, not whichever
+   * human message happens to be newest when they arrive.
+   */
+  conversationRootId?: string
 }
 
 export type RunTriggerType = 'mention' | 'watch'

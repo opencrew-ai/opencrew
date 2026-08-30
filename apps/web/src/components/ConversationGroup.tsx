@@ -103,6 +103,7 @@ export interface MessageGroup {
 
 export function groupIntoConversations(messages: Message[]): MessageGroup[] {
   const groups: MessageGroup[] = []
+  const byRoot = new Map<string, MessageGroup>()
   let current: MessageGroup | null = null
 
   for (const msg of messages) {
@@ -110,14 +111,30 @@ export function groupIntoConversations(messages: Message[]): MessageGroup[] {
       // Each human message starts a fresh conversation
       current = { trigger: msg, responses: [] }
       groups.push(current)
-    } else {
+      byRoot.set(msg.id, current)
+      continue
+    }
+
+    // A run-produced message belongs to the conversation of the human message
+    // that triggered its run — NOT to whichever human message is newest when
+    // it arrives. Position is only a fallback for messages with no run link.
+    let home = msg.conversationRootId ? byRoot.get(msg.conversationRootId) : undefined
+    if (!home && msg.conversationRootId) {
+      // Root is older than the loaded page — give the run its own group
+      // rather than misfiling it under an unrelated conversation.
+      home = { trigger: null, responses: [] }
+      byRoot.set(msg.conversationRootId, home)
+      groups.push(home)
+    }
+    if (!home) {
       if (!current) {
         // Edge case: agent or system message before any human message
         current = { trigger: null, responses: [] }
         groups.push(current)
       }
-      current.responses.push(msg)
+      home = current
     }
+    home.responses.push(msg)
   }
 
   return groups

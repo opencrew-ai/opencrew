@@ -25,6 +25,7 @@ import {
   createMessage,
   enrichMessage,
   postSystemMessage,
+  resolveConversationRoot,
   updateMessageContent
 } from '../services/messages'
 import { enqueueMentionRuns } from './enqueue'
@@ -142,13 +143,23 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     return
   }
 
+  // Captain-orchestration model: ALL run output — the reply, approval
+  // prompts, failure notices — lands in the thread rooted at the
+  // conversation's human message. The channel stays a clean feed of asks;
+  // the work (including agent→agent delegation) happens in the thread.
+  const conversationRoot =
+    trigger.threadRootId ??
+    (trigger.authorType === 'human'
+      ? trigger.id
+      : ((await resolveConversationRoot(ctx.db, trigger)) ?? trigger.id))
+
   const runEnv: RunEnv = {
     runId,
     agentId: agent.id,
     agentName: agent.name,
     version,
     channel: { ...channelRow, isPrivate: channelRow.isPrivate },
-    threadRootId: trigger.threadRootId,
+    threadRootId: conversationRoot,
     depth: run.depth,
     triggerType: run.triggerType
   }

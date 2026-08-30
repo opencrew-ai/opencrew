@@ -3,7 +3,7 @@ import type { ApiResponse } from '@opencrew/shared'
 import type { users } from '../db/schema'
 import type { AppContext } from '../context'
 import { getSessionUser, SESSION_COOKIE } from '../auth/sessions'
-import { resolveRelayUser, verifyRelayIdentity } from '../services/cloudlink'
+import { verifyRelayIdentity, resolveRelayUser } from '../services/cloudlink'
 
 export type UserRow = typeof users.$inferSelect
 
@@ -21,11 +21,14 @@ export function fail(error: string): ApiResponse<never> {
   return { success: false, error }
 }
 
-export function currentUser(ctx: AppContext, req: FastifyRequest): UserRow | null {
+export async function currentUser(
+  ctx: AppContext,
+  req: FastifyRequest
+): Promise<UserRow | null> {
   // Cloud Link: requests forwarded by the opencrew.run relay carry a signed
   // identity header instead of a cookie. Verification requires the link
   // secret, so nothing outside the relay can mint one.
-  const identity = verifyRelayIdentity(ctx, req.headers)
+  const identity = await verifyRelayIdentity(ctx, req.headers)
   if (identity) return resolveRelayUser(ctx, identity)
 
   const cookies = (req as FastifyRequest & { cookies: Record<string, string> }).cookies
@@ -34,7 +37,7 @@ export function currentUser(ctx: AppContext, req: FastifyRequest): UserRow | nul
 
 export function authGuard(ctx: AppContext) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = currentUser(ctx, req)
+    const user = await currentUser(ctx, req)
     if (!user) {
       return reply.code(401).send(fail('unauthorized'))
     }
@@ -44,12 +47,26 @@ export function authGuard(ctx: AppContext) {
 
 export function adminGuard(ctx: AppContext) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = currentUser(ctx, req)
+    const user = await currentUser(ctx, req)
     if (!user) {
       return reply.code(401).send(fail('unauthorized'))
     }
     if (user.role !== 'admin') {
       return reply.code(403).send(fail('admin only'))
+    }
+    req.user = user
+  }
+}
+
+/** Allows admin and member; blocks guests (403). */
+export function memberGuard(ctx: AppContext) {
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    const user = await currentUser(ctx, req)
+    if (!user) {
+      return reply.code(401).send(fail('unauthorized'))
+    }
+    if (user.role === 'guest') {
+      return reply.code(403).send(fail('guests cannot perform this action'))
     }
     req.user = user
   }

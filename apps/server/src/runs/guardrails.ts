@@ -37,16 +37,16 @@ export function evaluateToolUse(version: AgentVersion, toolName: string): ToolUs
  * auto-approved: the approvals row and audit steps are still written, only
  * the human click is skipped. Revocable any time from the agent page.
  */
-export function findAutoApproveRule(
+export async function findAutoApproveRule(
   db: DB,
   agentId: string,
   toolName: string
-): { id: string; createdBy: string } | null {
-  const rule = db
+): Promise<{ id: string; createdBy: string } | null> {
+  const [rule] = await db
     .select()
     .from(approvalRules)
     .where(and(eq(approvalRules.agentId, agentId), eq(approvalRules.toolName, toolName)))
-    .get()
+    .limit(1)
   return rule ? { id: rule.id, createdBy: rule.createdBy } : null
 }
 
@@ -55,28 +55,26 @@ export function findAutoApproveRule(
  * when an APPROVED approvals row exists for this run + tool. Throws otherwise
  * — an in-memory "approved" signal alone is never trusted.
  */
-export function assertToolInvocationAllowed(
+export async function assertToolInvocationAllowed(
   db: DB,
   version: AgentVersion,
   runId: string,
   toolName: string,
   approvalId?: string
-): void {
+): Promise<void> {
   if (!version.tools.includes(toolName)) {
-    throw new ToolForbiddenError(
-      `tool "${toolName}" is not in this agent version's tool list`
-    )
+    throw new ToolForbiddenError(`tool "${toolName}" is not in this agent version's tool list`)
   }
   if (!isToolGated(version, toolName)) return
 
   if (!approvalId) {
     throw new ApprovalRequiredError(`tool "${toolName}" requires human approval`)
   }
-  const approval = db
+  const [approval] = await db
     .select()
     .from(approvals)
     .where(eq(approvals.id, approvalId))
-    .get()
+    .limit(1)
   if (
     !approval ||
     approval.runId !== runId ||

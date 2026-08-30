@@ -7,12 +7,12 @@ import { enqueueMentionRuns } from '../runs/enqueue'
  * High-level post: create the message, then trigger runs for any @agent
  * mentions. `depth` is 0 for human posts; agent posts pass their run depth + 1.
  */
-export function postMessage(
+export async function postMessage(
   ctx: AppContext,
   input: CreateMessageInput,
   depth = 0
-): Message {
-  const message = createMessage(ctx, input)
-  enqueueMentionRuns(ctx, message, depth)
+): Promise<Message> {
+  const message = await createMessage(ctx, input)
+  await enqueueMentionRuns(ctx, message, depth)
   return message
 }

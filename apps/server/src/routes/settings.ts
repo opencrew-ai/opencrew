@@ -4,22 +4,21 @@ import type { AppContext } from '../context'
 import { getSettings, setSetting } from '../services/settings'
 import { adminGuard, authGuard, fail, ok } from './helpers'
 
-// No upper bound — the user decides; per-agent maxRunsPerHour is the loop guard.
 const updateSchema = z.object({
   maxMentionDepth: z.number().int().min(1).optional()
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/settings', { preHandler: authGuard(ctx) }, async () => {
-    return ok(getSettings(ctx.db))
+    return ok(await getSettings(ctx.db))
   })
 
   app.post('/api/settings', { preHandler: adminGuard(ctx) }, async (req, reply) => {
     const parsed = updateSchema.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
     if (parsed.data.maxMentionDepth !== undefined) {
-      setSetting(ctx.db, 'maxMentionDepth', parsed.data.maxMentionDepth)
+      await setSetting(ctx.db, 'maxMentionDepth', parsed.data.maxMentionDepth)
     }
-    return ok(getSettings(ctx.db))
+    return ok(await getSettings(ctx.db))
   })
 }

@@ -8,7 +8,7 @@ const startSchema = z.object({ instanceName: z.string().min(1).max(60).default('
 
 export function registerCloudLinkRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/cloudlink/status', { preHandler: authGuard(ctx) }, async () => {
-    return ok(cloudStatus(ctx))
+    return ok(await cloudStatus(ctx))
   })
 
   app.post('/api/cloudlink/start', { preHandler: adminGuard(ctx) }, async (req, reply) => {
@@ -24,7 +24,7 @@ export function registerCloudLinkRoutes(app: FastifyInstance, ctx: AppContext): 
   })
 
   app.post('/api/cloudlink/unlink', { preHandler: adminGuard(ctx) }, async () => {
-    unlink(ctx)
+    await unlink(ctx)
     return ok(null)
   })
 }

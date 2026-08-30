@@ -9,6 +9,13 @@ import { getMaxMentionDepth } from '../services/settings'
 
 const HOUR_MS = 60 * 60 * 1000
 
+/** Thread every notice about a message into that message's conversation. */
+function conversationThreadOf(message: Message): string | null {
+  if (message.threadRootId) return message.threadRootId
+  if (message.conversationRootId) return message.conversationRootId
+  return message.authorType === 'human' ? message.id : null
+}
+
 async function runsInLastHour(ctx: AppContext, agentId: string): Promise<number> {
   const rows = await ctx.db
     .select()
@@ -70,7 +77,7 @@ export async function enqueueMentionRuns(
       ctx,
       message.channelId,
       `Mention chain depth limit (${maxDepth}) reached — not triggering further agents. Adjust it in Workspace settings.`,
-      { threadRootId: message.threadRootId }
+      { threadRootId: conversationThreadOf(message) }
     )
   } else {
     for (const name of mentioned) {
@@ -90,13 +97,24 @@ export async function enqueueMentionRuns(
   // (including the orchestrator) stay out of it. Visitors' mentions never
   // trigger directly, so their messages always reach the watchers.
   if (mentioned.length > 0 && !restricted) return
+
+  const watchers: { agentId: string; watchesAll: boolean }[] = []
   for (const agent of allAgents) {
     const full = await getAgentWithVersion(ctx.db, agent.id)
     const watched = full?.currentVersion.capabilities.watchesChannels ?? []
     // '*' = watches every channel (orchestrator pattern).
     if (full && (watched.includes('*') || watched.includes(message.channelId))) {
-      await enqueueRun(ctx, agent.id, message, 0, 'watch', restricted)
+      watchers.push({ agentId: agent.id, watchesAll: watched.includes('*') })
     }
+  }
+  // ONE front desk, not a pile-on: when an orchestrator ('*' watcher, i.e.
+  // Captain) exists, untargeted human messages go only to it — it delegates
+  // by @mentioning specialists. Channel-scoped watchers still respond in
+  // workspaces that have no orchestrator.
+  const orchestrators = watchers.filter((w) => w.watchesAll)
+  const responders = orchestrators.length > 0 ? orchestrators : watchers
+  for (const watcher of responders) {
+    await enqueueRun(ctx, watcher.agentId, message, 0, 'watch', restricted)
   }
 }
 
@@ -117,7 +135,7 @@ async function enqueueRun(
         ctx,
         triggerMessage.channelId,
         `${agent.avatarEmoji} **${agent.name}** is paused and won't respond.`,
-        { threadRootId: triggerMessage.threadRootId }
+        { threadRootId: conversationThreadOf(triggerMessage) }
       )
     }
     return
@@ -130,7 +148,7 @@ async function enqueueRun(
       ctx,
       triggerMessage.channelId,
       `⛔ **${agent.name}** hit its rate limit (${limit} runs/hour). Try again later.`,
-      { threadRootId: triggerMessage.threadRootId }
+      { threadRootId: conversationThreadOf(triggerMessage) }
     )
     return
   }

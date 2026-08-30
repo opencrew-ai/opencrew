@@ -37,6 +37,40 @@ async function resolveAuthor(db: DB, authorType: AuthorType, authorId: string | 
   return { name: 'OpenCrew', emoji: '⚙️' }
 }
 
+// Agent→agent mention chains are depth-capped well below this.
+const MAX_TRIGGER_CHAIN = 8
+
+/**
+ * Walk a run's trigger chain up to the HUMAN message that started the
+ * conversation. This is what lets the feed group an agent's reply under the
+ * conversation that actually triggered it — without it, a reply that lands
+ * after a newer human message gets visually filed under the wrong one.
+ */
+export async function resolveConversationRoot(
+  db: DB,
+  row: typeof messages.$inferSelect
+): Promise<string | undefined> {
+  if (row.authorType === 'human') return undefined
+  let runId = row.runId
+  for (let i = 0; i < MAX_TRIGGER_CHAIN && runId; i++) {
+    const [run] = await db
+      .select({ triggerMessageId: runs.triggerMessageId })
+      .from(runs)
+      .where(eq(runs.id, runId))
+      .limit(1)
+    if (!run) return undefined
+    const [trigger] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, run.triggerMessageId))
+      .limit(1)
+    if (!trigger) return undefined
+    if (trigger.authorType === 'human') return trigger.id
+    runId = trigger.runId
+  }
+  return undefined
+}
+
 export async function enrichMessage(
   db: DB,
   row: typeof messages.$inferSelect
@@ -71,7 +105,8 @@ export async function enrichMessage(
       : undefined,
     refThreadId: row.refThreadId ?? undefined,
     refChannelId: row.refChannelId ?? undefined,
-    manualStatus: row.manualStatus === 'done' ? 'done' : undefined
+    manualStatus: row.manualStatus === 'done' ? 'done' : undefined,
+    conversationRootId: await resolveConversationRoot(db, row)
   }
 }
 

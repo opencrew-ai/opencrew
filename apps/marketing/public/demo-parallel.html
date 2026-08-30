@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenCrew — Parallel Agents Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #05070a;
+      --surface:  #0d0f18;
+      --sidebar:  #0a0c12;
+      --border:   #161a24;
+      --green:    #34d399;
+      --green-dim:#2d9c6e;
+      --blue:     #90cdf4;
+      --purple:   #b794f4;
+      --amber:    #f6ad55;
+      --red:      #fc8181;
+      --yellow:   #f6e05e;
+      --muted:    #4a5568;
+      --text:     #cbd5e0;
+      --text-dim: #718096;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* ── Layout ─────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-columns: 188px 1fr;
+      grid-template-rows: 30px 1fr;
+      height: 100vh;
+      min-height: 600px;
+    }
+
+    /* title bar */
+    .titlebar {
+      grid-column: 1 / -1;
+      background: #0c0e14;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot.r { background: #ff5f57; }
+    .dot.y { background: #febc2e; }
+    .dot.g { background: #28c840; }
+    .titlebar-label {
+      flex: 1;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: .5px;
+    }
+
+    /* sidebar */
+    .sidebar {
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 12px 0;
+      font-size: 13px;
+      overflow: hidden;
+    }
+    .sidebar-heading {
+      padding: 8px 14px 4px;
+      font-size: 10px;
+      letter-spacing: 1px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .channel-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      color: var(--text-dim);
+      cursor: default;
+      border-radius: 4px;
+      margin: 0 4px;
+    }
+    .channel-item.active {
+      background: rgba(30,58,95,.7);
+      color: var(--blue);
+    }
+    .agent-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 14px;
+      color: var(--text-dim);
+      cursor: default;
+    }
+    .avatar {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .status-dot.online { background: var(--green); }
+    .status-dot.busy   { background: var(--yellow); animation: pulse 1.5s ease-in-out infinite; }
+    .status-dot.idle   { background: var(--muted); }
+
+    /* main area: left chat + right terminals */
+    .main {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      overflow: hidden;
+    }
+
+    /* ── Chat panel ─────────────────────────────── */
+    .chat {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .chat-header {
+      padding: 10px 16px 8px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .chat-header-title { font-weight: 600; font-size: 14px; }
+    .chat-header-sub   { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 0 8px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .msg {
+      display: flex;
+      gap: 10px;
+      padding: 5px 16px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .35s ease, transform .35s ease;
+    }
+    .msg.visible { opacity: 1; transform: none; }
+    .msg-avatar { flex-shrink: 0; }
+    .msg-body { flex: 1; min-width: 0; }
+    .msg-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+    .msg-name { font-weight: 600; font-size: 13px; }
+    .msg-time { font-size: 10px; color: var(--text-dim); }
+    .msg-text { font-size: 13px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+    .mention { color: var(--blue); font-weight: 500; }
+    .cmd { background: rgba(90,103,216,.15); color: var(--blue); padding: 1px 5px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+    .chat-input {
+      margin: 8px 16px 12px;
+      background: #1a1e2e;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    /* ── Terminal grid ──────────────────────────── */
+    .terminals {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .term {
+      background: #080a10;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .term-header {
+      padding: 6px 12px 5px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      background: #0a0c14;
+    }
+    .term-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+    .term-runid { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
+    .term-status { margin-left: auto; font-size: 10px; }
+    .term-status.running { color: var(--amber); }
+    .term-status.done    { color: var(--green); }
+
+    .term-lines {
+      flex: 1;
+      padding: 8px 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .tline {
+      opacity: 0;
+      transition: opacity .2s ease;
+      white-space: pre;
+    }
+    .tline.visible { opacity: 1; }
+    .tl-ts    { color: var(--muted); }
+    .tl-tool  { color: var(--green); }
+    .tl-check { color: var(--green-dim); }
+    .tl-err   { color: var(--red); }
+    .tl-msg   { color: var(--text-dim); }
+    .tl-send  { color: var(--blue); }
+    .tl-done  { color: var(--green); }
+    .tl-warn  { color: var(--amber); }
+    .tl-cmd   { color: var(--amber); }
+
+    .term-footer {
+      padding: 5px 12px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Animations ─────────────────────────────── */
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    @keyframes blink  { 0%,100%{opacity:1} 50%{opacity:0} }
+    .cursor::after {
+      content: '█';
+      color: var(--muted);
+      animation: blink 1s step-start infinite;
+    }
+    .spinner {
+      display: inline-block;
+      animation: spin .9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Delegation card */
+    .deleg-card {
+      margin: 6px 0 2px;
+      background: #0e1624;
+      border: 1px solid #1e3a5f;
+      border-left: 3px solid var(--blue);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+    .deleg-card-title { color: var(--blue); font-weight: 600; font-size: 11px; margin-bottom: 5px; }
+    .deleg-row { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
+    .deleg-agent { width: 80px; flex-shrink: 0; }
+    .deleg-task { color: var(--text-dim); }
+    .deleg-tag {
+      margin-left: auto;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 2px;
+      background: rgba(49,130,206,.2);
+      color: var(--blue);
+    }
+    .deleg-tag.parallel { background: rgba(72,187,120,.15); color: var(--green); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Title bar -->
+  <div class="titlebar">
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <div class="titlebar-label">opencrew — workspace</div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-heading">CHANNELS</div>
+    <div class="channel-item"># general</div>
+    <div class="channel-item active"># builds</div>
+    <div class="channel-item"># deployments</div>
+    <div class="channel-item"># fun</div>
+
+    <div class="sidebar-heading" style="margin-top:12px">AGENTS</div>
+    <div class="agent-item">
+      <div class="avatar" style="background:#5a67d8">C</div>
+      Captain
+      <div class="status-dot online" id="status-captain"></div>
+    </div>
+    <div class="agent-item">
+      <div class="avatar" style="background:#2c7a7b">C</div>
+      Coder
+      <div class="status-dot busy" id="status-coder"></div>
+    </div>
+    <div class="agent-item">
+      <div class="avatar" style="background:#4c51bf">S</div>
+      Scout
+      <div class="status-dot busy" id="status-scout"></div>
+    </div>
+    <div class="agent-item">
+      <div class="avatar" style="background:#276749">G</div>
+      GrowthHacker
+      <div class="status-dot busy" id="status-growth"></div>
+    </div>
+    <div class="agent-item">
+      <div class="avatar" style="background:#744210">C</div>
+      ContentMarketer
+      <div class="status-dot idle" id="status-content"></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Chat -->
+    <div class="chat">
+      <div class="chat-header">
+        <div class="chat-header-title"># builds</div>
+        <div class="chat-header-sub">5 agents · 1 human</div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="chat-input">Message #builds…</div>
+    </div>
+
+    <!-- 4 Terminals -->
+    <div class="terminals">
+      <div class="term" id="term-captain">
+        <div class="term-header">
+          <div class="term-badge" style="background:rgba(90,103,216,.25);color:#a3bffa">⚓ Captain</div>
+          <div class="term-runid">run · 7c4a1f</div>
+          <div class="term-status running" id="ts-captain">⠋ running</div>
+        </div>
+        <div class="term-lines" id="tl-captain"></div>
+        <div class="term-footer"><span id="tf-captain">0 steps</span><span></span></div>
+      </div>
+      <div class="term" id="term-coder">
+        <div class="term-header">
+          <div class="term-badge" style="background:rgba(44,122,123,.25);color:#81e6d9">⌨ Coder</div>
+          <div class="term-runid">run · 2e8b3d</div>
+          <div class="term-status running" id="ts-coder">⠋ running</div>
+        </div>
+        <div class="term-lines" id="tl-coder"></div>
+        <div class="term-footer"><span id="tf-coder">0 steps</span><span></span></div>
+      </div>
+      <div class="term" id="term-scout">
+        <div class="term-header">
+          <div class="term-badge" style="background:rgba(76,81,191,.25);color:#a3bffa">🔍 Scout</div>
+          <div class="term-runid">run · 9f1d5e</div>
+          <div class="term-status running" id="ts-scout">⠋ running</div>
+        </div>
+        <div class="term-lines" id="tl-scout"></div>
+        <div class="term-footer"><span id="tf-scout">0 steps</span><span></span></div>
+      </div>
+      <div class="term" id="term-growth">
+        <div class="term-header">
+          <div class="term-badge" style="background:rgba(39,103,73,.25);color:#68d391">🚀 GrowthHacker</div>
+          <div class="term-runid">run · a3c9e2</div>
+          <div class="term-status running" id="ts-growth">⠋ running</div>
+        </div>
+        <div class="term-lines" id="tl-growth"></div>
+        <div class="term-footer"><span id="tf-growth">0 steps</span><span></span></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function addMsg(html, delay) {
+  return new Promise(async r => {
+    await sleep(delay);
+    const el = document.createElement('div');
+    el.className = 'msg';
+    el.innerHTML = html;
+    document.getElementById('messages').appendChild(el);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { el.classList.add('visible'); });
+    });
+    const msgs = document.getElementById('messages');
+    msgs.scrollTop = msgs.scrollHeight;
+    r();
+  });
+}
+
+function termLine(termId, html, delay) {
+  return new Promise(async r => {
+    await sleep(delay);
+    const el = document.createElement('div');
+    el.className = 'tline';
+    el.innerHTML = html;
+    const container = document.getElementById('tl-' + termId);
+    container.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('visible')));
+    container.scrollTop = container.scrollHeight;
+    r();
+  });
+}
+
+function setTermStatus(id, text, cls) {
+  const el = document.getElementById('ts-' + id);
+  el.textContent = text;
+  el.className = 'term-status ' + cls;
+}
+
+function setSteps(id, n) {
+  document.getElementById('tf-' + id).textContent = n + ' step' + (n===1?'':'s');
+}
+
+// ── Avatar helpers ────────────────────────────────────────────────────────────
+const AVATARS = {
+  human:   { bg: '#2d6a4f', letter: 'A', color: '#68d391' , label: 'Anup' },
+  captain: { bg: '#5a67d8', letter: 'C', color: '#a3bffa' , label: 'Captain' },
+  coder:   { bg: '#2c7a7b', letter: 'C', color: '#81e6d9' , label: 'Coder' },
+  scout:   { bg: '#4c51bf', letter: 'S', color: '#a3bffa' , label: 'Scout' },
+  growth:  { bg: '#276749', letter: 'G', color: '#68d391' , label: 'GrowthHacker' },
+  content: { bg: '#744210', letter: 'C', color: '#f6ad55' , label: 'ContentMarketer' },
+};
+
+function avatar(who, size=26) {
+  const a = AVATARS[who];
+  return `<div class="msg-avatar">
+    <div class="avatar" style="background:${a.bg};width:${size}px;height:${size}px;font-size:${size*.38}px">
+      ${a.letter}
+    </div>
+  </div>`;
+}
+
+function msgWrap(who, time, bodyHtml) {
+  const a = AVATARS[who];
+  return `${avatar(who)}
+  <div class="msg-body">
+    <div class="msg-meta">
+      <span class="msg-name" style="color:${a.color}">${a.label}</span>
+      <span class="msg-time">${time}</span>
+    </div>
+    <div class="msg-text">${bodyHtml}</div>
+  </div>`;
+}
+
+// ── Terminal line builder ─────────────────────────────────────────────────────
+const T = (ms, html) => ({ ms, html });
+const ts = (t, s) => `<span class="tl-ts">[${t}]</span> ${s}`;
+
+// ── The script ────────────────────────────────────────────────────────────────
+async function runDemo() {
+  const t0 = Date.now();
+  const now = () => {
+    const s = Math.floor((Date.now()-t0)/1000);
+    return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  };
+
+  // 0s — human prompt
+  await addMsg(msgWrap('human', '09:21', `<span class="mention">@Captain</span> we launch Tuesday — make opencrew go viral before then`), 300);
+
+  // 1.5s — captain reads & plans
+  await addMsg(msgWrap('captain', '09:21', `On it. Spinning up the crew in parallel 🚀`), 1500);
+
+  // 2.5s — captain terminal starts
+  const captainLines = [
+    T( 200, ts('00:01', `<span class="tl-cmd">⚡ claude-sonnet-4-6</span>`)),
+    T( 500, ts('00:02', `<span class="tl-msg">Reading launch context…</span>`)),
+    T( 900, ts('00:04', `<span class="tl-tool">Bash</span>  <span class="tl-msg">cat CLAUDE.md</span>`)),
+    T(1400, ts('00:06', `<span class="tl-check">✓</span> <span class="tl-msg">3 services live: api · web · marketing</span>`)),
+    T(2000, ts('00:08', `<span class="tl-tool">SendMessage</span>  <span class="tl-msg">→ @Coder</span>`)),
+    T(2600, ts('00:09', `<span class="tl-tool">SendMessage</span>  <span class="tl-msg">→ @Scout</span>`)),
+    T(3100, ts('00:10', `<span class="tl-tool">SendMessage</span>  <span class="tl-msg">→ @GrowthHacker</span>`)),
+    T(3700, ts('00:12', `<span class="tl-done">✓ delegated — 3 agents running</span>`)),
+  ];
+  captainLines.forEach((l, i) => {
+    termLine('captain', l.html, 2500 + l.ms).then(() => setSteps('captain', i+1));
+  });
+
+  // 2.5s — delegation card
+  await sleep(2500);
+  await addMsg(msgWrap('captain', '09:21', `
+    <div class="deleg-card">
+      <div class="deleg-card-title">⚡ Dispatching crew in parallel</div>
+      <div class="deleg-row">
+        <span class="deleg-agent"><span class="mention">@Coder</span></span>
+        <span class="deleg-task">SEO fixes + technical audit</span>
+        <span class="deleg-tag parallel">∥ parallel</span>
+      </div>
+      <div class="deleg-row">
+        <span class="deleg-agent"><span class="mention">@Scout</span></span>
+        <span class="deleg-task">Competitive landscape research</span>
+        <span class="deleg-tag parallel">∥ parallel</span>
+      </div>
+      <div class="deleg-row">
+        <span class="deleg-agent"><span class="mention">@GrowthHacker</span></span>
+        <span class="deleg-task">Viral launch strategy brief</span>
+        <span class="deleg-tag parallel">∥ parallel</span>
+      </div>
+    </div>`), 0);
+
+  // ── Coder terminal ──────────────────────────────────────────────────────────
+  const coderStart = 3200;
+  const coderLines = [
+    T(   0, ts('00:01', `<span class="tl-cmd">⚡ claude-sonnet-4-6</span>`)),
+    T( 400, ts('00:02', `<span class="tl-tool">Glob</span>  <span class="tl-msg">apps/marketing/**</span>`)),
+    T( 900, ts('00:04', `<span class="tl-check">✓</span> <span class="tl-msg">found: index.html, vite.config.ts</span>`)),
+    T(1400, ts('00:06', `<span class="tl-tool">Read</span>  <span class="tl-msg">index.html</span>`)),
+    T(1900, ts('00:07', `<span class="tl-warn">⚠</span> <span class="tl-msg">missing: canonical, schema, sitemap</span>`)),
+    T(2500, ts('00:09', `<span class="tl-tool">Edit</span>  <span class="tl-msg">index.html ← title + meta desc</span>`)),
+    T(3000, ts('00:11', `<span class="tl-tool">Edit</span>  <span class="tl-msg">index.html ← canonical + JSON-LD</span>`)),
+    T(3600, ts('00:13', `<span class="tl-tool">Write</span> <span class="tl-msg">public/sitemap.xml</span>`)),
+    T(4100, ts('00:15', `<span class="tl-tool">Write</span> <span class="tl-msg">public/robots.txt</span>`)),
+    T(4700, ts('00:17', `<span class="tl-tool">Write</span> <span class="tl-msg">public/docs/index.html</span>`)),
+    T(5300, ts('00:19', `<span class="tl-check">✓</span> <span class="tl-msg">HTTP 200 — /sitemap.xml live</span>`)),
+    T(5800, ts('00:21', `<span class="tl-check">✓</span> <span class="tl-msg">HTTP 200 — /robots.txt live</span>`)),
+    T(6400, ts('00:22', `<span class="tl-check">✓</span> <span class="tl-msg">HTTP 200 — /docs redirect live</span>`)),
+    T(7000, ts('00:24', `<span class="tl-tool">SendMessage</span>  <span class="tl-msg">→ #builds</span>`)),
+    T(7600, ts('00:25', `<span class="tl-done">✓ 7 fixes shipped</span>`)),
+  ];
+  coderLines.forEach((l, i) => {
+    termLine('coder', l.html, coderStart + l.ms).then(() => setSteps('coder', i+1));
+  });
+
+  // ── Scout terminal ──────────────────────────────────────────────────────────
+  const scoutStart = 3400;
+  const scoutLines = [
+    T(   0, ts('00:01', `<span class="tl-cmd">⚡ claude-sonnet-4-6</span>`)),
+    T( 500, ts('00:02', `<span class="tl-tool">WebSearch</span>  <span class="tl-msg">"crewai github stars 2026"</span>`)),
+    T(1200, ts('00:05', `<span class="tl-check">✓</span> <span class="tl-msg">CrewAI: 54k ⭐ Python-only</span>`)),
+    T(1800, ts('00:07', `<span class="tl-tool">WebSearch</span>  <span class="tl-msg">"autogen status 2026"</span>`)),
+    T(2500, ts('00:10', `<span class="tl-check">✓</span> <span class="tl-msg">AutoGen: maintenance mode ⚠</span>`)),
+    T(3100, ts('00:12', `<span class="tl-tool">WebSearch</span>  <span class="tl-msg">"mastra typescript agents"</span>`)),
+    T(3700, ts('00:14', `<span class="tl-check">✓</span> <span class="tl-msg">Mastra: 24.8k — no crew UX</span>`)),
+    T(4300, ts('00:16', `<span class="tl-tool">WebSearch</span>  <span class="tl-msg">"product hunt ai agents 2026"</span>`)),
+    T(5000, ts('00:19', `<span class="tl-check">✓</span> <span class="tl-msg">gap confirmed: no streaming UX</span>`)),
+    T(5800, ts('00:22', `<span class="tl-msg">synthesising 6 competitors…</span>`)),
+    T(6500, ts('00:24', `<span class="tl-tool">SendMessage</span>  <span class="tl-msg">→ #builds</span>`)),
+    T(7100, ts('00:26', `<span class="tl-done">✓ brief posted</span>`)),
+  ];
+  scoutLines.forEach((l, i) => {
+    termLine('scout', l.html, scoutStart + l.ms).then(() => setSteps('scout', i+1));
+  });
+
+  // ── GrowthHacker terminal ───────────────────────────────────────────────────
+  const growthStart = 3600;
+  const growthLines = [
+    T(   0, ts('00:01', `<span class="tl-cmd">⚡ claude-sonnet-4-6</span>`)),
+    T( 600, ts('00:03', `<span class="tl-tool">WebSearch</span>  <span class="tl-msg">"show hn best time to post"</span>`)),
+    T(1300, ts('00:05', `<span class="tl-check">✓</span> <span class="tl-msg">Tue 8am PT = peak engineer traffic</span>`)),
+    T(1900, ts('00:07', `<span class="tl-tool">WebSearch</span>  <span class="tl-msg">"product hunt ai agents top ranked"</span>`)),
+    T(2700, ts('00:10', `<span class="tl-check">✓</span> <span class="tl-msg">Thu launch = -40% competition</span>`)),
+    T(3300, ts('00:13', `<span class="tl-msg">mapping referral loop architecture…</span>`)),
+    T(4000, ts('00:16', `<span class="tl-msg">drafting 5-tactic launch plan…</span>`)),
+    T(4800, ts('00:19', `<span class="tl-msg">calculating week-1 milestone targets…</span>`)),
+    T(5600, ts('00:21', `<span class="tl-check">✓</span> <span class="tl-msg">500 stars W1, 1k installs W4</span>`)),
+    T(6200, ts('00:23', `<span class="tl-tool">SendMessage</span>  <span class="tl-msg">→ #builds</span>`)),
+    T(6900, ts('00:25', `<span class="tl-done">✓ strategy brief posted</span>`)),
+  ];
+  growthLines.forEach((l, i) => {
+    termLine('growth', l.html, growthStart + l.ms).then(() => setSteps('growth', i+1));
+  });
+
+  // ── Results stream back into chat ─────────────────────────────────────────
+  await sleep(10800);
+  await addMsg(msgWrap('coder', '09:22', `SEO week-1 fixes shipped ✅
+  <span class="cmd">meta description</span> · <span class="cmd">canonical</span> · <span class="cmd">JSON-LD schema</span> · <span class="cmd">sitemap.xml</span> · <span class="cmd">robots.txt</span> · <span class="cmd">/docs redirect</span>
+All confirmed HTTP 200 on dev server.`), 0);
+
+  await sleep(1400);
+  await addMsg(msgWrap('scout', '09:22', `Competitive brief ready. AutoGen just went maintenance-only — 58k stars of displaced devs actively shopping. We're the only TypeScript-native crew UX. That's the hook.`), 0);
+
+  await sleep(1200);
+  await addMsg(msgWrap('growth', '09:22', `Launch calendar locked. Show HN Tue Sep 2 8am PT → Reddit blitz → Twitter thread Wed → PH Thu. Target: 500 stars W1, 1k installs W4.
+<span class="mention">@Captain</span> need PH hunter confirmation and a 90s terminal GIF. <span class="mention">@Coder</span> on the GIF?`), 0);
+
+  // ── All done: captain synthesizes ──────────────────────────────────────────
+  await sleep(2000);
+  setTermStatus('captain', '✓ done', 'done');
+  setTermStatus('coder',   '✓ done', 'done');
+  setTermStatus('scout',   '✓ done', 'done');
+  setTermStatus('growth',  '✓ done', 'done');
+
+  document.getElementById('status-coder').className = 'status-dot online';
+  document.getElementById('status-scout').className = 'status-dot online';
+  document.getElementById('status-growth').className = 'status-dot online';
+
+  await addMsg(msgWrap('captain', '09:23', `3 agents, ~90 seconds, zero copy-paste from me. This is the meta-story for Show HN.
+<span class="mention">@ContentMarketer</span> add this exact flow to the PH first-comment script.`), 0);
+
+  // ── Loop after 4s pause ──────────────────────────────────────────────────
+  await sleep(5000);
+  document.getElementById('messages').innerHTML = '';
+  ['captain','coder','scout','growth'].forEach(id => {
+    document.getElementById('tl-' + id).innerHTML = '';
+    setTermStatus(id, '⠋ running', 'running');
+    setSteps(id, 0);
+  });
+  document.getElementById('status-coder').className   = 'status-dot busy';
+  document.getElementById('status-scout').className   = 'status-dot busy';
+  document.getElementById('status-growth').className  = 'status-dot busy';
+  runDemo();
+}
+
+runDemo();
+</script>
+</body>
+</html>

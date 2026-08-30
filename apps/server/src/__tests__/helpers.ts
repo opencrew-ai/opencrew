@@ -26,15 +26,15 @@ class CapturingHub extends Hub {
   }
 }
 
-export function makeTestCtx(): TestCtx {
-  const { db } = createDb(':memory:')
+export async function makeTestCtx(): Promise<TestCtx> {
+  const { db } = await createDb(':memory:')
   const broadcasts: ServerEvent[] = []
   const enqueued: string[] = []
   const queue = new RunQueue()
   // Capture instead of executing — tests drive the executor pieces directly.
   queue.configure(async (runId) => {
     enqueued.push(runId)
-  }, () => null)
+  }, async () => null)
   return {
     db,
     hub: new CapturingHub(broadcasts),
@@ -47,30 +47,26 @@ export function makeTestCtx(): TestCtx {
   }
 }
 
-export function seedUser(db: DB): string {
+export async function seedUser(db: DB): Promise<string> {
   const id = nanoid()
-  db.insert(users)
-    .values({
-      id,
-      name: 'Tester',
-      email: `${id}@test.local`,
-      passwordHash: 'x',
-      role: 'admin',
-      createdAt: Date.now()
-    })
-    .run()
+  await db.insert(users).values({
+    id,
+    name: 'Tester',
+    email: `${id}@test.local`,
+    passwordHash: 'x',
+    role: 'admin',
+    createdAt: Date.now()
+  })
   return id
 }
 
-export function seedChannel(db: DB, name = `chan-${nanoid(6)}`): string {
+export async function seedChannel(db: DB, name = `chan-${nanoid(6)}`): Promise<string> {
   const id = nanoid()
-  db.insert(channels)
-    .values({ id, name, topic: '', isPrivate: 0, createdAt: Date.now() })
-    .run()
+  await db.insert(channels).values({ id, name, topic: '', isPrivate: false, createdAt: Date.now() })
   return id
 }
 
-export function seedAgent(
+export async function seedAgent(
   db: DB,
   userId: string,
   opts: {
@@ -78,20 +74,18 @@ export function seedAgent(
     tools?: string[]
     capabilities?: Partial<AgentCapabilities>
   } = {}
-): { agentId: string; versionId: string } {
+): Promise<{ agentId: string; versionId: string }> {
   const agentId = nanoid()
-  db.insert(agents)
-    .values({
-      id: agentId,
-      name: opts.name ?? `Agent${nanoid(4)}`,
-      avatarEmoji: '🤖',
-      currentVersionId: 'pending',
-      createdBy: userId,
-      status: 'active',
-      createdAt: Date.now()
-    })
-    .run()
-  const version = createVersion(
+  await db.insert(agents).values({
+    id: agentId,
+    name: opts.name ?? `Agent${nanoid(4)}`,
+    avatarEmoji: '🤖',
+    currentVersionId: 'pending',
+    createdBy: userId,
+    status: 'active',
+    createdAt: Date.now()
+  })
+  const version = await createVersion(
     db,
     agentId,
     {

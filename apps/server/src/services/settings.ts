@@ -13,9 +13,9 @@ function defaults(): WorkspaceSettings {
   return { maxMentionDepth: env.maxMentionDepth }
 }
 
-export function getSettings(db: DB): WorkspaceSettings {
+export async function getSettings(db: DB): Promise<WorkspaceSettings> {
   const base = defaults()
-  const rows = db.select().from(settings).all()
+  const rows = await db.select().from(settings)
   const byKey = new Map(rows.map((r) => [r.key, r.value]))
   const depth = Number(byKey.get('maxMentionDepth'))
   return {
@@ -23,34 +23,38 @@ export function getSettings(db: DB): WorkspaceSettings {
   }
 }
 
-export function setSetting(db: DB, key: keyof WorkspaceSettings, value: unknown): void {
-  db.insert(settings)
+export async function setSetting(
+  db: DB,
+  key: keyof WorkspaceSettings,
+  value: unknown
+): Promise<void> {
+  await db
+    .insert(settings)
     .values({ key, value: String(value), updatedAt: Date.now() })
     .onConflictDoUpdate({
       target: settings.key,
       set: { value: String(value), updatedAt: Date.now() }
     })
-    .run()
 }
 
-export function getMaxMentionDepth(db: DB): number {
-  return getSettings(db).maxMentionDepth
+export async function getMaxMentionDepth(db: DB): Promise<number> {
+  return (await getSettings(db)).maxMentionDepth
 }
 
 // Re-exported for tests that want to reset state.
-export function clearSetting(db: DB, key: string): void {
-  db.delete(settings).where(eq(settings.key, key)).run()
+export async function clearSetting(db: DB, key: string): Promise<void> {
+  await db.delete(settings).where(eq(settings.key, key))
 }
 
 /** Untyped string settings (used by e.g. cloud-link credentials). */
-export function getRawSetting(db: DB, key: string): string | null {
-  const row = db.select().from(settings).where(eq(settings.key, key)).get()
+export async function getRawSetting(db: DB, key: string): Promise<string | null> {
+  const [row] = await db.select().from(settings).where(eq(settings.key, key)).limit(1)
   return row?.value ?? null
 }
 
-export function setRawSetting(db: DB, key: string, value: string): void {
-  db.insert(settings)
+export async function setRawSetting(db: DB, key: string, value: string): Promise<void> {
+  await db
+    .insert(settings)
     .values({ key, value, updatedAt: Date.now() })
     .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: Date.now() } })
-    .run()
 }

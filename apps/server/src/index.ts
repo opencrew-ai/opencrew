@@ -20,13 +20,37 @@ import { registerSearchRoutes } from './routes/search'
 import { registerWorkRoutes } from './routes/work'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerStatsRoutes } from './routes/stats'
+import { registerCrewsRoutes } from './routes/crews'
+import { registerExportRoutes } from './routes/export'
 import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
 // Side-effect import: registers the OpenCrew MCP tool plugins.
 import './tools'
 
+/**
+ * Refuse to start when another server owns the port — BEFORE opening the
+ * database. PGlite is single-process: a doomed second instance that opens
+ * the data dir and then dies on EADDRINUSE can corrupt it.
+ */
+async function assertPortFree(port: number): Promise<void> {
+  const net = await import('node:net')
+  await new Promise<void>((resolvePort, rejectPort) => {
+    const probe = net
+      .createServer()
+      .once('error', (err) => rejectPort(err))
+      .once('listening', () => probe.close(() => resolvePort()))
+    probe.listen(port, '127.0.0.1')
+  }).catch(() => {
+    console.error(
+      `⚓ OpenCrew server already running on port ${env.port} — this instance is exiting.`
+    )
+    process.exit(0)
+  })
+}
+
 async function main(): Promise<void> {
+  await assertPortFree(env.port)
   const { db } = await createDb(env.databaseUrl)
   await failInterruptedRuns(db)
   const seeded = await seedIfEmpty(db)

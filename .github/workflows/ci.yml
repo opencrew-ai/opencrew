@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Server: typecheck ────────────────────────────────────────────────────────
+  server-typecheck:
+    name: Server — typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (server)
+        run: pnpm --filter @opencrew/server run build
+
+  # ── Server: tests ────────────────────────────────────────────────────────────
+  server-test:
+    name: Server — vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm --filter @opencrew/server run test
+
+  # ── Web: typecheck + Vite build ──────────────────────────────────────────────
+  web-build:
+    name: Web — typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck + build (web)
+        run: pnpm --filter @opencrew/web run build
+
+  # ── Marketing: typecheck + Vite build ───────────────────────────────────────
+  # Catches broken imports, missing assets, and TypeScript errors in the
+  # marketing site before they reach prod. Also produces the dist/ artifact
+  # used by the Lighthouse job below.
+  marketing-build:
+    name: Marketing — typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck + build (marketing)
+        run: pnpm --filter @opencrew/marketing run build
+
+      - name: Upload marketing dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketing-dist
+          path: apps/marketing/dist
+          retention-days: 1
+
+  # ── Marketing: Lighthouse CI ─────────────────────────────────────────────────
+  # Serves the built dist/ locally and runs Lighthouse in CI.
+  # Fails the PR if Performance < 80, Accessibility < 90, or Best Practices < 90.
+  # Adjust thresholds in .lighthouserc.json if the bar needs to move.
+  lighthouse:
+    name: Marketing — Lighthouse
+    runs-on: ubuntu-latest
+    needs: marketing-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Download marketing dist
+        uses: actions/download-artifact@v4
+        with:
+          name: marketing-dist
+          path: apps/marketing/dist
+
+      - name: Install serve + Lighthouse CI
+        run: npm install -g @lhci/cli serve
+
+      - name: Serve dist and run Lighthouse CI
+        run: |
+          serve apps/marketing/dist -p 5000 &
+          sleep 3
+          lhci autorun --config=apps/marketing/.lighthouserc.json
+
+  # ── Health check gate ────────────────────────────────────────────────────────
+  # All jobs must pass before a PR can merge.
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    needs: [server-typecheck, server-test, web-build, marketing-build, lighthouse]
+    if: always()
+    steps:
+      - name: All checks passed
+        run: |
+          if [[ "${{ needs.server-typecheck.result }}" != "success" || \
+                "${{ needs.server-test.result }}" != "success" || \
+                "${{ needs.web-build.result }}" != "success" || \
+                "${{ needs.marketing-build.result }}" != "success" || \
+                "${{ needs.lighthouse.result }}" != "success" ]]; then
+            echo "One or more CI jobs failed."
+            exit 1
+          fi
+          echo "All CI checks passed."

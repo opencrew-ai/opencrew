@@ -39,75 +39,72 @@ export function toAgentVersion(row: VersionRow): AgentVersion {
   }
 }
 
-export function getAgent(db: DB, agentId: string): Agent | null {
-  const row = db.select().from(agents).where(eq(agents.id, agentId)).get()
+export async function getAgent(db: DB, agentId: string): Promise<Agent | null> {
+  const [row] = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1)
   return row ? toAgent(row) : null
 }
 
-export function getVersion(db: DB, versionId: string): AgentVersion | null {
-  const row = db
+export async function getVersion(db: DB, versionId: string): Promise<AgentVersion | null> {
+  const [row] = await db
     .select()
     .from(agentVersions)
     .where(eq(agentVersions.id, versionId))
-    .get()
+    .limit(1)
   return row ? toAgentVersion(row) : null
 }
 
-export function getAgentWithVersion(db: DB, agentId: string): AgentWithVersion | null {
-  const agent = getAgent(db, agentId)
+export async function getAgentWithVersion(
+  db: DB,
+  agentId: string
+): Promise<AgentWithVersion | null> {
+  const agent = await getAgent(db, agentId)
   if (!agent) return null
-  const version = getVersion(db, agent.currentVersionId)
+  const version = await getVersion(db, agent.currentVersionId)
   if (!version) return null
   return { ...agent, currentVersion: version }
 }
 
-export function listAgentsWithVersions(db: DB): AgentWithVersion[] {
-  return db
-    .select()
-    .from(agents)
-    .all()
-    .map((row) => getAgentWithVersion(db, row.id))
-    .filter((a): a is AgentWithVersion => a !== null)
+export async function listAgentsWithVersions(db: DB): Promise<AgentWithVersion[]> {
+  const rows = await db.select().from(agents)
+  const results = await Promise.all(rows.map((row) => getAgentWithVersion(db, row.id)))
+  return results.filter((a): a is AgentWithVersion => a !== null)
 }
 
 /**
  * Append an immutable version row and point the agent at it.
  * This is the ONLY way agent config changes — existing rows are never updated.
  */
-export function createVersion(
+export async function createVersion(
   db: DB,
   agentId: string,
   config: AgentVersionConfig,
   createdBy: string,
   changeNote: string
-): AgentVersion {
-  const latest = db
+): Promise<AgentVersion> {
+  const [latest] = await db
     .select()
     .from(agentVersions)
     .where(eq(agentVersions.agentId, agentId))
     .orderBy(desc(agentVersions.version))
     .limit(1)
-    .get()
   const nextVersion = (latest?.version ?? 0) + 1
   const id = nanoid()
   const now = Date.now()
-  db.insert(agentVersions)
-    .values({
-      id,
-      agentId,
-      version: nextVersion,
-      systemPrompt: config.systemPrompt,
-      model: config.model,
-      skills: JSON.stringify(config.skills),
-      tools: JSON.stringify(config.tools),
-      capabilities: JSON.stringify(config.capabilities),
-      createdBy,
-      createdAt: now,
-      changeNote
-    })
-    .run()
-  db.update(agents).set({ currentVersionId: id }).where(eq(agents.id, agentId)).run()
-  const created = getVersion(db, id)
+  await db.insert(agentVersions).values({
+    id,
+    agentId,
+    version: nextVersion,
+    systemPrompt: config.systemPrompt,
+    model: config.model,
+    skills: JSON.stringify(config.skills),
+    tools: JSON.stringify(config.tools),
+    capabilities: JSON.stringify(config.capabilities),
+    createdBy,
+    createdAt: now,
+    changeNote
+  })
+  await db.update(agents).set({ currentVersionId: id }).where(eq(agents.id, agentId))
+  const created = await getVersion(db, id)
   if (!created) throw new Error('failed to create agent version')
   return created
 }

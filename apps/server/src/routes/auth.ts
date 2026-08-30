@@ -63,6 +63,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
 
     const user = {
       id: nanoid(),
+      workspaceSlug: 'default' as const,
       name,
       email,
       passwordHash: hashPassword(password),

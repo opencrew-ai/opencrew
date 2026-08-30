@@ -23,38 +23,37 @@ export function toApproval(row: typeof approvals.$inferSelect): Approval {
  * the executor re-verifies this row in the DB before letting the tool run.
  * Denied → the executor aborts the run.
  */
-export function resolveApproval(
+export async function resolveApproval(
   ctx: AppContext,
   approvalId: string,
   decision: 'approved' | 'denied',
   resolvedBy: string
-): Approval {
-  const row = ctx.db
+): Promise<Approval> {
+  const [row] = await ctx.db
     .select()
     .from(approvals)
     .where(eq(approvals.id, approvalId))
-    .get()
+    .limit(1)
   if (!row) throw new Error('approval not found')
   if (row.status !== 'pending') throw new Error('approval already resolved')
 
-  ctx.db
+  await ctx.db
     .update(approvals)
     .set({ status: decision, resolvedBy, resolvedAt: Date.now() })
     .where(eq(approvals.id, approvalId))
-    .run()
-  recordStep(ctx, row.runId, 'approval_resolved', {
+  await recordStep(ctx, row.runId, 'approval_resolved', {
     approvalId,
     tool: row.toolName,
     decision,
     resolvedBy
   })
 
-  const updated = ctx.db
+  const [updated] = await ctx.db
     .select()
     .from(approvals)
     .where(eq(approvals.id, approvalId))
-    .get()!
-  ctx.hub.broadcast({ type: 'approval_updated', approval: toApproval(updated) })
+    .limit(1)
+  ctx.hub.broadcast({ type: 'approval_updated', approval: toApproval(updated!) })
 
   const waiter = ctx.approvalWaiters.get(approvalId)
   if (waiter) {
@@ -62,5 +61,5 @@ export function resolveApproval(
   }
   // No waiter means the run died (e.g. restart) — the row update alone is
   // correct; boot cleanup already failed the run.
-  return toApproval(updated)
+  return toApproval(updated!)
 }

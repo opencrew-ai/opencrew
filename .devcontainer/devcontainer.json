@@ -1,0 +1,44 @@
+{
+  "name": "OpenCrew",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20",
+      "pnpmVersion": "latest"
+    }
+  },
+
+  // Install Claude Code CLI on container creation, then install project deps.
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && pnpm install",
+
+  // Forward both the API server and the Vite dev server.
+  "forwardPorts": [3001, 5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "OpenCrew UI",
+      "onAutoForward": "openBrowser"
+    },
+    "3001": {
+      "label": "OpenCrew API",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      }
+    }
+  },
+
+  // Run pnpm dev automatically when the container starts.
+  "postStartCommand": "pnpm dev"
+}

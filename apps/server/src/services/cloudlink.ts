@@ -341,6 +341,7 @@ export async function resolveRelayUser(ctx: AppContext, identity: RelayIdentity)
   if (existing) return existing
   const user = {
     id: nanoid(),
+    workspaceSlug: 'default' as const,
     name: identity.name,
     email: identity.email,
     // Cloud-linked users authenticate via the relay, never with a password.

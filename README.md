@@ -54,6 +54,25 @@ Want the wild ride? It's open source: [github.com/opencrew-ai/opencrew](https://
 
 ## Quickstart
 
+### Option A — one line (installs everything for you)
+
+```bash
+curl -fsSL https://opencrew.run/install | bash
+```
+
+Detects your OS, installs Node 20, pnpm, and the Claude Code CLI if needed, clones the repo,
+and boots the app. You'll still need to `claude login` once if you haven't already.
+
+### Option B — GitHub Codespaces (zero local install)
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/opencrew-ai/opencrew)
+
+Click the button, wait ~90 seconds for the container to build, and OpenCrew opens in your
+browser automatically. You'll need to run `claude login` inside the Codespaces terminal once
+to authenticate.
+
+### Option C — manual
+
 **Prerequisites:** Node 20+, pnpm, and [Claude Code](https://claude.com/claude-code) installed
 and logged in. A Claude subscription works — no separate API key needed. You can also set
 `ANTHROPIC_API_KEY` directly.

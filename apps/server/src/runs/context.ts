@@ -10,31 +10,33 @@ const CONTEXT_MESSAGE_COUNT = 30
  * Build the conversation context: the last 30 messages of the channel (or
  * thread) as a transcript, ending with the trigger mention.
  */
-export function buildContextTranscript(
+export async function buildContextTranscript(
   db: DB,
   channelId: string,
   threadRootId: string | null,
   triggerMessageId: string
-): string {
+): Promise<string> {
   const scope = threadRootId
     ? or(eq(messages.id, threadRootId), eq(messages.threadRootId, threadRootId))
     : and(eq(messages.channelId, channelId), isNull(messages.threadRootId))
 
-  const rows = db
-    .select()
-    .from(messages)
-    .where(scope)
-    .orderBy(desc(messages.createdAt))
-    .limit(CONTEXT_MESSAGE_COUNT)
-    .all()
-    .reverse()
+  const rows = (
+    await db
+      .select()
+      .from(messages)
+      .where(scope)
+      .orderBy(desc(messages.createdAt))
+      .limit(CONTEXT_MESSAGE_COUNT)
+  ).reverse()
 
-  const lines = rows.map((row) => {
-    const m = enrichMessage(db, row)
-    const time = new Date(m.createdAt).toISOString().slice(11, 16)
-    const marker = m.id === triggerMessageId ? ' ← you were mentioned here' : ''
-    return `[${time}] ${m.authorName} (${m.authorType}): ${m.content}${marker}`
-  })
+  const lines = await Promise.all(
+    rows.map(async (row) => {
+      const m = await enrichMessage(db, row)
+      const time = new Date(m.createdAt).toISOString().slice(11, 16)
+      const marker = m.id === triggerMessageId ? ' ← you were mentioned here' : ''
+      return `[${time}] ${m.authorName} (${m.authorType}): ${m.content}${marker}`
+    })
+  )
   return lines.join('\n')
 }
 
@@ -42,13 +44,13 @@ export function buildContextTranscript(
  * For a RESUMED session: only what happened since the agent's last turn —
  * the session itself already holds everything earlier.
  */
-export function buildIncrementalTranscript(
+export async function buildIncrementalTranscript(
   db: DB,
   channelId: string,
   threadRootId: string | null,
   sinceTs: number,
   triggerMessageId: string
-): string {
+): Promise<string> {
   const scope = threadRootId
     ? and(
         or(eq(messages.id, threadRootId), eq(messages.threadRootId, threadRootId)),
@@ -60,33 +62,37 @@ export function buildIncrementalTranscript(
         gt(messages.createdAt, sinceTs)
       )
 
-  const rows = db.select().from(messages).where(scope).orderBy(asc(messages.createdAt)).all()
-  const lines = rows.map((row) => {
-    const m = enrichMessage(db, row)
-    const time = new Date(m.createdAt).toISOString().slice(11, 16)
-    const marker = m.id === triggerMessageId ? ' ← you were triggered here' : ''
-    return `[${time}] ${m.authorName} (${m.authorType}): ${m.content}${marker}`
-  })
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(scope)
+    .orderBy(asc(messages.createdAt))
+  const lines = await Promise.all(
+    rows.map(async (row) => {
+      const m = await enrichMessage(db, row)
+      const time = new Date(m.createdAt).toISOString().slice(11, 16)
+      const marker = m.id === triggerMessageId ? ' ← you were triggered here' : ''
+      return `[${time}] ${m.authorName} (${m.authorType}): ${m.content}${marker}`
+    })
+  )
   return lines.join('\n')
 }
 
 /** System prompt: the versioned prompt plus identity, crew, and guardrails. */
-export function buildSystemPrompt(
+export async function buildSystemPrompt(
   db: DB,
   agentName: string,
   version: AgentVersion,
   channel: Channel
-): string {
-  const allChannels = db.select().from(channels).all()
+): Promise<string> {
+  const allChannels = await db.select().from(channels)
   const postAll = version.capabilities.canPostInChannels.includes('*')
   const allowedChannels = allChannels
     .filter((c) => postAll || version.capabilities.canPostInChannels.includes(c.id))
     .map((c) => `#${c.name} (id: ${c.id})`)
   const gated = version.capabilities.requiresApprovalFor
-  const teammates = db
-    .select()
-    .from(agents)
-    .all()
+  const allAgents = await db.select().from(agents)
+  const teammates = allAgents
     .filter((a) => a.name !== agentName && a.status === 'active')
     .map((a) => `@${a.name}`)
   const watchesAll = (version.capabilities.watchesChannels ?? []).includes('*')

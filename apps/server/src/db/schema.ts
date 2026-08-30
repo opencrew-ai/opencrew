@@ -7,6 +7,15 @@ import {
   boolean
 } from 'drizzle-orm/pg-core'
 
+// ---------------------------------------------------------------------------
+// Viral growth & UTM attribution additions
+// ---------------------------------------------------------------------------
+// referralCode   — user's shareable invite code (e.g. share link: /signup?ref=XXXXX)
+// referredBy     — the referralCode that drove this signup (attribution)
+// utmSource/Medium/Campaign — captured from query-string at signup
+// waitlisted     — true while the user is in the waitlist queue
+// proUntil       — unix-ms expiry of a Pro grant (null = not Pro)
+
 // Workspace-slug column shared across tables enables per-workspace row-level
 // isolation on a shared Postgres cluster. Default 'default' keeps single-
 // instance installs zero-config. Multiplayer: each workspace gets its own
