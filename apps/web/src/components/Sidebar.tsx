@@ -5,6 +5,9 @@ import { presenceKey, useWorkspace } from '../lib/workspace'
 import { showAlert, showPrompt } from '../lib/dialogs'
 import { useAgentLoad } from '../lib/useAgentLoad'
 import { useAgentActivity } from '../lib/useAgentActivity'
+import { useAttention } from '../lib/useAttention'
+import { AttentionModal } from './AttentionModal'
+import type { AttentionItem } from '@opencrew/shared'
 import { Logo } from './Logo'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
@@ -22,6 +25,8 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const agentLoad = useAgentLoad()
   const agentActivity = useAgentActivity()
+  const attention = useAttention()
+  const [activeAttention, setActiveAttention] = useState<AttentionItem | null>(null)
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
 
@@ -145,6 +150,61 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           <span>📁</span>
           <span>Artifacts</span>
         </Link>
+
+        {/* Needs-You inbox — everything waiting on a human, newest first */}
+        <section>
+          <div
+            className={`flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide ${
+              attention.length > 0 ? 'text-amber-400/90' : 'text-zinc-500'
+            }`}
+          >
+            <span>Needs you</span>
+            {attention.length > 0 && (
+              <span className="rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-300">
+                {attention.length}
+              </span>
+            )}
+          </div>
+          {attention.length === 0 ? (
+            <p className="mt-1 px-2 text-xs text-zinc-600">All clear — nothing waiting on you.</p>
+          ) : (
+            <div className="mt-1">
+              {attention.slice(0, 8).map((item) => {
+                const icon =
+                  item.kind === 'doc_review'
+                    ? '📄'
+                    : item.kind === 'tool_approval'
+                      ? '🔐'
+                      : item.kind === 'task'
+                        ? '☑'
+                        : '✋'
+                return (
+                  // Click = the item opens as a self-sufficient modal (full
+                  // ask + context + action). The thread is inside the modal,
+                  // for when more context is genuinely needed.
+                  <button
+                    key={`${item.kind}-${item.refId}`}
+                    onClick={() => setActiveAttention(item)}
+                    className="flex w-full items-start gap-1.5 rounded px-2 py-1 text-left hover:bg-zinc-800/60"
+                  >
+                    <span className="mt-px text-xs">{icon}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs text-zinc-200">{item.title}</span>
+                      {item.agentName && (
+                        <span className="block truncate text-[10px] text-zinc-500">
+                          {item.agentEmoji} {item.agentName}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )
+              })}
+              {attention.length > 8 && (
+                <p className="px-2 text-[10px] text-zinc-600">+{attention.length - 8} more</p>
+              )}
+            </div>
+          )}
+        </section>
 
         <section>
           <div className="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -321,6 +381,11 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           {aside}
         </div>
       </div>
+
+      {/* Needs-You item detail — self-sufficient modal, rendered via portal */}
+      {activeAttention && (
+        <AttentionModal item={activeAttention} onClose={() => setActiveAttention(null)} />
+      )}
     </>
   )
 }

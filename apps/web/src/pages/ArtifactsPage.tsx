@@ -76,10 +76,14 @@ function DocRow({ artifact, depth, onOpen }: DocRowProps) {
       style={{ paddingLeft: `${depth * 1.25 + 0.5}rem` }}
       className="flex w-full items-center gap-2 rounded py-1.5 pr-3 text-left text-sm transition hover:bg-zinc-900/60"
     >
-      <span>📄</span>
+      <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
       <span className="min-w-0 flex-1 truncate text-zinc-200">{artifact.title}</span>
       <span className="text-[10px] text-zinc-600">v{artifact.version}</span>
-      {artifact.status === 'proposed' ? (
+      {artifact.status === 'review' ? (
+        <span className="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
+          📚 in review
+        </span>
+      ) : artifact.status === 'proposed' ? (
         <span className="rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] uppercase text-amber-300">
           awaiting approval
         </span>

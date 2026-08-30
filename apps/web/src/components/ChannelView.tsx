@@ -8,7 +8,12 @@ import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { useMessages } from '../lib/useMessages'
 import { useConversationTasks } from '../lib/useConversationTasks'
-import { ArtifactsByRunContext, useChannelArtifacts } from '../lib/useChannelArtifacts'
+import {
+  ArtifactsByIdContext,
+  ArtifactsByRunContext,
+  useChannelArtifacts
+} from '../lib/useChannelArtifacts'
+import { ArtifactDocModal } from './ArtifactCard'
 import {
   ConversationGroup,
   deriveGroupStatus,
@@ -110,10 +115,18 @@ interface ChannelViewProps {
   channel: Channel
   onOpenRun: (runId: string) => void
   targetThreadId?: string
+  /** Deep link from the Needs-You inbox: open this artifact's review modal. */
+  targetArtifactId?: string
   onThreadFocused?: () => void
 }
 
-export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocused }: ChannelViewProps) {
+export function ChannelView({
+  channel,
+  onOpenRun,
+  targetThreadId,
+  targetArtifactId,
+  onThreadFocused
+}: ChannelViewProps) {
   const { messages, loading, post } = useMessages(channel.id, null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -239,15 +252,25 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
   const conversationTasks = useConversationTasks(channel.id)
   const channelArtifacts = useChannelArtifacts(channel.id)
   // Regroup by producing run so doc cards render under the announcing reply.
-  const artifactsByRun = useMemo(() => {
+  const { artifactsByRun, artifactsById } = useMemo(() => {
     const byRun = new Map<string, Artifact[]>()
+    const byId = new Map<string, Artifact>()
     for (const list of channelArtifacts.values()) {
       for (const artifact of list) {
         byRun.set(artifact.runId, [...(byRun.get(artifact.runId) ?? []), artifact])
+        byId.set(artifact.id, artifact)
       }
     }
-    return byRun
+    return { artifactsByRun: byRun, artifactsById: byId }
   }, [channelArtifacts])
+
+  // Needs-You deep link: ?artifact=<id> opens the review modal directly —
+  // copied to local state so URL cleanup doesn't close it under the user.
+  const [openArtifactId, setOpenArtifactId] = useState<string | null>(null)
+  useEffect(() => {
+    if (targetArtifactId) setOpenArtifactId(targetArtifactId)
+  }, [targetArtifactId])
+  const openArtifact = openArtifactId ? artifactsById.get(openArtifactId) : undefined
 
   const handleSend = useCallback(
     async (content: string, images?: string[]) => {
@@ -305,6 +328,7 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
 
   return (
     <ArtifactsByRunContext.Provider value={artifactsByRun}>
+    <ArtifactsByIdContext.Provider value={artifactsById}>
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="border-b border-zinc-800 px-4 py-3">
         <h2 className="font-bold"># {channel.name}</h2>
@@ -427,7 +451,13 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
       <div className="border-t border-zinc-800 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <MessageInput placeholder={`Message #${channel.name}`} onSend={handleSend} />
       </div>
+
+      {/* Needs-You deep link lands directly in the review modal */}
+      {openArtifact && (
+        <ArtifactDocModal artifact={openArtifact} onClose={() => setOpenArtifactId(null)} />
+      )}
     </div>
+    </ArtifactsByIdContext.Provider>
     </ArtifactsByRunContext.Provider>
   )
 }

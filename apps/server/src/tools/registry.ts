@@ -40,7 +40,12 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'TodoWrite',
   'propose_plan',
   'update_doc',
-  'read_doc'
+  'read_doc',
+  'request_human',
+  // Identity-gated inside execute(): only configured reviewers.
+  'review_doc',
+  // The ONLY path to a git commit — reviewed diff + human approval.
+  'propose_change'
 ] as const
 
 const openCrewTools = new Map<string, OpenCrewToolDef>()

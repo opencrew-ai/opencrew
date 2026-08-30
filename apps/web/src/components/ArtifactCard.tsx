@@ -24,6 +24,13 @@ function relativeTime(ts: number): string {
 }
 
 function StatusBadge({ status }: { status: Artifact['status'] }) {
+  if (status === 'review') {
+    return (
+      <span className="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
+        📚 in review
+      </span>
+    )
+  }
   if (status === 'proposed') {
     return (
       <span className="rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
@@ -157,7 +164,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
       >
         {/* Title bar */}
         <div className="flex items-center gap-2 border-b border-zinc-800 px-5 py-3">
-          <span>📄</span>
+          <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
           <h2 className="min-w-0 flex-1 truncate font-bold text-zinc-100">{artifact.title}</h2>
           <span className="text-xs text-zinc-500">v{artifact.version}</span>
           <StatusBadge status={artifact.status} />
@@ -335,7 +342,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
                     disabled={isActing}
                     className="rounded border border-emerald-700/60 bg-emerald-900/40 px-2.5 py-1 font-medium text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-40"
                   >
-                    ✓ Approve plan
+                    {artifact.kind === 'change' ? '✓ Approve & commit' : '✓ Approve plan'}
                   </button>
                 </>
               )}
@@ -392,7 +399,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
     >
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        <span>📄</span>
+        <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
         <button
           onClick={() => setIsModalOpen(true)}
           className="min-w-0 flex-1 truncate text-left font-semibold text-zinc-100 hover:underline"
@@ -412,7 +419,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
             disabled={isActing}
             className="rounded border border-emerald-700/60 bg-emerald-900/40 px-2 py-0.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-40"
           >
-            ✓ Approve plan
+            {artifact.kind === 'change' ? '✓ Approve & commit' : '✓ Approve plan'}
           </button>
         )}
         <button

@@ -13,6 +13,7 @@ export function WorkspacePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const targetThreadId = searchParams.get('thread') ?? undefined
+  const targetArtifactId = searchParams.get('artifact') ?? undefined
   const [runId, setRunId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [spectateUserId, setSpectateUserId] = useState<string | null>(null)
@@ -91,6 +92,7 @@ export function WorkspacePage() {
             channel={channel}
             onOpenRun={setRunId}
             targetThreadId={targetThreadId}
+            targetArtifactId={targetArtifactId}
             onThreadFocused={() => setSearchParams({}, { replace: true })}
           />
           {spectateUserId && !runId && (

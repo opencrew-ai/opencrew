@@ -128,6 +128,8 @@ export interface Message {
   refThreadId?: string
   /** Channel the cited thread lives in (required when refThreadId is set). */
   refChannelId?: string
+  /** Anchors an artifact card to this message (e.g. review notices). */
+  refArtifactId?: string
   /**
    * For agent/system messages produced by a run: the HUMAN message that
    * ultimately triggered it (walking up agent→agent chains). Lets the feed
@@ -137,7 +139,7 @@ export interface Message {
   conversationRootId?: string
 }
 
-export type RunTriggerType = 'mention' | 'watch'
+export type RunTriggerType = 'mention' | 'watch' | 'review'
 
 export interface Run {
   id: string
@@ -216,6 +218,8 @@ export interface SharedTask {
   createdById: string
   /** Agent currently/last working this item (from TodoWrite reconcile). */
   sourceAgentId?: string
+  /** 'human' = a manual step only a person can do; surfaces in Needs You. */
+  assigneeType: 'agent' | 'human'
   position: number
   updatedAt: number
 }
@@ -227,10 +231,31 @@ export interface ConversationTasks {
   items: SharedTask[]
 }
 
+/**
+ * One item in the Needs-You inbox: everything currently waiting on a human,
+ * unified — explicit agent requests, docs awaiting review, tool approvals.
+ * Deep-links to (channelId, conversationRootId) for context.
+ */
+export interface AttentionItem {
+  /** 'request'/'task' rows resolve via the inbox; the others via their own flows. */
+  kind: 'request' | 'doc_review' | 'tool_approval' | 'task'
+  /** attention_requests.id / artifact id / approval id */
+  refId: string
+  title: string
+  channelId: string
+  conversationRootId: string
+  agentId?: string
+  agentName?: string
+  agentEmoji?: string
+  createdAt: number
+}
+
 /** A draft task inside a proposed plan artifact. */
 export interface PlanTaskDraft {
   content: string
   priority: TaskPriority
+  /** 'human' for steps only a person can do (accounts, payments, sign-offs). */
+  assignee?: 'agent' | 'human'
 }
 
 /**
@@ -255,13 +280,15 @@ export interface Artifact {
   conversationRootId: string
   channelId: string
   runId: string
-  kind: 'plan'
+  /** change = a code diff captured from an agent's working dir. */
+  kind: 'plan' | 'doc' | 'change'
   /** Folder path in the artifacts tree, e.g. "plans" or "marketing/launch". */
   folder: string
   title: string
   content: string
   tasks: PlanTaskDraft[]
-  status: 'proposed' | 'committed' | 'discarded'
+  /** review = doc reviewer gate; proposed = awaiting HUMAN approval. */
+  status: 'review' | 'proposed' | 'committed' | 'discarded'
   version: number
   createdByAgentId: string
   committedBy?: string
@@ -291,6 +318,8 @@ export type ServerEvent =
   | { type: 'artifact_state'; artifact: Artifact }
   /** Member-visible: a review comment was added to an artifact. */
   | { type: 'artifact_comment'; comment: ArtifactComment }
+  /** Member-visible: the Needs-You inbox changed — clients refetch. */
+  | { type: 'attention_changed' }
 
 /** Client → server WebSocket events. */
 export type ClientEvent = { type: 'ping' }

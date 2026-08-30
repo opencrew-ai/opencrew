@@ -108,6 +108,8 @@ export const messages = pgTable('messages', {
   /** Thread citation — references a thread root in (possibly another) channel. */
   refThreadId: text('ref_thread_id'),
   refChannelId: text('ref_channel_id'),
+  /** Anchors an artifact card to this message (e.g. review notices). */
+  refArtifactId: text('ref_artifact_id'),
   /** Human override on a conversation root: 'done' marks it complete. */
   manualStatus: text('manual_status'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
@@ -123,7 +125,7 @@ export const runs = pgTable('runs', {
     enum: ['queued', 'running', 'awaiting_approval', 'done', 'failed', 'cancelled']
   }).notNull(),
   error: text('error'),
-  triggerType: text('trigger_type', { enum: ['mention', 'watch'] })
+  triggerType: text('trigger_type', { enum: ['mention', 'watch', 'review'] })
     .notNull()
     .default('mention'),
   depth: integer('depth').notNull().default(0),
@@ -247,6 +249,11 @@ export const tasks = pgTable('tasks', {
   createdById: text('created_by_id').notNull(),
   /** Agent currently/last working this item. */
   sourceAgentId: text('source_agent_id'),
+  /** 'human' tasks are manual steps only a person can do — they surface in
+   *  the Needs-You inbox instead of being worked by agents. */
+  assigneeType: text('assignee_type', { enum: ['agent', 'human'] })
+    .notNull()
+    .default('agent'),
   position: integer('position').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
@@ -264,7 +271,7 @@ export const artifacts = pgTable('artifacts', {
   conversationRootId: text('conversation_root_id').notNull(),
   channelId: text('channel_id').notNull(),
   runId: text('run_id').notNull(),
-  kind: text('kind', { enum: ['plan'] }).notNull(),
+  kind: text('kind', { enum: ['plan', 'doc', 'change'] }).notNull(),
   /** Folder path like "plans" or "marketing/launch" — the artifacts tree. */
   folder: text('folder').notNull().default('plans'),
   title: text('title').notNull(),
@@ -272,10 +279,14 @@ export const artifacts = pgTable('artifacts', {
   content: text('content').notNull(),
   /** JSON array of {content, priority} drafts (plan kind). */
   tasks: text('tasks').notNull(),
-  status: text('status', { enum: ['proposed', 'committed', 'discarded'] }).notNull(),
+  status: text('status', {
+    enum: ['review', 'proposed', 'committed', 'discarded']
+  }).notNull(),
   version: integer('version').notNull(),
   createdByAgentId: text('created_by_agent_id').notNull(),
   committedBy: text('committed_by'),
+  /** kind 'change' only: the working dir whose staged diff this captures. */
+  sourceDir: text('source_dir'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 })
@@ -290,4 +301,23 @@ export const artifactComments = pgTable('artifact_comments', {
   body: text('body').notNull(),
   createdByUserId: text('created_by_user_id').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
+})
+
+/**
+ * Explicit "I need a human" requests from agents — reviews, manual steps,
+ * credentials, decisions. Surfaced in the Needs-You inbox, deep-linking back
+ * to the conversation for context.
+ */
+export const attentionRequests = pgTable('attention_requests', {
+  id: text('id').primaryKey(),
+  ...ws,
+  conversationRootId: text('conversation_root_id').notNull(),
+  channelId: text('channel_id').notNull(),
+  agentId: text('agent_id').notNull(),
+  runId: text('run_id').notNull(),
+  request: text('request').notNull(),
+  status: text('status', { enum: ['open', 'resolved'] }).notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  resolvedAt: bigint('resolved_at', { mode: 'number' }),
+  resolvedBy: text('resolved_by')
 })

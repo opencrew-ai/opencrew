@@ -144,6 +144,11 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
                     {task.status === 'in_progress' && task.activeForm
                       ? task.activeForm
                       : task.content}
+                    {task.assigneeType === 'human' && (
+                      <span className="ml-1 text-amber-400/80" title="Assigned to a human — in your Needs-You inbox">
+                        👤
+                      </span>
+                    )}
                     {agent && (
                       <span className="ml-1 text-zinc-600" title={`${agent.name} is on it`}>
                         {agent.avatarEmoji}

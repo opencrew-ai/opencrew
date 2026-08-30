@@ -9,7 +9,7 @@ import { InlineThread } from './InlineThread'
 import { ArtifactCard } from './ArtifactCard'
 import { TaskChecklist } from './TaskChecklist'
 import { ThreadRefCard } from './ThreadRefCard'
-import { useArtifactsForRun } from '../lib/useChannelArtifacts'
+import { useArtifactById, useArtifactsForRun } from '../lib/useChannelArtifacts'
 import { ImageLightbox } from './ImageLightbox'
 
 const MD_PLUGINS = [remarkGfm]
@@ -108,6 +108,9 @@ export function MessageItem({
   const { agents, users } = useWorkspace()
   // Docs produced by this message's run render inline right under it.
   const runArtifacts = useArtifactsForRun(message.runId)
+  // Explicitly anchored card (review notices) — reachable even when the
+  // proposing run never managed to post a reply.
+  const anchoredArtifact = useArtifactById(message.refArtifactId)
   // Threads with activity are ALWAYS visible by default — collapsing is the
   // user's explicit opt-out, never the initial state. Agent work streams into
   // threads, so hiding them by default hides the payload.
@@ -136,6 +139,7 @@ export function MessageItem({
           </span>
         </div>
         {message.approvalId && <ApprovalCard approvalId={message.approvalId} />}
+        {anchoredArtifact && <ArtifactCard artifact={anchoredArtifact} />}
         {message.runId && onOpenRun && (
           <button
             onClick={() => onOpenRun(message.runId!)}

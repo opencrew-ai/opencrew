@@ -3,6 +3,13 @@ import type { DB } from './index'
 import { agents, channels, memberships, users } from './schema'
 import { hashPassword } from '../auth/passwords'
 import { createVersion } from '../services/agents'
+import {
+  CODE_REVIEWER_SEED,
+  CODE_REVIEWER_SETTING,
+  DOC_REVIEWER_SEED,
+  DOC_REVIEWER_SETTING
+} from '../services/artifacts'
+import { setRawSetting } from '../services/settings'
 
 export const SEED_ADMIN_EMAIL = 'admin@opencrew.local'
 export const SEED_ADMIN_PASSWORD = 'opencrew'
@@ -139,12 +146,12 @@ export async function seedIfEmpty(db: DB): Promise<boolean> {
         'delegate to one agent per task unless parallel work clearly helps.',
       model: 'claude-sonnet-4-6',
       skills: ['orchestration', 'delegation', 'hiring'],
-      tools: ['list_agents', 'create_agent', 'post_to_channel'],
+      tools: ['list_agents', 'create_agent', 'update_agent', 'post_to_channel'],
       capabilities: {
         canPostInChannels: ['*'],
         maxRunsPerHour: 1000,
-        // Hiring a new agent raises an approval card.
-        requiresApprovalFor: ['create_agent'],
+        // Hiring or reconfiguring an agent raises an approval card.
+        requiresApprovalFor: ['create_agent', 'update_agent'],
         watchesChannels: ['*'],
         workingDir: ''
       }
@@ -152,6 +159,58 @@ export async function seedIfEmpty(db: DB): Promise<boolean> {
     adminId,
     'initial version'
   )
+
+  // Built-in doc reviewer — every proposed doc passes Librarian before it
+  // reaches a human. Config shared with the boot-time self-heal path.
+  const librarianId = nanoid()
+  await db.insert(agents).values({
+    id: librarianId,
+    name: DOC_REVIEWER_SEED.name,
+    avatarEmoji: DOC_REVIEWER_SEED.avatarEmoji,
+    currentVersionId: 'pending',
+    createdBy: adminId,
+    status: 'active',
+    createdAt: now
+  })
+  await createVersion(
+    db,
+    librarianId,
+    {
+      ...DOC_REVIEWER_SEED.version,
+      skills: [...DOC_REVIEWER_SEED.version.skills],
+      tools: [...DOC_REVIEWER_SEED.version.tools],
+      capabilities: { ...DOC_REVIEWER_SEED.version.capabilities }
+    },
+    adminId,
+    'initial version'
+  )
+  await setRawSetting(db, DOC_REVIEWER_SETTING, librarianId)
+
+  // Built-in code reviewer — every proposed change (diff) passes CodeReviewer
+  // before a human; the human's approval performs the git commit.
+  const codeReviewerId = nanoid()
+  await db.insert(agents).values({
+    id: codeReviewerId,
+    name: CODE_REVIEWER_SEED.name,
+    avatarEmoji: CODE_REVIEWER_SEED.avatarEmoji,
+    currentVersionId: 'pending',
+    createdBy: adminId,
+    status: 'active',
+    createdAt: now
+  })
+  await createVersion(
+    db,
+    codeReviewerId,
+    {
+      ...CODE_REVIEWER_SEED.version,
+      skills: [...CODE_REVIEWER_SEED.version.skills],
+      tools: [...CODE_REVIEWER_SEED.version.tools],
+      capabilities: { ...CODE_REVIEWER_SEED.version.capabilities }
+    },
+    adminId,
+    'initial version'
+  )
+  await setRawSetting(db, CODE_REVIEWER_SETTING, codeReviewerId)
 
   const rows = [
     { channelId: generalId, memberType: 'human' as const, memberId: adminId },

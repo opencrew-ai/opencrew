@@ -5,6 +5,7 @@ import {
   addComment,
   commitPlan,
   discardPlan,
+  getArtifact,
   listAllArtifacts,
   listChannelArtifacts,
   listComments,
@@ -45,6 +46,18 @@ export function registerArtifactRoutes(app: FastifyInstance, ctx: AppContext): v
       const { artifactId } = req.params as { artifactId: string }
       const artifact = await commitPlan(ctx, artifactId, req.user!.id)
       if (!artifact) return reply.code(404).send(fail('no proposed artifact with that id'))
+      return ok(artifact)
+    }
+  )
+
+  /** Single artifact by id — used by the Needs-You inbox to open docs in place. */
+  app.get(
+    '/api/artifacts/:artifactId',
+    { preHandler: authGuard(ctx) },
+    async (req, reply) => {
+      const { artifactId } = req.params as { artifactId: string }
+      const artifact = await getArtifact(ctx.db, artifactId)
+      if (!artifact) return reply.code(404).send(fail('artifact not found'))
       return ok(artifact)
     }
   )

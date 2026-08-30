@@ -21,6 +21,14 @@ export interface CreateMessageInput {
   /** Thread citation — pin another thread inline in this message. */
   refThreadId?: string | null
   refChannelId?: string | null
+  /** Anchor an artifact card to this message (e.g. review notices). */
+  refArtifactId?: string | null
+  /**
+   * A run's reply into the conversation that triggered it. A mention is an
+   * invitation: replies bypass canPostInChannels (which keeps governing
+   * post_to_channel and any other cross-channel writes).
+   */
+  isRunReply?: boolean
 }
 
 export class GuardrailViolation extends Error {}
@@ -105,6 +113,7 @@ export async function enrichMessage(
       : undefined,
     refThreadId: row.refThreadId ?? undefined,
     refChannelId: row.refChannelId ?? undefined,
+    refArtifactId: row.refArtifactId ?? undefined,
     manualStatus: row.manualStatus === 'done' ? 'done' : undefined,
     conversationRootId: await resolveConversationRoot(db, row)
   }
@@ -135,8 +144,15 @@ export async function createMessage(
     const version = await getVersion(db, input.agentVersionId)
     if (!version) throw new GuardrailViolation('unknown agent version')
     // '*' = explicitly granted all channels (e.g. an orchestrator agent).
+    // Run replies are exempt: being @mentioned into a conversation IS the
+    // permission to answer there — otherwise delegation into a channel
+    // outside an agent's list does the work and then fails to report it.
     const allowed = version.capabilities.canPostInChannels
-    if (!allowed.includes('*') && !allowed.includes(input.channelId)) {
+    if (
+      !input.isRunReply &&
+      !allowed.includes('*') &&
+      !allowed.includes(input.channelId)
+    ) {
       throw new GuardrailViolation(`agent is not allowed to post in #${channel.name}`)
     }
   }
@@ -154,6 +170,7 @@ export async function createMessage(
     runId: input.runId ?? null,
     refThreadId: input.refThreadId ?? null,
     refChannelId: input.refChannelId ?? null,
+    refArtifactId: input.refArtifactId ?? null,
     manualStatus: null,
     createdAt: Date.now()
   }
@@ -187,7 +204,12 @@ export async function postSystemMessage(
   ctx: AppContext,
   channelId: string,
   content: string,
-  extra?: { threadRootId?: string | null; approvalId?: string; runId?: string }
+  extra?: {
+    threadRootId?: string | null
+    approvalId?: string
+    runId?: string
+    refArtifactId?: string
+  }
 ): Promise<Message> {
   return createMessage(ctx, {
     channelId,
@@ -195,6 +217,7 @@ export async function postSystemMessage(
     authorType: 'system',
     content,
     approvalId: extra?.approvalId,
-    runId: extra?.runId
+    runId: extra?.runId,
+    refArtifactId: extra?.refArtifactId
   })
 }

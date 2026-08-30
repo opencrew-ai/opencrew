@@ -147,7 +147,7 @@ export async function enqueueMentionRuns(
   }
 }
 
-async function enqueueRun(
+export async function enqueueRun(
   ctx: AppContext,
   agentId: string,
   triggerMessage: Message,

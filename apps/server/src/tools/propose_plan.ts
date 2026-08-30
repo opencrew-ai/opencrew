@@ -5,10 +5,11 @@ import { proposePlan } from '../services/artifacts'
 registerOpenCrewTool({
   name: 'propose_plan',
   description:
-    'Propose a plan as a durable DOCUMENT artifact for this conversation, with a structured ' +
-    'task list. The plan waits for human approval — committing it puts the tasks on the shared ' +
-    'board. Use this INSTEAD of pasting plans into chat; your chat reply should be a 1-2 line ' +
-    'summary pointing to the doc by title.',
+    'Propose a durable DOCUMENT artifact for this conversation: a plan (with its task list), ' +
+    'or any substantial deliverable — a draft post, spec, report, or writeup. The doc waits ' +
+    'for human approval; for plans, committing puts the tasks on the shared board. Use this ' +
+    'INSTEAD of pasting long content into chat; your chat reply should be a 1-2 line summary ' +
+    'pointing to the doc by title.',
   inputShape: {
     title: z.string().min(1).max(120).describe('Short document title, stable across revisions'),
     folder: z
@@ -28,17 +29,28 @@ registerOpenCrewTool({
       .array(
         z.object({
           content: z.string().min(1).max(500).describe('One concrete, actionable task'),
-          priority: z.enum(['high', 'medium', 'low']).describe('Execution priority')
+          priority: z.enum(['high', 'medium', 'low']).describe('Execution priority'),
+          assignee: z
+            .enum(['agent', 'human'])
+            .optional()
+            .describe(
+              '"human" for steps only a person can do (their accounts, payments, external ' +
+                'sign-offs) — these land in the human\'s Needs-You inbox. Default: agent.'
+            )
         })
       )
-      .min(1)
       .max(30)
-      .describe('The actionable tasks this plan breaks down into, in execution order')
+      .optional()
+      .describe(
+        'For PLANS: the actionable tasks, in execution order. Omit for deliverable docs ' +
+          '(drafts, specs, reports) that have no tasks.'
+      )
   },
   execute: async ({ title, folder, content, tasks }, ctx) => {
     if (!ctx.threadRootId) {
       return 'Tool error: propose_plan requires a conversation context.'
     }
+    const taskDrafts = tasks ?? []
     const artifact = await proposePlan(ctx.app, {
       conversationRootId: ctx.threadRootId,
       channelId: ctx.channelId,
@@ -47,12 +59,13 @@ registerOpenCrewTool({
       title,
       folder,
       content,
-      tasks
+      tasks: taskDrafts
     })
     return (
-      `Plan "${artifact.title}" saved as document v${artifact.version} with ` +
-      `${tasks.length} tasks — it is now awaiting human approval on the conversation card. ` +
-      `Do NOT start executing the plan's tasks yet, and do NOT paste the plan into chat. ` +
+      `Doc "${artifact.title}" saved as v${artifact.version}` +
+      (taskDrafts.length > 0 ? ` with ${taskDrafts.length} tasks` : '') +
+      ` — it is now awaiting human approval on the conversation card. ` +
+      `Do NOT start executing its tasks yet, and do NOT paste the content into chat. ` +
       `Reply with a 1-2 sentence summary that refers the team to the doc "${artifact.title}".`
     )
   }

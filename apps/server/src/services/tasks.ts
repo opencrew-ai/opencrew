@@ -26,6 +26,7 @@ function toSharedTask(row: TaskRow): SharedTask {
     createdByType: row.createdByType,
     createdById: row.createdById,
     sourceAgentId: row.sourceAgentId ?? undefined,
+    assigneeType: row.assigneeType,
     position: row.position,
     updatedAt: row.updatedAt
   }
@@ -89,6 +90,7 @@ export interface CreateTaskInput {
   sourceAgentId?: string
   status?: TaskStatus
   activeForm?: string
+  assigneeType?: 'agent' | 'human'
 }
 
 export async function createTask(ctx: AppContext, input: CreateTaskInput): Promise<SharedTask> {
@@ -105,6 +107,7 @@ export async function createTask(ctx: AppContext, input: CreateTaskInput): Promi
     createdByType: input.createdByType,
     createdById: input.createdById,
     sourceAgentId: input.sourceAgentId ?? null,
+    assigneeType: input.assigneeType ?? 'agent',
     position: await nextPosition(ctx.db, input.conversationRootId),
     createdAt: now,
     updatedAt: now
@@ -200,6 +203,7 @@ export async function reconcileTodoSnapshot(
         createdByType: 'agent',
         createdById: input.agentId,
         sourceAgentId: input.agentId,
+        assigneeType: 'agent',
         position,
         createdAt: now,
         updatedAt: now
@@ -222,7 +226,9 @@ export async function buildTaskPromptSection(
   const lines = items.map((t) => {
     const box = t.status === 'completed' ? '[x]' : t.status === 'in_progress' ? '[~]' : '[ ]'
     const author = t.createdByType === 'human' ? ' (added by a human)' : ''
-    return `${box} (${t.priority}) ${t.content}${author}`
+    const assignee =
+      t.assigneeType === 'human' ? ' [ASSIGNED TO A HUMAN — do not work this item]' : ''
+    return `${box} (${t.priority}) ${t.content}${author}${assignee}`
   })
   return (
     `\n\nShared task list for this conversation (humans and agents co-edit it):\n` +

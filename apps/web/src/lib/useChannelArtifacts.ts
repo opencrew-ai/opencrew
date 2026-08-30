@@ -15,6 +15,14 @@ export function useArtifactsForRun(runId: string | undefined): Artifact[] {
   return runId ? (byRun.get(runId) ?? []) : []
 }
 
+/** Same artifacts keyed by id — for messages that anchor a card explicitly. */
+export const ArtifactsByIdContext = createContext<Map<string, Artifact>>(new Map())
+
+export function useArtifactById(artifactId: string | undefined): Artifact | undefined {
+  const byId = useContext(ArtifactsByIdContext)
+  return artifactId ? byId.get(artifactId) : undefined
+}
+
 /**
  * Artifacts for every conversation in a channel: REST snapshot merged with
  * live artifact_state events. Discarded artifacts are dropped. Keyed by

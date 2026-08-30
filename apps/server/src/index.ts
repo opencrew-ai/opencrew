@@ -19,6 +19,8 @@ import { registerCloudLinkRoutes } from './routes/cloudlink'
 import { registerSearchRoutes } from './routes/search'
 import { registerWorkRoutes } from './routes/work'
 import { registerArtifactRoutes } from './routes/artifacts'
+import { registerAttentionRoutes } from './routes/attention'
+import { ensureBuiltinReviewers } from './services/artifacts'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerStatsRoutes } from './routes/stats'
 import { registerCrewsRoutes } from './routes/crews'
@@ -86,6 +88,7 @@ async function main(): Promise<void> {
   registerSearchRoutes(app, ctx)
   registerWorkRoutes(app, ctx)
   registerArtifactRoutes(app, ctx)
+  registerAttentionRoutes(app, ctx)
   registerReactionRoutes(app, ctx)
   registerStatsRoutes(app, ctx)
 
@@ -117,6 +120,7 @@ async function main(): Promise<void> {
   })
 
   // Reconnect to opencrew.run if this instance is cloud-linked.
+  await ensureBuiltinReviewers(ctx)
   startCloudLink(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })

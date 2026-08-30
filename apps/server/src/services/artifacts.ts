@@ -1,13 +1,167 @@
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Artifact, ArtifactComment, PlanTaskDraft } from '@opencrew/shared'
-import { artifactComments, artifacts, users } from '../db/schema'
+import { artifactComments, artifacts, messages, users } from '../db/schema'
 import type { DB } from '../db'
 import type { AppContext } from '../context'
-import { postSystemMessage } from './messages'
+import { enrichMessage, postSystemMessage } from './messages'
 import { postMessage } from './post'
 import { createTask } from './tasks'
 import { getAgent } from './agents'
+import { getRawSetting } from './settings'
+import { enqueueRun } from '../runs/enqueue'
+
+export const DOC_REVIEWER_SETTING = 'docReviewerAgentId'
+export const CODE_REVIEWER_SETTING = 'codeReviewerAgentId'
+const DOC_REVIEWER_NAME = 'Librarian'
+const CODE_REVIEWER_NAME = 'CodeReviewer'
+
+/**
+ * Built-in doc reviewer, provided like Captain: seeded into fresh workspaces
+ * and self-healed at boot for existing ones. One config, used by both paths.
+ */
+export const DOC_REVIEWER_SEED = {
+  name: DOC_REVIEWER_NAME,
+  avatarEmoji: '📚',
+  version: {
+    systemPrompt:
+      'You are Librarian, the workspace doc reviewer. Every doc an agent proposes passes ' +
+      'through you BEFORE it reaches a human. Your one job: keep the artifact library ' +
+      'small, consistent, and trustworthy. For each doc in review, judge: (1) NOISE — does ' +
+      'this deserve to be a doc at all? (2) REDUNDANCY — does a committed doc already ' +
+      'cover this? (3) CONFLICT — does it contradict committed truth? (4) UPDATE vs ' +
+      'CREATE — should this have been an update to an existing doc instead of a new one? ' +
+      'Deliver verdicts with review_doc: "clear" only for docs worth the human\'s ' +
+      'attention; "revise" otherwise, and @mention the author with precise, actionable ' +
+      'guidance (name the existing doc to update when relevant). You never write docs ' +
+      'yourself and never do specialist work. Replies: 1-3 sentences, no fluff.',
+    model: 'claude-sonnet-4-6',
+    skills: ['doc-review', 'curation'],
+    tools: [],
+    capabilities: {
+      canPostInChannels: ['*'],
+      maxRunsPerHour: 1000,
+      requiresApprovalFor: []
+    }
+  }
+}
+
+/** Built-in code reviewer — gates every proposed change before the human. */
+export const CODE_REVIEWER_SEED = {
+  name: CODE_REVIEWER_NAME,
+  avatarEmoji: '🔍',
+  version: {
+    systemPrompt:
+      'You are CodeReviewer, the workspace code reviewer. Every code change an agent ' +
+      'proposes (a captured git diff) passes through you BEFORE it reaches a human, and ' +
+      'nothing is committed until the human approves. For each change in review: read it ' +
+      'with read_doc and judge — correctness (does the diff do what its title claims, any ' +
+      'bugs or missed edge cases?), security (secrets, injection, unsafe input handling), ' +
+      'scope (one focused change, no drive-by edits or dead code), and consistency with ' +
+      'the codebase. Deliver verdicts with review_doc: "clear" only for changes you would ' +
+      'merge; "revise" otherwise, and @mention the author with specific findings (file and ' +
+      'hunk, not vague advice). You never write code yourself. Replies: 1-3 sentences.',
+    model: 'claude-sonnet-4-6',
+    skills: ['code-review', 'security-review'],
+    tools: [],
+    capabilities: {
+      canPostInChannels: ['*'],
+      maxRunsPerHour: 1000,
+      requiresApprovalFor: []
+    }
+  }
+}
+
+/**
+ * Boot-time provisioning: every workspace gets both built-in reviewers.
+ * Adopts existing agents by name, otherwise creates them (chat-only — their
+ * whole job is read_doc + review_doc, which every agent has anyway).
+ */
+export async function ensureBuiltinReviewers(ctx: AppContext): Promise<void> {
+  await ensureReviewer(ctx, DOC_REVIEWER_SEED, DOC_REVIEWER_SETTING, getDocReviewerId)
+  await ensureReviewer(ctx, CODE_REVIEWER_SEED, CODE_REVIEWER_SETTING, getCodeReviewerId)
+}
+
+async function ensureReviewer(
+  ctx: AppContext,
+  seed: typeof DOC_REVIEWER_SEED,
+  settingKey: string,
+  getConfigured: (db: DB) => Promise<string | null>
+): Promise<void> {
+  if (await getConfigured(ctx.db)) return
+  const { agents: agentsTable, users: usersTable } = await import('../db/schema')
+  const { createVersion } = await import('./agents')
+  const { setRawSetting } = await import('./settings')
+  const { nanoid: makeId } = await import('nanoid')
+
+  const existing = await ctx.db
+    .select({ id: agentsTable.id })
+    .from(agentsTable)
+    .where(eq(agentsTable.name, seed.name))
+    .limit(1)
+  if (existing[0]) {
+    await setRawSetting(ctx.db, settingKey, existing[0].id)
+    return
+  }
+
+  const [admin] = await ctx.db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.role, 'admin'))
+    .limit(1)
+  if (!admin) return
+
+  const agentId = makeId()
+  await ctx.db.insert(agentsTable).values({
+    id: agentId,
+    name: seed.name,
+    avatarEmoji: seed.avatarEmoji,
+    currentVersionId: 'pending',
+    createdBy: admin.id,
+    status: 'active',
+    createdAt: Date.now()
+  })
+  await createVersion(
+    ctx.db,
+    agentId,
+    {
+      ...seed.version,
+      skills: [...seed.version.skills],
+      tools: [...seed.version.tools],
+      capabilities: { ...seed.version.capabilities }
+    },
+    admin.id,
+    'initial version (auto-provisioned reviewer)'
+  )
+  await setRawSetting(ctx.db, settingKey, agentId)
+}
+
+async function getReviewerId(db: DB, settingKey: string): Promise<string | null> {
+  const id = await getRawSetting(db, settingKey)
+  if (!id) return null
+  const agent = await getAgent(db, id)
+  return agent && agent.status === 'active' ? agent.id : null
+}
+
+/** The configured doc-reviewer agent, or null when none exists. */
+export async function getDocReviewerId(db: DB): Promise<string | null> {
+  return getReviewerId(db, DOC_REVIEWER_SETTING)
+}
+
+/** The configured code-reviewer agent, or null when none exists. */
+export async function getCodeReviewerId(db: DB): Promise<string | null> {
+  return getReviewerId(db, CODE_REVIEWER_SETTING)
+}
+
+export type ArtifactKind = 'plan' | 'doc' | 'change'
+
+/** Which artifact kinds this agent reviews ([] = not a reviewer). */
+export async function reviewKindsForAgent(db: DB, agentId: string): Promise<ArtifactKind[]> {
+  const kinds: ArtifactKind[] = []
+  if ((await getDocReviewerId(db)) === agentId) kinds.push('plan', 'doc')
+  if ((await getCodeReviewerId(db)) === agentId) kinds.push('change')
+  return kinds
+}
 
 type ArtifactRow = typeof artifacts.$inferSelect
 
@@ -49,6 +203,11 @@ export async function listChannelArtifacts(db: DB, channelId: string): Promise<A
   return rows.map(toArtifact)
 }
 
+export async function getArtifact(db: DB, artifactId: string): Promise<Artifact | null> {
+  const [row] = await db.select().from(artifacts).where(eq(artifacts.id, artifactId)).limit(1)
+  return row ? toArtifact(row) : null
+}
+
 /** Every artifact in the workspace (the Artifacts tab), newest first. */
 export async function listAllArtifacts(db: DB): Promise<Artifact[]> {
   const rows = await db.select().from(artifacts).orderBy(desc(artifacts.createdAt))
@@ -64,6 +223,9 @@ export interface ProposePlanInput {
   content: string
   tasks: PlanTaskDraft[]
   folder?: string
+  kind?: ArtifactKind
+  /** kind 'change' only: working dir whose staged diff this proposes. */
+  sourceDir?: string
 }
 
 /** Normalize a folder path: trim slashes/spaces per segment, drop empties. */
@@ -103,28 +265,152 @@ export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Pro
       })
     }
   }
+  // Reviewer gate: proposals pass their kind's reviewer BEFORE reaching a
+  // human — Librarian for docs/plans, CodeReviewer for changes. A reviewer's
+  // own proposals skip the gate — no self-review loops.
+  const kind = input.kind ?? 'plan'
+  const reviewerId =
+    kind === 'change' ? await getCodeReviewerId(ctx.db) : await getDocReviewerId(ctx.db)
+  const needsReview = reviewerId !== null && reviewerId !== input.agentId
   const row: ArtifactRow = {
     id: nanoid(),
     workspaceSlug: 'default',
     conversationRootId: input.conversationRootId,
     channelId: input.channelId,
     runId: input.runId,
-    kind: 'plan',
-    folder: normalizeFolder(input.folder, 'plans'),
+    kind,
+    folder: normalizeFolder(input.folder, kind === 'change' ? 'changes' : 'plans'),
     title: input.title,
     content: input.content,
     tasks: JSON.stringify(input.tasks),
-    status: 'proposed',
+    status: needsReview ? 'review' : 'proposed',
     version: prior.reduce((max, r) => Math.max(max, r.version), 0) + 1,
     createdByAgentId: input.agentId,
     committedBy: null,
+    sourceDir: input.sourceDir ?? null,
     createdAt: now,
     updatedAt: now
   }
   await ctx.db.insert(artifacts).values(row)
   const artifact = toArtifact(row)
   ctx.hub.broadcast({ type: 'artifact_state', artifact })
+  if (needsReview && reviewerId) {
+    await dispatchDocReview(ctx, artifact.conversationRootId, reviewerId)
+  }
   return artifact
+}
+
+/** Trigger the reviewer agent's run on the conversation root. */
+async function dispatchDocReview(
+  ctx: AppContext,
+  conversationRootId: string,
+  reviewerId: string
+): Promise<void> {
+  const [root] = await ctx.db
+    .select()
+    .from(messages)
+    .where(eq(messages.id, conversationRootId))
+    .limit(1)
+  if (!root) return
+  await enqueueRun(ctx, reviewerId, await enrichMessage(ctx.db, root), 0, 'review', false)
+}
+
+/** Docs currently in review for a conversation, with their author names. */
+export async function listDocsInReview(
+  db: DB,
+  conversationRootId: string,
+  kinds?: ArtifactKind[]
+): Promise<{ title: string; kind: ArtifactKind; authorName: string }[]> {
+  const rows = await db
+    .select()
+    .from(artifacts)
+    .where(
+      and(eq(artifacts.conversationRootId, conversationRootId), eq(artifacts.status, 'review'))
+    )
+  const out: { title: string; kind: ArtifactKind; authorName: string }[] = []
+  for (const row of rows) {
+    if (kinds && !kinds.includes(row.kind)) continue
+    const agent = await getAgent(db, row.createdByAgentId)
+    out.push({ title: row.title, kind: row.kind, authorName: agent?.name ?? 'unknown' })
+  }
+  return out
+}
+
+/**
+ * Reviewer verdict. 'clear' promotes review → proposed (now visible in the
+ * human's Needs-You inbox); 'revise' discards it — the reviewer's chat reply
+ * carries the feedback and @mentions the author to re-propose.
+ */
+export async function applyReviewVerdict(
+  ctx: AppContext,
+  input: {
+    conversationRootId: string
+    title: string
+    verdict: 'clear' | 'revise'
+    /** Kinds the calling reviewer owns — verdicts outside them are refused. */
+    kinds: ArtifactKind[]
+  }
+): Promise<Artifact | null> {
+  const rows = await ctx.db
+    .select()
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.conversationRootId, input.conversationRootId),
+        eq(artifacts.title, input.title),
+        eq(artifacts.status, 'review')
+      )
+    )
+    .orderBy(desc(artifacts.version))
+  const row = rows.find((r) => input.kinds.includes(r.kind))
+  if (!row) return null
+  const now = Date.now()
+  const status = input.verdict === 'clear' ? ('proposed' as const) : ('discarded' as const)
+  await ctx.db.update(artifacts).set({ status, updatedAt: now }).where(eq(artifacts.id, row.id))
+  const artifact: Artifact = { ...toArtifact(row), status, updatedAt: now }
+  ctx.hub.broadcast({ type: 'artifact_state', artifact })
+  if (input.verdict === 'clear') {
+    // refArtifactId anchors the doc card to this notice — the card must be
+    // reachable even when the proposing run failed to post its reply.
+    await postSystemMessage(
+      ctx,
+      row.channelId,
+      `📄 **${row.title}** (v${row.version}) passed review — awaiting your approval.`,
+      { threadRootId: row.conversationRootId, refArtifactId: row.id }
+    )
+  }
+  return artifact
+}
+
+/** Safety net: a review run that ends without verdicts must not strand docs. */
+export async function flipRemainingReviewDocs(
+  ctx: AppContext,
+  conversationRootId: string
+): Promise<number> {
+  const rows = await ctx.db
+    .select()
+    .from(artifacts)
+    .where(
+      and(eq(artifacts.conversationRootId, conversationRootId), eq(artifacts.status, 'review'))
+    )
+  const now = Date.now()
+  for (const row of rows) {
+    await ctx.db
+      .update(artifacts)
+      .set({ status: 'proposed', updatedAt: now })
+      .where(eq(artifacts.id, row.id))
+    ctx.hub.broadcast({
+      type: 'artifact_state',
+      artifact: { ...toArtifact(row), status: 'proposed', updatedAt: now }
+    })
+    await postSystemMessage(
+      ctx,
+      row.channelId,
+      `📄 **${row.title}** (v${row.version}) is ready for your review.`,
+      { threadRootId: row.conversationRootId, refArtifactId: row.id }
+    )
+  }
+  return rows.length
 }
 
 /**
@@ -153,11 +439,56 @@ export async function commitPlan(
       priority: draft.priority,
       createdByType: 'agent',
       createdById: row.createdByAgentId,
-      sourceAgentId: row.createdByAgentId
+      sourceAgentId: draft.assignee === 'human' ? undefined : row.createdByAgentId,
+      assigneeType: draft.assignee ?? 'agent'
     })
   }
 
   const agent = await getAgent(ctx.db, row.createdByAgentId)
+
+  // kind 'change': approval IS the git commit — the codebase artifact stays
+  // local; only the reviewed diff and the resulting sha live in the workspace.
+  if (row.kind === 'change') {
+    if (!row.sourceDir) {
+      return null
+    }
+    const { commitStaged } = await import('./changes')
+    const result = await commitStaged(row.sourceDir, row.title, agent?.name ?? 'OpenCrew agent')
+    if ('error' in result) {
+      // Roll the status back so Approve can be retried after the fix.
+      await ctx.db
+        .update(artifacts)
+        .set({ status: 'proposed', committedBy: null })
+        .where(eq(artifacts.id, artifactId))
+      await postSystemMessage(
+        ctx,
+        row.channelId,
+        `⚠️ Commit of **${row.title}** failed: ${result.error}`,
+        { threadRootId: row.conversationRootId }
+      )
+      const artifact = toArtifact(row)
+      ctx.hub.broadcast({ type: 'artifact_state', artifact })
+      return artifact
+    }
+    await postMessage(ctx, {
+      channelId: row.channelId,
+      threadRootId: row.conversationRootId,
+      authorType: 'human',
+      authorId: userId,
+      content:
+        `${agent ? `@${agent.name} ` : ''}✅ Approved & committed **${row.title}** ` +
+        `(\`${result.sha}\`). Carry on with the next step.`
+    })
+    const artifact: Artifact = {
+      ...toArtifact(row),
+      status: 'committed',
+      committedBy: userId,
+      updatedAt: now
+    }
+    ctx.hub.broadcast({ type: 'artifact_state', artifact })
+    return artifact
+  }
+
   const taskCount = parseDrafts(row.tasks).length
   // The approval IS the go signal: posted as the approving human and
   // @mentioning the authoring agent, so the run pipeline kicks off execution
@@ -168,10 +499,13 @@ export async function commitPlan(
     authorType: 'human',
     authorId: userId,
     content:
-      `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** (v${row.version}) — ` +
-      `${taskCount} task${taskCount === 1 ? '' : 's'} are on the board. Start executing: ` +
-      `work the board top-down by priority, delegate tasks to the right specialists, and ` +
-      `keep the doc updated with update_doc as tasks complete.`
+      taskCount > 0
+        ? `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** (v${row.version}) — ` +
+          `${taskCount} task${taskCount === 1 ? '' : 's'} are on the board. Start executing: ` +
+          `work the board top-down by priority, delegate tasks to the right specialists, and ` +
+          `keep the doc updated with update_doc as tasks complete.`
+        : `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** (v${row.version}). ` +
+          `It's committed as the reference — carry on.`
   })
 
   const artifact: Artifact = {
@@ -237,10 +571,84 @@ export async function updateCommittedDoc(
   return { artifact }
 }
 
+const ARCHIVE_LEAD_LIMIT = 240
+const ARCHIVE_TITLE_LIMIT = 80
+
+/** First markdown heading, else the first non-empty line, cleaned + clipped. */
+function inferDocTitle(text: string): string {
+  const heading = text.match(/^#{1,3}\s+(.+)$/m)
+  const raw = heading?.[1] ?? text.split('\n').find((line) => line.trim()) ?? 'Untitled'
+  return raw
+    .replace(/[*_`#>[\]]/g, '')
+    .trim()
+    .slice(0, ARCHIVE_TITLE_LIMIT)
+}
+
+/**
+ * Enforcement for "artifacts never live in chat": a run's over-long reply is
+ * moved into a committed 'doc' artifact (folder notes/, versioned per title)
+ * and the chat message becomes a short lead + pointer; the doc card renders
+ * inline under the reply. Prompt rules ask nicely — this makes it physics.
+ */
+export async function archiveReplyToDoc(
+  ctx: AppContext,
+  input: {
+    conversationRootId: string
+    channelId: string
+    runId: string
+    agentId: string
+    text: string
+  }
+): Promise<{ artifact: Artifact; pointerText: string }> {
+  const title = inferDocTitle(input.text)
+  const prior = await ctx.db
+    .select({ version: artifacts.version })
+    .from(artifacts)
+    .where(
+      and(eq(artifacts.conversationRootId, input.conversationRootId), eq(artifacts.title, title))
+    )
+  const now = Date.now()
+  const row: ArtifactRow = {
+    id: nanoid(),
+    workspaceSlug: 'default',
+    conversationRootId: input.conversationRootId,
+    channelId: input.channelId,
+    runId: input.runId,
+    kind: 'doc',
+    folder: 'notes',
+    title,
+    content: input.text,
+    tasks: '[]',
+    status: 'committed',
+    version: prior.reduce((max, r) => Math.max(max, r.version), 0) + 1,
+    createdByAgentId: input.agentId,
+    committedBy: null,
+    sourceDir: null,
+    createdAt: now,
+    updatedAt: now
+  }
+  await ctx.db.insert(artifacts).values(row)
+  const artifact = toArtifact(row)
+  ctx.hub.broadcast({ type: 'artifact_state', artifact })
+
+  // Lead paragraph for the chat message: skip the heading, take the first prose.
+  const lead =
+    input.text
+      .split('\n')
+      .filter((line) => line.trim() && !line.trim().startsWith('#'))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, ARCHIVE_LEAD_LIMIT) + '…'
+  const pointerText =
+    `${lead}\n\n📄 _Full content moved to the doc **${title}** (below) — ` +
+    `long replies live in docs, not chat._`
+  return { artifact, pointerText }
+}
+
 /** Human rejection: the proposal is dropped (agent can re-propose a revision). */
 export async function discardPlan(ctx: AppContext, artifactId: string): Promise<Artifact | null> {
   const [row] = await ctx.db.select().from(artifacts).where(eq(artifacts.id, artifactId)).limit(1)
-  if (!row || row.status !== 'proposed') return null
+  if (!row || (row.status !== 'proposed' && row.status !== 'review')) return null
   const now = Date.now()
   await ctx.db
     .update(artifacts)
@@ -324,6 +732,18 @@ export async function requestChanges(
 ): Promise<{ ok: true } | null> {
   const [row] = await ctx.db.select().from(artifacts).where(eq(artifacts.id, artifactId)).limit(1)
   if (!row || row.status !== 'proposed') return null
+  // Sending it back RETIRES this version — the ball is with the author now,
+  // so it must leave the human's Needs-You inbox immediately. The revision
+  // arrives as the next version and re-enters review.
+  const now = Date.now()
+  await ctx.db
+    .update(artifacts)
+    .set({ status: 'discarded', updatedAt: now })
+    .where(eq(artifacts.id, artifactId))
+  ctx.hub.broadcast({
+    type: 'artifact_state',
+    artifact: { ...toArtifact(row), status: 'discarded', updatedAt: now }
+  })
   const agent = await getAgent(ctx.db, row.createdByAgentId)
   const mention = agent ? `@${agent.name} ` : ''
   await postMessage(ctx, {

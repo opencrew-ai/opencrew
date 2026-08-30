@@ -11,7 +11,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import { and, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import type { AgentVersion, Channel, RunStatus } from '@opencrew/shared'
+import type { AgentVersion, Channel, RunStatus, RunTriggerType } from '@opencrew/shared'
 import type { AppContext, ApprovalDecision } from '../context'
 import {
   agentSessions,
@@ -58,7 +58,13 @@ import {
   reconcileTodoSnapshot,
   toolActivityLabel
 } from '../services/tasks'
-import { buildDocsPromptSection } from '../services/artifacts'
+import {
+  archiveReplyToDoc,
+  buildDocsPromptSection,
+  flipRemainingReviewDocs,
+  listDocsInReview,
+  reviewKindsForAgent
+} from '../services/artifacts'
 import { env } from '../env'
 
 // Build sessions can legitimately run long.
@@ -77,7 +83,7 @@ interface RunEnv {
   channel: Channel
   threadRootId: string | null
   depth: number
-  triggerType: 'mention' | 'watch'
+  triggerType: RunTriggerType
 }
 
 interface ReplyState {
@@ -308,14 +314,31 @@ async function runSessionAttempt(
   const docsSection = runEnv.threadRootId
     ? await buildDocsPromptSection(ctx.db, runEnv.threadRootId)
     : ''
-  const prompt =
-    `${intro}\n\n${transcript}${taskSection}${docsSection}\n\n` +
-    (runEnv.triggerType === 'watch'
-      ? `A new message was just posted in #${runEnv.channel.name}, a channel you watch ` +
-        `(you were NOT @mentioned). Follow your standing instructions for handling new ` +
-        `posts in this channel, then write a short status reply.`
-      : `You were @mentioned. Do what was asked (use your tools if needed), ` +
-        `then write your reply message.`)
+  let instruction: string
+  if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
+    const ownedKinds = await reviewKindsForAgent(ctx.db, runEnv.agentId)
+    const inReview = await listDocsInReview(ctx.db, runEnv.threadRootId, ownedKinds)
+    const docList = inReview
+      .map((d) => `"${d.title}" (${d.kind}, author: @${d.authorName})`)
+      .join(', ')
+    instruction =
+      `You are a workspace REVIEWER. Items awaiting your review in this conversation: ` +
+      `${docList || '(none — they may already be resolved; just reply briefly)'}. For EACH: ` +
+      `read it with read_doc and judge it per your review charter. Then call review_doc with ` +
+      `verdict "clear" (worth the human's attention) or "revise" (needs work — your reply must ` +
+      `@mention the author with concrete, specific guidance). Be strict: you are the filter ` +
+      `that keeps the human's review queue high-signal. Keep your reply to 1-3 sentences.`
+  } else if (runEnv.triggerType === 'watch') {
+    instruction =
+      `A new message was just posted in #${runEnv.channel.name}, a channel you watch ` +
+      `(you were NOT @mentioned). Follow your standing instructions for handling new ` +
+      `posts in this channel, then write a short status reply.`
+  } else {
+    instruction =
+      `You were @mentioned. Do what was asked (use your tools if needed), ` +
+      `then write your reply message.`
+  }
+  const prompt = `${intro}\n\n${transcript}${taskSection}${docsSection}\n\n${instruction}`
 
   const reply: ReplyState = { messageId: null, text: '' }
   let cancelled = false
@@ -749,7 +772,10 @@ async function appendReplyText(
       authorId: runEnv.agentId,
       agentVersionId: runEnv.version.id,
       content: '',
-      runId: runEnv.runId
+      runId: runEnv.runId,
+      // A mention is an invitation — replying in this conversation is always
+      // allowed; canPostInChannels keeps governing post_to_channel.
+      isRunReply: true
     })
     reply.messageId = message.id
   }
@@ -762,13 +788,31 @@ async function appendReplyText(
   })
 }
 
+// Replies longer than this are auto-moved into a doc artifact — chat stays
+// scannable, deliverables land in the Artifacts tree. Enforced, not asked.
+const CHAT_REPLY_DOC_LIMIT = 2000
+
 async function finalizeRun(
   ctx: AppContext,
   runEnv: RunEnv,
   reply: ReplyState
 ): Promise<void> {
   if (reply.messageId) {
-    await updateMessageContent(ctx, reply.messageId, reply.text)
+    let finalText = reply.text
+    if (finalText.length > CHAT_REPLY_DOC_LIMIT && runEnv.threadRootId) {
+      // Mentions are re-scanned on the SHORT text below, so a mention buried
+      // inside an archived wall never fans out — delegations must be explicit
+      // in the reply itself.
+      const archived = await archiveReplyToDoc(ctx, {
+        conversationRootId: runEnv.threadRootId,
+        channelId: runEnv.channel.id,
+        runId: runEnv.runId,
+        agentId: runEnv.agentId,
+        text: finalText
+      })
+      finalText = archived.pointerText
+    }
+    await updateMessageContent(ctx, reply.messageId, finalText)
     await recordStep(ctx, runEnv.runId, 'post_message', {
       messageId: reply.messageId,
       channelId: runEnv.channel.id,
@@ -782,6 +826,11 @@ async function finalizeRun(
     if (row) {
       await enqueueMentionRuns(ctx, await enrichMessage(ctx.db, row), runEnv.depth + 1)
     }
+  }
+  // Safety net: a review run must never strand docs in 'review' — anything
+  // the reviewer didn't verdict goes to the human by default.
+  if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
+    await flipRemainingReviewDocs(ctx, runEnv.threadRootId)
   }
   await setRunStatus(ctx, runEnv, 'done', { finishedAt: Date.now() })
 }
@@ -818,6 +867,9 @@ async function failRun(
 ): Promise<void> {
   if (reply?.messageId) {
     await updateMessageContent(ctx, reply.messageId, reply.text)
+  }
+  if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
+    await flipRemainingReviewDocs(ctx, runEnv.threadRootId)
   }
   await setRunStatus(ctx, runEnv, 'failed', { error, finishedAt: Date.now() })
   try {
