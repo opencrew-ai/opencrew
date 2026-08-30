@@ -8,7 +8,7 @@
 
 :root {
   color-scheme: dark;
-  --bg: #05070a;
+  --bg: #0a0c0b;
 }
 
 body {
@@ -27,30 +27,29 @@ h3 {
 
 .bg-stage {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(52, 211, 153, 0.12), transparent 70%),
-    radial-gradient(ellipse 50% 40% at 85% 10%, rgba(56, 189, 248, 0.07), transparent 70%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(244, 244, 245, 0.06), transparent 70%),
     var(--bg);
 }
 
 .terminal-glow {
-  box-shadow:
-    0 0 0 1px rgba(52, 211, 153, 0.12),
-    0 0 60px -18px rgba(52, 211, 153, 0.3);
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.1);
 }
 
-.text-shimmer {
-  background: linear-gradient(100deg, #34d399 20%, #a7f3d0 40%, #38bdf8 60%, #34d399 80%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 6s linear infinite;
-}
+/* ---------- message entrance animation ---------- */
 
-@keyframes shimmer {
-  to {
-    background-position: 200% center;
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out both;
 }
 
 /* ---------- controls ---------- */
@@ -59,10 +58,10 @@ h3 {
   @apply mb-1 block font-mono text-xs font-semibold uppercase tracking-wide text-zinc-400;
 }
 .input {
-  @apply w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-600/70;
+  @apply w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500;
 }
 .btn-primary {
-  @apply rounded-lg bg-emerald-400 px-3.5 py-2 text-sm font-bold text-zinc-950 shadow-[0_0_24px_-8px_rgba(52,211,153,0.6)] transition hover:bg-emerald-300 disabled:opacity-50;
+  @apply rounded-lg bg-zinc-100 px-3.5 py-2 text-sm font-bold text-zinc-950 transition hover:bg-white disabled:opacity-50;
 }
 .btn-secondary {
   @apply rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2 text-sm text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 disabled:opacity-50;
@@ -93,7 +92,7 @@ h3 {
 
 /* Task list (GFM) */
 .md-content input[type="checkbox"] {
-  @apply mr-1.5 accent-emerald-500;
+  @apply mr-1.5 accent-zinc-400;
 }
 
 /* Code */
@@ -114,7 +113,7 @@ h3 {
 
 /* Blockquote */
 .md-content blockquote {
-  @apply border-l-2 border-emerald-700/60 pl-3 text-zinc-400 italic my-2;
+  @apply border-l-2 border-zinc-700 pl-3 text-zinc-400 italic my-2;
 }
 
 /* Horizontal rule */

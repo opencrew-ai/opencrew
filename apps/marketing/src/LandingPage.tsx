@@ -1,8 +1,9 @@
 import { Logo } from './components/Logo'
+import { Monogram } from './components/Monogram'
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#05070a] text-zinc-200">
+    <div className="min-h-screen bg-[#0a0c0b] text-zinc-200">
       {/* Nav */}
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
@@ -22,7 +23,7 @@ export function LandingPage() {
           </a>
           <a
             href="https://opencrew.run/login"
-            className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+            className="rounded-md bg-zinc-100 px-4 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white"
           >
             Start free
           </a>
@@ -31,8 +32,7 @@ export function LandingPage() {
 
       {/* Hero */}
       <section className="mx-auto max-w-4xl px-6 pb-24 pt-20 text-center">
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 font-mono text-xs text-zinc-400">
           Open source · MIT license
         </div>
         <h1
@@ -41,7 +41,7 @@ export function LandingPage() {
         >
           Give your ideas
           <br />
-          <span className="text-emerald-400">a full crew.</span>
+          a full crew.
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-zinc-400 leading-relaxed">
           Describe what you need. The right specialist picks it up. The work happens.
@@ -51,7 +51,7 @@ export function LandingPage() {
         <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <a
             href="https://opencrew.run/login"
-            className="rounded-lg bg-emerald-600 px-8 py-3 text-base font-semibold text-white shadow-lg hover:bg-emerald-500"
+            className="rounded-lg bg-zinc-100 px-8 py-3 text-base font-semibold text-zinc-950 hover:bg-white"
           >
             Start free — no card needed
           </a>
@@ -113,7 +113,7 @@ export function LandingPage() {
             ].map(({ step, title, body }) => (
               <div key={step} className="relative rounded-xl border border-zinc-800 bg-zinc-950 p-6">
                 <div
-                  className="mb-3 font-mono text-xs font-bold text-emerald-500"
+                  className="mb-3 font-mono text-xs font-bold text-zinc-500"
                   style={{ fontFamily: 'var(--font-mono)' }}
                 >
                   {step}
@@ -140,19 +140,19 @@ export function LandingPage() {
           </p>
           <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { emoji: '🔍', name: 'Scout', role: 'Research & Intel', desc: 'Market research, competitor analysis, news briefings, due diligence.' },
-              { emoji: '💻', name: 'Coder', role: 'Engineering', desc: 'Ships real code, runs real commands, verifies with actual build output.' },
-              { emoji: '✍️', name: 'Quill', role: 'Docs & Writing', desc: 'READMEs, blog posts, copy — written to the style guide, every time.' },
-              { emoji: '🎨', name: 'Dash', role: 'Design & UX', desc: 'UX audits, design tokens, accessibility — decisions backed by real code.' },
-              { emoji: '📣', name: 'Nova', role: 'Marketing & Growth', desc: 'Positioning, landing pages, launch plans, growth loops.' },
-              { emoji: '🤝', name: 'Rex', role: 'Sales & BD', desc: 'ICP research, outbound sequences, deal qualification and closing.' },
-            ].map(({ emoji, name, role, desc }) => (
+              { name: 'Scout', role: 'Research & Intel', desc: 'Market research, competitor analysis, news briefings, due diligence.' },
+              { name: 'Coder', role: 'Engineering', desc: 'Ships real code, runs real commands, verifies with actual build output.' },
+              { name: 'Quill', role: 'Docs & Writing', desc: 'READMEs, blog posts, copy — written to the style guide, every time.' },
+              { name: 'Dash', role: 'Design & UX', desc: 'UX audits, design tokens, accessibility — decisions backed by real code.' },
+              { name: 'Nova', role: 'Marketing & Growth', desc: 'Positioning, landing pages, launch plans, growth loops.' },
+              { name: 'Rex', role: 'Sales & BD', desc: 'ICP research, outbound sequences, deal qualification and closing.' },
+            ].map(({ name, role, desc }) => (
               <div
                 key={name}
                 className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 hover:border-zinc-700 transition-colors"
               >
                 <div className="mb-3 flex items-center gap-3">
-                  <span className="text-2xl">{emoji}</span>
+                  <Monogram name={name} className="h-9 w-9 rounded-lg text-sm" />
                   <div>
                     <div className="font-semibold text-zinc-100">{name}</div>
                     <div className="text-xs text-zinc-500">{role}</div>
@@ -168,8 +168,9 @@ export function LandingPage() {
       {/* The approval gate callout */}
       <section className="border-y border-zinc-800/60 bg-zinc-950/40 py-24">
         <div className="mx-auto max-w-3xl px-6 text-center">
-          <div className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-2xl">
-            ⏸
+          <div className="mb-6 inline-flex h-12 w-12 items-center justify-center gap-1 rounded-xl border border-amber-500/30 bg-amber-500/10">
+            <span className="h-4 w-1 rounded-full bg-amber-400" />
+            <span className="h-4 w-1 rounded-full bg-amber-400" />
           </div>
           <h2
             className="text-3xl font-bold text-zinc-100"
@@ -187,7 +188,10 @@ export function LandingPage() {
             className="mx-auto mt-8 max-w-sm rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-left font-mono text-sm"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
-            <div className="mb-2 text-amber-400">⏸ Waiting for approval</div>
+            <div className="mb-2 flex items-center gap-2 text-amber-400">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+              Waiting for approval
+            </div>
             <div className="text-zinc-400">Tool: <span className="text-sky-300">Bash</span></div>
             <div className="mt-1 text-zinc-400">Command: <span className="text-zinc-200">git push origin main --force</span></div>
             <div className="mt-3 flex gap-2">
@@ -244,12 +248,12 @@ export function LandingPage() {
                 key={name}
                 className={`rounded-xl border p-6 ${
                   highlight
-                    ? 'border-emerald-500/50 bg-emerald-500/5 ring-1 ring-emerald-500/20'
+                    ? 'border-zinc-500/60 bg-zinc-900/40 ring-1 ring-zinc-500/20'
                     : 'border-zinc-800 bg-zinc-950'
                 }`}
               >
                 {highlight && (
-                  <div className="mb-3 text-xs font-semibold text-emerald-400 uppercase tracking-wide">
+                  <div className="mb-3 text-xs font-semibold text-zinc-300 uppercase tracking-wide">
                     Most popular
                   </div>
                 )}
@@ -267,7 +271,7 @@ export function LandingPage() {
                 <ul className="mt-5 space-y-2">
                   {features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm text-zinc-400">
-                      <span className="text-emerald-500">✓</span>
+                      <span className="text-zinc-500">✓</span>
                       {f}
                     </li>
                   ))}
@@ -276,7 +280,7 @@ export function LandingPage() {
                   href="https://opencrew.run/login"
                   className={`mt-6 block rounded-lg py-2.5 text-center text-sm font-semibold ${
                     highlight
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                      ? 'bg-zinc-100 text-zinc-950 hover:bg-white'
                       : 'border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
                   }`}
                 >
@@ -341,14 +345,14 @@ export function LandingPage() {
           >
             Stop being the router.
             <br />
-            <span className="text-emerald-400">Start running a crew.</span>
+            Start running a crew.
           </h2>
           <p className="mt-4 text-zinc-500">
             Free to start. No credit card. The crew is ready when you are.
           </p>
           <a
             href="https://opencrew.run/login"
-            className="mt-8 inline-block rounded-lg bg-emerald-600 px-10 py-3.5 text-base font-semibold text-white shadow-lg hover:bg-emerald-500"
+            className="mt-8 inline-block rounded-lg bg-zinc-100 px-10 py-3.5 text-base font-semibold text-zinc-950 hover:bg-white"
           >
             Start free
           </a>
