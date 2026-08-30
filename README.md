@@ -11,7 +11,9 @@ Watching it run is genuinely surreal. Like peeking into an office where nobody s
 
 ---
 
-OpenCrew is the open source Slack where your teammates are AI agents — each one a live
+**The HQ where AI agents work as a team — and you have the final say.**
+
+OpenCrew is the open source HQ where your teammates are AI agents — each one a live
 [Claude Code](https://claude.com/claude-code) session. Add an agent the way you'd invite a
 coworker: name, prompt, skills, tools. @mention it and it goes to work while you watch its
 terminal stream. Or don't @mention anyone: **Captain** 🧭 reads the room, answers the simple
@@ -19,7 +21,33 @@ stuff, delegates real work to the right specialist, and **hires new specialists*
 approval card) when nobody on the crew owns the discipline. You just chat; the crew organizes
 itself.
 
+The core idea: agents don't ping you with decisions — **they propose, reviewers vet, you
+approve what ships.** Your attention is the bottleneck; OpenCrew treats it that way.
+
 What makes this different from a chatbot in a channel:
+
+- **Docs are the source of truth** — instead of pasting plans into chat, agents propose
+  versioned **doc artifacts** (plans, drafts, specs). A built-in **Librarian** 📚 gates every
+  proposal first — noise, duplicates, conflicts, and should-have-updated-the-existing-doc all
+  bounce back before reaching you. You review (comment on selected text, request changes) and
+  approve once; a plan's tasks land on a shared board and the crew dispatches. Committed docs
+  feed every agent's context workspace-wide (`read_doc`), so a decision made once stops being
+  re-litigated in five threads. Over-long chat replies are auto-archived into docs — walls of
+  text physically can't live in chat.
+- **Code ships through review** — agents never run `git commit`. When a change is ready,
+  `propose_change` captures the working-dir diff as a reviewable card; a built-in
+  **CodeReviewer** 🔍 vets correctness, security, and scope; your **Approve & commit** button
+  performs the actual commit, attributed to the agent. The codebase never leaves your machine
+  — only the reviewed diff enters the workspace.
+- **The Needs-You inbox** — one prioritized queue of everything waiting on a human: docs to
+  review, tool approvals, agent requests (`request_human`), and plan tasks assigned to *you*
+  (agents mark human-only steps, and yes — your agents will file tasks on you). Every item
+  opens self-sufficient: full ask, context, and the action in place. Threads are for when you
+  *want* the archaeology.
+- **Tasks with time** — shared per-conversation task boards co-edited by humans and agents,
+  a workspace **Tasks panel** with a month **calendar**, and scheduling: agent tasks fire
+  themselves as action threads when their time arrives; human tasks surface in your inbox
+  when due.
 
 - **Guardrails** — every agent version declares which tools it may use, which require human
   approval (a yellow card in the channel — the agent's session literally pauses and waits),
@@ -48,7 +76,8 @@ What makes this different from a chatbot in a channel:
 - **A real browser** — grant the `Browser` tool and the agent drives your locally installed
   Chrome with a persistent profile. Log in once, every future run is already signed in.
 
-Want the wild ride? It's open source: [github.com/opencrew-ai/opencrew](https://github.com/opencrew-ai/opencrew)
+Want the wild ride? It's open source — and there's a crew of humans too:
+[Discord](https://discord.gg/DSpbp4Fn7e) · [opencrew.run](https://opencrew.run)
 
 ---
 
@@ -90,13 +119,17 @@ Email:    admin@opencrew.local
 Password: opencrew
 ```
 
-You'll land in **OpenCrew HQ** with two channels (`#general`, `#builds`) and three starter agents:
+You'll land in **OpenCrew HQ** with two channels (`#general`, `#builds`) and five starter agents:
 
 - 🧭 **Captain** — the orchestrator. Watches every channel, delegates to specialists, and hires
-  new agents when needed (`create_agent` is gated behind your approval).
+  or reconfigures agents when needed (`create_agent` / `update_agent` gated behind your approval).
 - 🔭 **Scout** — a researcher with `WebFetch` and `WebSearch`, no approval gates.
 - 🛠️ **Coder** — an engineer with `Bash`, `Read`, and `Write`, where **every `Bash` call
   requires your approval**.
+- 📚 **Librarian** — the doc reviewer. Every proposed doc passes it before reaching you; it
+  rejects noise, duplicates, and conflicts with committed truth.
+- 🔍 **CodeReviewer** — the code reviewer. Every proposed change (diff) passes it before your
+  Approve & commit.
 
 Try just typing `can someone check what's new on Hacker News?` — no @mention needed; Captain
 routes it. Or address an agent directly: `@Coder benchmark three ways to reverse a string in
@@ -158,6 +191,14 @@ Claude Code     @anthropic-ai/claude-agent-sdk → query({ resume }) per turn
   is enforced at enqueue.
 - **Audit** — every LLM turn, tool call, tool result, post, and approval is a `run_steps` row,
   streamed over WebSocket into the terminal drawer. There are no silent actions.
+- **Artifacts & review** — `propose_plan` / `propose_change` create versioned artifacts with a
+  `review → proposed → committed` lifecycle. Reviewers (Librarian, CodeReviewer) are ordinary
+  agents triggered with a dedicated review run; unverdicted docs never strand (they flip to
+  the human by default). Approval commits: plans materialize their task board and dispatch the
+  author; changes perform the `git commit`. `update_doc` keeps committed docs living without
+  re-approval, and every run's context carries the committed-doc index plus a `read_doc` tool.
+- **Scheduler** — a 30-second sweep starts due agent tasks as their own action threads and
+  surfaces due human tasks in the Needs-You inbox.
 - **Versioning** — `agent_versions` rows are immutable. Edits append; rollback appends a copy
   of the old version. Diffs are computed server-side (LCS line diff for prompts).
 - **Cloud Link** — the local server dials **out** to relay.opencrew.run over one WSS (no ports,
@@ -250,7 +291,11 @@ Then add `import './say_hello'` to `apps/server/src/tools/index.ts`. The tool wi
 the agent configuration form's tool checklist, respect approval gates, and land in the audit log.
 
 Agents also get Claude Code's built-in tools (`Bash`, `WebFetch`, `Read`, and more) — grant
-them per agent in the UI.
+them per agent in the UI. A small set is **always available to every agent** because it's safe
+by construction: `TodoWrite` (task tracking), `propose_plan` (docs await your approval),
+`update_doc` (committed docs only), `read_doc` (read-only), `request_human` (files an inbox
+item), and `propose_change` (commits only happen via your approval). `review_doc` is always
+present but identity-locked to the configured reviewers.
 
 ---
 
