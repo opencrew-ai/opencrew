@@ -5,7 +5,8 @@ import { getSettings, setSetting } from '../services/settings'
 import { adminGuard, authGuard, fail, ok } from './helpers'
 
 const updateSchema = z.object({
-  maxMentionDepth: z.number().int().min(1).optional()
+  maxMentionDepth: z.number().int().min(1).optional(),
+  maxAgentFanout: z.number().int().min(1).optional()
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -18,6 +19,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): v
     if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
     if (parsed.data.maxMentionDepth !== undefined) {
       await setSetting(ctx.db, 'maxMentionDepth', parsed.data.maxMentionDepth)
+    }
+    if (parsed.data.maxAgentFanout !== undefined) {
+      await setSetting(ctx.db, 'maxAgentFanout', parsed.data.maxAgentFanout)
     }
     return ok(await getSettings(ctx.db))
   })

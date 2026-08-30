@@ -5,7 +5,7 @@ import type { AppContext } from '../context'
 import { agents, runs, users } from '../db/schema'
 import { getAgentWithVersion, toAgent } from '../services/agents'
 import { postSystemMessage } from '../services/messages'
-import { getMaxMentionDepth } from '../services/settings'
+import { getMaxAgentFanout, getMaxMentionDepth } from '../services/settings'
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -80,6 +80,13 @@ export async function enqueueMentionRuns(
       { threadRootId: conversationThreadOf(message) }
     )
   } else {
+    // Fan-out guard: an AGENT message that name-drops the whole crew (a lane
+    // table, a status list) must not spin up every agent it mentions. Humans
+    // are never capped — a human's mentions are always deliberate.
+    const fanoutCap =
+      message.authorType === 'agent' ? await getMaxAgentFanout(ctx.db) : Infinity
+    let triggered = 0
+    const skipped: string[] = []
     for (const name of mentioned) {
       const agent = allAgents.find((a) => a.name === name)
       if (!agent) continue
@@ -88,7 +95,22 @@ export async function enqueueMentionRuns(
       // Community mode: visitors can't direct-task agents — watchers
       // (Captain) will still pick the message up below.
       if (restricted && message.authorType === 'human') continue
+      if (triggered >= fanoutCap) {
+        skipped.push(agent.name)
+        continue
+      }
       await enqueueRun(ctx, agent.id, message, depth, 'mention', restricted)
+      triggered += 1
+    }
+    if (skipped.length > 0) {
+      await postSystemMessage(
+        ctx,
+        message.channelId,
+        `⚠️ ${skipped.map((n) => `**${n}**`).join(', ')} ${skipped.length === 1 ? 'was' : 'were'} ` +
+          `mentioned but not triggered — agent messages may trigger at most ${fanoutCap} ` +
+          `agents (Workspace settings → fan-out limit). Delegate in separate messages if they're all needed.`,
+        { threadRootId: conversationThreadOf(message) }
+      )
     }
   }
 

@@ -113,7 +113,12 @@ export async function buildSystemPrompt(
       ? `Channels you may post into: ${allowedChannels.join(', ')}.`
       : 'You cannot post to other channels.',
     teammates.length > 0
-      ? `Other agents on the crew: ${teammates.join(', ')}. To hand work to one, @mention them in your reply and they will pick it up (chains are depth-limited).`
+      ? `Other agents on the crew: ${teammates.join(', ')}. IMPORTANT: writing @Name ` +
+        `anywhere in your reply TRIGGERS that agent to run. Never @mention agents ` +
+        `casually — in lists, tables, plans, or status summaries write names WITHOUT ` +
+        `the @. Only @mention when you are delegating a task to that agent right now, ` +
+        `and delegate to the fewest agents the task needs (usually one; fan-out and ` +
+        `chain depth are capped).`
       : '',
     watchesAll
       ? `You see every human message in every channel automatically. Humans who @mention a specific agent are handled by that agent — you only receive untargeted messages.`

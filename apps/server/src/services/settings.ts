@@ -6,11 +6,13 @@ import { env } from '../env'
 export interface WorkspaceSettings {
   /** How deep agent→agent @mention chains may go before stopping. */
   maxMentionDepth: number
+  /** How many agents a single AGENT message may trigger via @mentions. */
+  maxAgentFanout: number
 }
 
 /** Defaults come from env (which itself defaults sensibly). */
 function defaults(): WorkspaceSettings {
-  return { maxMentionDepth: env.maxMentionDepth }
+  return { maxMentionDepth: env.maxMentionDepth, maxAgentFanout: 3 }
 }
 
 export async function getSettings(db: DB): Promise<WorkspaceSettings> {
@@ -18,8 +20,10 @@ export async function getSettings(db: DB): Promise<WorkspaceSettings> {
   const rows = await db.select().from(settings)
   const byKey = new Map(rows.map((r) => [r.key, r.value]))
   const depth = Number(byKey.get('maxMentionDepth'))
+  const fanout = Number(byKey.get('maxAgentFanout'))
   return {
-    maxMentionDepth: Number.isInteger(depth) && depth >= 1 ? depth : base.maxMentionDepth
+    maxMentionDepth: Number.isInteger(depth) && depth >= 1 ? depth : base.maxMentionDepth,
+    maxAgentFanout: Number.isInteger(fanout) && fanout >= 1 ? fanout : base.maxAgentFanout
   }
 }
 
@@ -39,6 +43,10 @@ export async function setSetting(
 
 export async function getMaxMentionDepth(db: DB): Promise<number> {
   return (await getSettings(db)).maxMentionDepth
+}
+
+export async function getMaxAgentFanout(db: DB): Promise<number> {
+  return (await getSettings(db)).maxAgentFanout
 }
 
 // Re-exported for tests that want to reset state.
