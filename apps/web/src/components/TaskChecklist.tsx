@@ -144,6 +144,20 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
                     {task.status === 'in_progress' && task.activeForm
                       ? task.activeForm
                       : task.content}
+                    {task.scheduledFor && task.status === 'pending' && (
+                      <span
+                        className="ml-1 text-[10px] text-zinc-500"
+                        title="Scheduled — fires automatically"
+                      >
+                        🕐{' '}
+                        {new Date(task.scheduledFor).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    )}
                     {task.assigneeType === 'human' && (
                       <span className="ml-1 text-amber-400/80" title="Assigned to a human — in your Needs-You inbox">
                         👤

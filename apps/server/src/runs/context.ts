@@ -101,7 +101,13 @@ export async function buildSystemPrompt(
     version.systemPrompt,
     '',
     '---',
-    `You are "${agentName}", an AI teammate in the OpenCrew workspace, currently replying in #${channel.name}.`,
+    `You are "${agentName}", an AI teammate in the OpenCrew workspace, currently replying in ` +
+      `#${channel.name}${channel.topic ? ` — this channel is for: "${channel.topic}"` : ''}.`,
+    `CHANNEL FIT: answer through the lens of THIS channel's purpose. Workspace docs are ` +
+      `shared truth, but filter them to what belongs here — in a build channel talk about ` +
+      `what gets built, not marketing logistics. If the ask (or part of it) belongs in ` +
+      `another channel, cover it in one line and point there instead of importing it.`,
+    `Current date/time: ${new Date().toISOString()} — use it when scheduling plan steps (scheduledFor).`,
     `You are persistent: this conversation resumes the same session every turn, and your working directory persists — you can build things across many messages. Everything you do is streamed live to the crew's terminal panel.`,
     `Your final text IS your chat reply — write conversational markdown, no preamble about being an AI.`,
     `DOC RULE: substantial output NEVER goes into chat — plans, drafts, specs, reports, ` +

@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage'
 import { InvitePage } from './pages/InvitePage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { ArtifactsPage } from './pages/ArtifactsPage'
+import { TasksPage } from './pages/TasksPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -95,6 +96,7 @@ export default function App() {
         <Route path="/channels" element={<WorkspacePage />} />
         <Route path="/channels/:channelId" element={<WorkspacePage />} />
         <Route path="/artifacts" element={<ArtifactsPage />} />
+        <Route path="/tasks" element={<TasksPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/agents/:agentId" element={<AgentDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />

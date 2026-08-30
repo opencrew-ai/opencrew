@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../lib/api'
 import { Logo } from '../components/Logo'
 
@@ -13,6 +13,17 @@ export function LoginPage({ isBootstrap, onAuthed }: LoginPageProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Cloud-linked workspaces lead with opencrew.run — the local password form
+  // is the fallback (offline / local admin), not the front door.
+  const [cloudUrl, setCloudUrl] = useState<string | null>(null)
+  const [showLocalForm, setShowLocalForm] = useState(false)
+
+  useEffect(() => {
+    api
+      .get<{ cloudUrl: string | null }>('/api/auth/login-options')
+      .then((options) => setCloudUrl(options.cloudUrl))
+      .catch(() => {})
+  }, [])
 
   // Served through the opencrew.run relay: the local password form is a dead
   // end (accounts live at opencrew.run) — send them to the portal instead.
@@ -55,6 +66,28 @@ export function LoginPage({ isBootstrap, onAuthed }: LoginPageProps) {
               : 'Sign in to your crew.'}
           </p>
         </div>
+
+        {/* Cloud-linked: opencrew.run is the front door */}
+        {!isBootstrap && cloudUrl && (
+          <>
+            <a
+              href={cloudUrl}
+              className="btn-primary block w-full text-center"
+            >
+              Continue with opencrew.run →
+            </a>
+            {!showLocalForm && (
+              <button
+                type="button"
+                onClick={() => setShowLocalForm(true)}
+                className="w-full text-center text-xs text-zinc-500 transition hover:text-zinc-300"
+              >
+                sign in with a local account instead
+              </button>
+            )}
+          </>
+        )}
+
         {isBootstrap && (
           <input
             className="input"
@@ -64,26 +97,33 @@ export function LoginPage({ isBootstrap, onAuthed }: LoginPageProps) {
             required
           />
         )}
-        <input
-          className="input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className="input"
-          type="password"
-          placeholder={isBootstrap ? 'Password (8+ chars)' : 'Password'}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        <button className="btn-primary w-full" disabled={busy}>
-          {busy ? '…' : isBootstrap ? 'Create workspace' : 'Sign in'}
-        </button>
+        {(isBootstrap || !cloudUrl || showLocalForm) && (
+          <>
+            <input
+              className="input"
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder={isBootstrap ? 'Password (8+ chars)' : 'Password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            <button
+              className={`w-full ${cloudUrl && !isBootstrap ? 'rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500' : 'btn-primary'}`}
+              disabled={busy}
+            >
+              {busy ? '…' : isBootstrap ? 'Create workspace' : 'Sign in with local account'}
+            </button>
+          </>
+        )}
       </form>
     </div>
   )

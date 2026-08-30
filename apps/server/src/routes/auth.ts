@@ -6,6 +6,7 @@ import type { AppContext } from '../context'
 import { invites, users } from '../db/schema'
 import { hashPassword, verifyPassword } from '../auth/passwords'
 import { createSession, destroySession, SESSION_COOKIE } from '../auth/sessions'
+import { getRawSetting } from '../services/settings'
 import { adminGuard, authGuard, currentUser, fail, ok } from './helpers'
 import { ensureRelayInviteUrl } from '../services/cloudlink'
 
@@ -88,6 +89,19 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
       .from(users)
       .where(eq(users.email, parsed.data.email))
       .limit(1)
+    // Relay-created accounts have no local password by design — their
+    // identity IS the opencrew.run portal session. A generic "invalid
+    // password" here strands people; say what's actually going on.
+    if (user && user.passwordHash.startsWith('relay$')) {
+      return reply
+        .code(401)
+        .send(
+          fail(
+            'This account signs in through opencrew.run — open your crew there instead, ' +
+              'or sign in here with a local account.'
+          )
+        )
+    }
     if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
       return reply.code(401).send(fail('invalid email or password'))
     }
@@ -95,6 +109,41 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
     reply.setCookie(SESSION_COOKIE, sessionId, cookieOpts())
     return ok(publicUser(user))
   })
+
+  /**
+   * Public: what sign-in methods this workspace supports. When cloud-linked,
+   * opencrew.run is the front door for browsers — the login page leads with
+   * it and demotes the local password form to a fallback.
+   */
+  app.get('/api/auth/login-options', async () => {
+    const relayUrl = await getRawSetting(ctx.db, 'cloudRelayUrl')
+    const workspaceId = await getRawSetting(ctx.db, 'cloudWorkspaceId')
+    return ok({ cloudUrl: relayUrl && workspaceId ? relayUrl : null })
+  })
+
+  /** Change your own password (verifies the current one first). */
+  app.post(
+    '/api/auth/change-password',
+    { preHandler: authGuard(ctx) },
+    async (req, reply) => {
+      const parsed = z
+        .object({
+          currentPassword: z.string().min(1),
+          newPassword: z.string().min(8).max(200)
+        })
+        .safeParse(req.body)
+      if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+      const user = req.user!
+      if (!verifyPassword(parsed.data.currentPassword, user.passwordHash)) {
+        return reply.code(403).send(fail('current password is incorrect'))
+      }
+      await ctx.db
+        .update(users)
+        .set({ passwordHash: hashPassword(parsed.data.newPassword) })
+        .where(eq(users.id, user.id))
+      return ok(null)
+    }
+  )
 
   app.post('/api/auth/logout', async (req, reply) => {
     const cookies = req.cookies as Record<string, string | undefined>

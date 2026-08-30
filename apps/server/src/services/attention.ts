@@ -13,7 +13,6 @@ import {
 import type { DB } from '../db'
 import type { AppContext } from '../context'
 
-const TITLE_LIMIT = 160
 
 export async function createAttentionRequest(
   ctx: AppContext,
@@ -89,7 +88,8 @@ export async function listAttention(db: DB): Promise<AttentionItem[]> {
     items.push({
       kind: 'request',
       refId: row.id,
-      title: row.request.slice(0, TITLE_LIMIT),
+      // Full text — the sidebar truncates visually; the modal needs it all.
+      title: row.request,
       channelId: row.channelId,
       conversationRootId: row.conversationRootId,
       ...withAgent(row.agentId),
@@ -103,15 +103,21 @@ export async function listAttention(db: DB): Promise<AttentionItem[]> {
     .from(tasks)
     .where(eq(tasks.assigneeType, 'human'))
     .orderBy(desc(tasks.createdAt))
+  const now = Date.now()
   for (const task of humanTasks) {
-    if (task.status === 'completed') continue
+    // Only PENDING tasks need you — in_progress means the crew took it over.
+    if (task.status !== 'pending') continue
+    // Scheduled-for-later tasks live on the calendar, not in today's inbox.
+    if (task.scheduledFor !== null && task.scheduledFor > now) continue
     items.push({
       kind: 'task',
       refId: task.id,
-      title: task.content.slice(0, TITLE_LIMIT),
+      title: task.content,
       channelId: task.channelId,
       conversationRootId: task.conversationRootId,
       ...withAgent(task.createdByType === 'agent' ? task.createdById : undefined),
+      priority: task.priority,
+      position: task.position,
       createdAt: task.createdAt
     })
   }
@@ -175,5 +181,24 @@ export async function listAttention(db: DB): Promise<AttentionItem[]> {
     }
   }
 
-  return items.sort((a, b) => b.createdAt - a.createdAt)
+  // Work-queue order, not a news feed: blocked agents first (a paused run is
+  // the most expensive kind of waiting), then docs to review, then tasks and
+  // requests by priority → plan order → oldest first (do step 1 first).
+  const KIND_RANK: Record<AttentionItem['kind'], number> = {
+    tool_approval: 0,
+    doc_review: 1,
+    request: 2,
+    task: 2
+  }
+  const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
+  return items.sort((a, b) => {
+    const kind = KIND_RANK[a.kind] - KIND_RANK[b.kind]
+    if (kind !== 0) return kind
+    const priority =
+      (PRIORITY_RANK[a.priority ?? 'medium'] ?? 1) - (PRIORITY_RANK[b.priority ?? 'medium'] ?? 1)
+    if (priority !== 0) return priority
+    const position = (a.position ?? 0) - (b.position ?? 0)
+    if (position !== 0) return position
+    return a.createdAt - b.createdAt
+  })
 }

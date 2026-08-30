@@ -150,6 +150,14 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           <span>📁</span>
           <span>Artifacts</span>
         </Link>
+        <Link
+          to="/tasks"
+          onClick={onClose}
+          className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+        >
+          <span>☑</span>
+          <span>Tasks</span>
+        </Link>
 
         {/* Needs-You inbox — everything waiting on a human, newest first */}
         <section>
@@ -189,7 +197,10 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
                   >
                     <span className="mt-px text-xs">{icon}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs text-zinc-200">{item.title}</span>
+                      <span className="block truncate text-xs text-zinc-200">
+                        {item.priority === 'high' && <span className="mr-1 text-red-400">‼</span>}
+                        {item.title}
+                      </span>
                       {item.agentName && (
                         <span className="block truncate text-[10px] text-zinc-500">
                           {item.agentEmoji} {item.agentName}

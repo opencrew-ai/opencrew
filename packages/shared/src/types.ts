@@ -220,6 +220,8 @@ export interface SharedTask {
   sourceAgentId?: string
   /** 'human' = a manual step only a person can do; surfaces in Needs You. */
   assigneeType: 'agent' | 'human'
+  /** Unix ms — agent tasks auto-dispatch then; human tasks become due then. */
+  scheduledFor?: number
   position: number
   updatedAt: number
 }
@@ -247,6 +249,9 @@ export interface AttentionItem {
   agentId?: string
   agentName?: string
   agentEmoji?: string
+  /** Task items: execution priority + plan order, drive inbox sorting. */
+  priority?: TaskPriority
+  position?: number
   createdAt: number
 }
 
@@ -256,6 +261,8 @@ export interface PlanTaskDraft {
   priority: TaskPriority
   /** 'human' for steps only a person can do (accounts, payments, sign-offs). */
   assignee?: 'agent' | 'human'
+  /** ISO datetime — when this step should happen (agent steps auto-fire). */
+  scheduledFor?: string
 }
 
 /**

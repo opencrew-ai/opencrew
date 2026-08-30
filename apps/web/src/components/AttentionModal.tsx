@@ -24,6 +24,8 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
   const { me, channels } = useWorkspace()
   const [rootMessage, setRootMessage] = useState<Message | null>(null)
   const [artifact, setArtifact] = useState<Artifact | null>(null)
+  const [conversationDocs, setConversationDocs] = useState<Artifact[]>([])
+  const [openDoc, setOpenDoc] = useState<Artifact | null>(null)
   const [isActing, setIsActing] = useState(false)
   const canAct = me.role !== 'guest'
   const channelName = channels.find((c) => c.id === item.channelId)?.name
@@ -52,6 +54,24 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
       .catch(() => {})
   }, [item.channelId, item.conversationRootId])
 
+  // Docs of this conversation — requests usually reference one; link them.
+  useEffect(() => {
+    if (item.kind === 'doc_review') return
+    api
+      .get<Artifact[]>(`/api/channels/${item.channelId}/artifacts`)
+      .then((all) => {
+        const latest = new Map<string, Artifact>()
+        for (const doc of all) {
+          if (doc.status === 'discarded') continue
+          if (doc.conversationRootId !== item.conversationRootId) continue
+          const prior = latest.get(doc.title)
+          if (!prior || doc.version > prior.version) latest.set(doc.title, doc)
+        }
+        setConversationDocs([...latest.values()])
+      })
+      .catch(() => {})
+  }, [item.kind, item.channelId, item.conversationRootId])
+
   // Doc reviews open the full review modal instead.
   useEffect(() => {
     if (item.kind !== 'doc_review') return
@@ -69,6 +89,22 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
   const openThread = () => {
     onClose()
     navigate(`/channels/${item.channelId}?thread=${item.conversationRootId}`)
+  }
+
+  // Delegate this task to the crew: it becomes its own action thread.
+  const askAgent = async () => {
+    setIsActing(true)
+    try {
+      const result = await api.post<{ channelId: string; rootId: string }>(
+        `/api/tasks/${item.refId}/start`
+      )
+      onClose()
+      navigate(`/channels/${result.channelId}?thread=${result.rootId}`)
+    } catch {
+      // task may no longer be pending
+    } finally {
+      setIsActing(false)
+    }
   }
 
   const markDone = async () => {
@@ -134,6 +170,28 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
             </div>
           )}
 
+          {conversationDocs.length > 0 && (
+            <div className="mt-4 border-t border-zinc-800/60 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Referenced docs
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {conversationDocs.map((doc) => (
+                  <button
+                    key={doc.id}
+                    onClick={() => setOpenDoc(doc)}
+                    className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 transition hover:border-zinc-500"
+                    title="Open doc"
+                  >
+                    {doc.kind === 'change' ? '🧩' : '📄'}
+                    <span className="max-w-[260px] truncate">{doc.title}</span>
+                    <span className="text-[10px] text-zinc-500">v{doc.version}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {rootMessage && (
             <div className="mt-4 border-t border-zinc-800/60 pt-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -156,6 +214,16 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
           >
             open thread →
           </button>
+          {canAct && item.kind === 'task' && (
+            <button
+              onClick={() => void askAgent()}
+              disabled={isActing}
+              title="Hand this to the crew — starts its own thread"
+              className="rounded border border-sky-700/60 px-2.5 py-1 text-sky-300 transition hover:bg-sky-900/40 disabled:opacity-40"
+            >
+              ▶ ask agent
+            </button>
+          )}
           {canAct && (item.kind === 'task' || item.kind === 'request') && (
             <button
               onClick={() => void markDone()}
@@ -167,6 +235,9 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
           )}
         </div>
       </div>
+
+      {/* Referenced doc opened from within the item (portals above this modal) */}
+      {openDoc && <ArtifactDocModal artifact={openDoc} onClose={() => setOpenDoc(null)} />}
     </div>,
     document.body
   )

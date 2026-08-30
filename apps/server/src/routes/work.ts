@@ -3,13 +3,13 @@ import { desc, eq } from 'drizzle-orm'
 import type { AppContext } from '../context'
 import { agents, channels, messages, runs, tasks, users } from '../db/schema'
 import {
-  broadcastTaskState,
   createTask,
   deleteTask,
+  listAllTasks,
   listChannelTasks,
+  startTask,
   updateTask
 } from '../services/tasks'
-import { postMessage } from '../services/post'
 import { z } from 'zod'
 import { authGuard, fail, memberGuard, ok } from './helpers'
 
@@ -165,7 +165,9 @@ const createTaskSchema = z.object({
 const updateTaskSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'completed']).optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
-  content: z.string().min(1).max(500).optional()
+  content: z.string().min(1).max(500).optional(),
+  /** Unix ms; null clears the schedule. */
+  scheduledFor: z.number().int().positive().nullable().optional()
 })
 
 export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -237,36 +239,16 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
         .safeParse(req.body ?? {})
       if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
 
-      const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1)
-      if (!task) return reply.code(404).send(fail('task not found'))
-
-      let mention = ''
-      if (parsed.data.agentId) {
-        const [agent] = await ctx.db
-          .select({ name: agents.name })
-          .from(agents)
-          .where(eq(agents.id, parsed.data.agentId))
-          .limit(1)
-        if (!agent) return reply.code(404).send(fail('agent not found'))
-        mention = `@${agent.name} `
-      }
-
-      const oldRootId = task.conversationRootId
-      const message = await postMessage(ctx, {
-        channelId: task.channelId,
-        authorType: 'human',
-        authorId: req.user!.id,
-        content: `${mention}📌 ${task.content} _(priority: ${task.priority})_`
-      })
-      await ctx.db
-        .update(tasks)
-        .set({ conversationRootId: message.id, status: 'in_progress', updatedAt: Date.now() })
-        .where(eq(tasks.id, taskId))
-      await broadcastTaskState(ctx, oldRootId, task.channelId)
-      await broadcastTaskState(ctx, message.id, task.channelId)
-      return ok({ channelId: task.channelId, rootId: message.id })
+      const result = await startTask(ctx, taskId, req.user!.id, parsed.data.agentId)
+      if (!result) return reply.code(404).send(fail('no pending task with that id'))
+      return ok(result)
     }
   )
+
+  /** Every task in the workspace — the Tasks panel and calendar. */
+  app.get('/api/tasks', { preHandler: authGuard(ctx) }, async () => {
+    return ok(await listAllTasks(ctx.db))
+  })
 
   app.get('/api/work', { preHandler: authGuard(ctx) }, async () => {
     const [messageRows, runRows, channelRows, taskRows, agentRows, userRows] = await Promise.all([

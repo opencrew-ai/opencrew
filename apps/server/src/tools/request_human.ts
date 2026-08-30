@@ -13,7 +13,7 @@ registerOpenCrewTool({
     request: z
       .string()
       .min(1)
-      .max(500)
+      .max(1000)
       .describe(
         'One clear sentence: what you need the human to do, e.g. ' +
           '"Post the Show HN draft (see doc) — needs your HN account" or ' +

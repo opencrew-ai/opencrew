@@ -6,9 +6,10 @@ import type {
   TaskPriority,
   TaskStatus
 } from '@opencrew/shared'
-import { tasks } from '../db/schema'
+import { agents, tasks } from '../db/schema'
 import type { DB } from '../db'
 import type { AppContext } from '../context'
+import { postMessage } from './post'
 
 type TaskRow = typeof tasks.$inferSelect
 
@@ -27,6 +28,7 @@ function toSharedTask(row: TaskRow): SharedTask {
     createdById: row.createdById,
     sourceAgentId: row.sourceAgentId ?? undefined,
     assigneeType: row.assigneeType,
+    scheduledFor: row.scheduledFor ?? undefined,
     position: row.position,
     updatedAt: row.updatedAt
   }
@@ -91,6 +93,7 @@ export interface CreateTaskInput {
   status?: TaskStatus
   activeForm?: string
   assigneeType?: 'agent' | 'human'
+  scheduledFor?: number
 }
 
 export async function createTask(ctx: AppContext, input: CreateTaskInput): Promise<SharedTask> {
@@ -108,6 +111,7 @@ export async function createTask(ctx: AppContext, input: CreateTaskInput): Promi
     createdById: input.createdById,
     sourceAgentId: input.sourceAgentId ?? null,
     assigneeType: input.assigneeType ?? 'agent',
+    scheduledFor: input.scheduledFor ?? null,
     position: await nextPosition(ctx.db, input.conversationRootId),
     createdAt: now,
     updatedAt: now
@@ -121,6 +125,8 @@ export interface UpdateTaskPatch {
   status?: TaskStatus
   priority?: TaskPriority
   content?: string
+  /** null clears the schedule. */
+  scheduledFor?: number | null
 }
 
 export async function updateTask(
@@ -135,7 +141,18 @@ export async function updateTask(
     .set({ ...patch, updatedAt: Date.now() })
     .where(eq(tasks.id, taskId))
   await broadcastTaskState(ctx, row.conversationRootId, row.channelId)
-  return { ...toSharedTask(row), ...patch, updatedAt: Date.now() }
+  return {
+    ...toSharedTask(row),
+    ...patch,
+    scheduledFor: patch.scheduledFor === null ? undefined : (patch.scheduledFor ?? toSharedTask(row).scheduledFor),
+    updatedAt: Date.now()
+  }
+}
+
+/** Every task in the workspace — powers the Tasks panel and calendar. */
+export async function listAllTasks(db: DB): Promise<SharedTask[]> {
+  const rows = await db.select().from(tasks).orderBy(asc(tasks.createdAt))
+  return rows.map(toSharedTask)
 }
 
 export async function deleteTask(ctx: AppContext, taskId: string): Promise<boolean> {
@@ -144,6 +161,48 @@ export async function deleteTask(ctx: AppContext, taskId: string): Promise<boole
   await ctx.db.delete(tasks).where(eq(tasks.id, taskId))
   await broadcastTaskState(ctx, row.conversationRootId, row.channelId)
   return true
+}
+
+/**
+ * Start a task as its own ACTION THREAD: posts a channel message for the
+ * task (mentioning the given agent, the task's own agent, or none so the
+ * front desk picks it up), then re-homes the task to that new conversation.
+ * Used by the ▶ button and by the scheduler when a task's time arrives.
+ */
+export async function startTask(
+  ctx: AppContext,
+  taskId: string,
+  initiatorUserId: string,
+  agentId?: string
+): Promise<{ channelId: string; rootId: string } | null> {
+  const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1)
+  if (!task || task.status !== 'pending') return null
+
+  const targetAgentId = agentId ?? task.sourceAgentId ?? undefined
+  let mention = ''
+  if (targetAgentId) {
+    const [agent] = await ctx.db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, targetAgentId))
+      .limit(1)
+    if (agent) mention = `@${agent.name} `
+  }
+
+  const oldRootId = task.conversationRootId
+  const message = await postMessage(ctx, {
+    channelId: task.channelId,
+    authorType: 'human',
+    authorId: initiatorUserId,
+    content: `${mention}📌 ${task.content} _(priority: ${task.priority})_`
+  })
+  await ctx.db
+    .update(tasks)
+    .set({ conversationRootId: message.id, status: 'in_progress', updatedAt: Date.now() })
+    .where(eq(tasks.id, taskId))
+  await broadcastTaskState(ctx, oldRootId, task.channelId)
+  await broadcastTaskState(ctx, message.id, task.channelId)
+  return { channelId: task.channelId, rootId: message.id }
 }
 
 /**

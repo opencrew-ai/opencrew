@@ -254,6 +254,9 @@ export const tasks = pgTable('tasks', {
   assigneeType: text('assignee_type', { enum: ['agent', 'human'] })
     .notNull()
     .default('agent'),
+  /** Unix ms. Agent tasks auto-dispatch at this time; human tasks become
+   *  due in the Needs-You inbox. Null = unscheduled. */
+  scheduledFor: bigint('scheduled_for', { mode: 'number' }),
   position: integer('position').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()

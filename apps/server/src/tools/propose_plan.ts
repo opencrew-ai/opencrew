@@ -36,6 +36,14 @@ registerOpenCrewTool({
             .describe(
               '"human" for steps only a person can do (their accounts, payments, external ' +
                 'sign-offs) — these land in the human\'s Needs-You inbox. Default: agent.'
+            ),
+          scheduledFor: z
+            .string()
+            .datetime({ offset: true })
+            .optional()
+            .describe(
+              'ISO datetime when this step should happen. Agent steps auto-fire at that ' +
+                'time; human steps become due in the inbox then. Omit for "as soon as possible".'
             )
         })
       )

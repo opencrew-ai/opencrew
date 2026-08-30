@@ -21,6 +21,7 @@ import { registerWorkRoutes } from './routes/work'
 import { registerArtifactRoutes } from './routes/artifacts'
 import { registerAttentionRoutes } from './routes/attention'
 import { ensureBuiltinReviewers } from './services/artifacts'
+import { startTaskScheduler } from './services/scheduler'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerStatsRoutes } from './routes/stats'
 import { registerCrewsRoutes } from './routes/crews'
@@ -121,6 +122,7 @@ async function main(): Promise<void> {
 
   // Reconnect to opencrew.run if this instance is cloud-linked.
   await ensureBuiltinReviewers(ctx)
+  startTaskScheduler(ctx)
   startCloudLink(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })

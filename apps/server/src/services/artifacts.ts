@@ -432,6 +432,7 @@ export async function commitPlan(
     .where(eq(artifacts.id, artifactId))
 
   for (const draft of parseDrafts(row.tasks)) {
+    const scheduledMs = draft.scheduledFor ? Date.parse(draft.scheduledFor) : NaN
     await createTask(ctx, {
       conversationRootId: row.conversationRootId,
       channelId: row.channelId,
@@ -440,7 +441,8 @@ export async function commitPlan(
       createdByType: 'agent',
       createdById: row.createdByAgentId,
       sourceAgentId: draft.assignee === 'human' ? undefined : row.createdByAgentId,
-      assigneeType: draft.assignee ?? 'agent'
+      assigneeType: draft.assignee ?? 'agent',
+      scheduledFor: Number.isFinite(scheduledMs) ? scheduledMs : undefined
     })
   }
 
