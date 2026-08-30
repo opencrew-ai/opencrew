@@ -35,18 +35,13 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        // Behind the opencrew.run relay this origin also serves the account
-        // portal, auth, link/join, and connector routes — the SPA's offline
-        // navigation fallback must never swallow those.
-        navigateFallbackDenylist: [
-          /^\/portal/,
-          /^\/link/,
-          /^\/join/,
-          /^\/invite/,
-          /^\/api/,
-          /^\/connector-api/,
-          /^\/healthz/
-        ],
+        // Navigations ALWAYS hit the network. The app is live-data only
+        // (WS + API), so an offline shell is worthless — and behind the
+        // opencrew.run relay the served HTML is where relay-layer features
+        // live (crew-switcher injection, the ocr_via_relay marker cookie).
+        // A cached shell silently disables all of that and keeps clients on
+        // stale bundles after deploys.
+        navigateFallback: null,
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
