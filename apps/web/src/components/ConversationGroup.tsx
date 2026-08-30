@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Message, RunStatus } from '@opencrew/shared'
 import { MessageItem } from './MessageItem'
 
@@ -127,8 +127,6 @@ export function groupIntoConversations(messages: Message[]): MessageGroup[] {
 // ConversationGroup component
 // ---------------------------------------------------------------------------
 
-const COLLAPSE_AT = 3 // show first N responses, collapse the rest
-
 interface ConversationGroupProps {
   group: MessageGroup
   channelId: string
@@ -138,6 +136,12 @@ interface ConversationGroupProps {
   status?: GroupStatus
   /** When set, the pill is clickable: mark the conversation done / reopen. */
   onToggleDone?: (rootId: string, done: boolean) => void
+  /** True when this group has new activity the user hasn't scrolled past yet. */
+  isUnread?: boolean
+  /** Called once when the group becomes visible in the viewport. */
+  onSeen?: () => void
+  /** Finished conversations start collapsed to a single card. */
+  defaultCollapsed?: boolean
 }
 
 export function ConversationGroup({
@@ -146,22 +150,74 @@ export function ConversationGroup({
   onOpenRun,
   targetThreadId,
   status,
-  onToggleDone
+  onToggleDone,
+  isUnread = false,
+  onSeen,
+  defaultCollapsed = false
 }: ConversationGroupProps) {
-  const [expanded, setExpanded] = useState(false)
+  // null = no manual choice yet. The default is FROZEN at mount: a live
+  // conversation finishing mid-read must never snap shut on the reader —
+  // only conversations that were already done when the channel loaded
+  // start collapsed.
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null)
+  const initialCollapsedRef = useRef(defaultCollapsed)
   const { trigger, responses } = group
+  const groupRef = useRef<HTMLDivElement>(null)
+  const isCardCollapsed = userCollapsed ?? initialCollapsedRef.current
 
-  const hiddenCount = Math.max(0, responses.length - COLLAPSE_AT)
-  const visibleResponses =
-    expanded || hiddenCount === 0 ? responses : responses.slice(0, COLLAPSE_AT)
+  // Fire onSeen once when the group enters the viewport
+  useEffect(() => {
+    if (!onSeen || !isUnread) return
+    const el = groupRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onSeen()
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.2 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [isUnread, onSeen])
+
   const groupStatus = status ?? deriveGroupStatus(responses)
   const toggleDone =
     trigger && onToggleDone ? (done: boolean) => onToggleDone(trigger.id, done) : undefined
 
+  // Deep links always win over collapse — the linked message must be visible.
+  const containsTarget =
+    !!targetThreadId &&
+    (trigger?.id === targetThreadId || responses.some((m) => m.id === targetThreadId))
+
+  // Collapsed card: trigger only (no thread UI), plus a row to expand.
+  const hiddenTotal = responses.length + (trigger?.replyCount ?? 0)
+  if (isCardCollapsed && !containsTarget && trigger && hiddenTotal > 0) {
+    return (
+      <div
+        ref={groupRef}
+        className="relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/40 bg-zinc-950/20"
+      >
+        <div className="absolute right-3 top-2 z-10">
+          <StatusPill status={groupStatus} onToggleDone={toggleDone} />
+        </div>
+        <MessageItem message={trigger} onOpenRun={onOpenRun} />
+        <button
+          onClick={() => setUserCollapsed(false)}
+          className="px-4 pb-2 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+        >
+          ▼ {hiddenTotal} hidden {hiddenTotal === 1 ? 'message' : 'messages'}
+        </button>
+      </div>
+    )
+  }
+
   // A group with only a human message and no responses: minimal card with "Not started" pill
   if (responses.length === 0) {
     return trigger ? (
-      <div className="relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/20">
+      <div ref={groupRef} className="relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/20">
         <div className="absolute right-3 top-2 z-10">
           <StatusPill status={groupStatus} onToggleDone={toggleDone} />
         </div>
@@ -176,11 +232,32 @@ export function ConversationGroup({
   }
 
   return (
-    <div className="relative mx-3 mb-3 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/30">
-      {/* Status pill — top-right corner, floated over the trigger message header */}
+    <div
+      ref={groupRef}
+      className={[
+        'relative mx-3 mb-3 overflow-hidden rounded-xl border bg-zinc-950/30 transition-colors',
+        isUnread ? 'border-indigo-500/40' : 'border-zinc-800/60',
+      ].join(' ')}
+    >
+      {/* Status pill + unread dot — top-right corner */}
       {trigger && (
-        <div className="absolute right-3 top-2 z-10">
+        <div className="absolute right-3 top-2 z-10 flex items-center gap-2">
+          {isUnread && (
+            <span
+              title="New activity"
+              className="h-2 w-2 rounded-full bg-indigo-400 shadow-[0_0_6px_2px_rgba(99,102,241,0.5)]"
+            />
+          )}
           <StatusPill status={groupStatus} onToggleDone={toggleDone} />
+          {groupStatus === 'done' && hiddenTotal > 0 && (
+            <button
+              onClick={() => setUserCollapsed(true)}
+              title="Collapse conversation"
+              className="text-xs text-zinc-600 transition-colors hover:text-zinc-300"
+            >
+              ▲
+            </button>
+          )}
         </div>
       )}
 
@@ -203,7 +280,7 @@ export function ConversationGroup({
           .filter(Boolean)
           .join(' ')}
       >
-        {visibleResponses.map((m) => (
+        {responses.map((m) => (
           <MessageItem
             key={m.id}
             message={m}
@@ -212,24 +289,6 @@ export function ConversationGroup({
             autoOpenThread={targetThreadId === m.id}
           />
         ))}
-
-        {/* Collapse toggle */}
-        {hiddenCount > 0 && !expanded && (
-          <button
-            onClick={() => setExpanded(true)}
-            className="px-4 pb-2.5 pt-0.5 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-          >
-            + {hiddenCount} more {hiddenCount === 1 ? 'response' : 'responses'} ↓
-          </button>
-        )}
-        {expanded && hiddenCount > 0 && (
-          <button
-            onClick={() => setExpanded(false)}
-            className="px-4 pb-2.5 pt-0.5 text-xs text-zinc-600 transition-colors hover:text-zinc-400"
-          >
-            collapse ↑
-          </button>
-        )}
       </div>
     </div>
   )

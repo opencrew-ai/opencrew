@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+const NEAR_BOTTOM_THRESHOLD_PX = 120
+// How many px from the bottom counts as "reading history" (not near bottom)
+const SCROLLED_UP_THRESHOLD_PX = 300
 import type { Channel } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
@@ -110,20 +114,109 @@ interface ChannelViewProps {
 export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocused }: ChannelViewProps) {
   const { messages, loading, post } = useMessages(channel.id, null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const focusedRef = useRef<string | undefined>(undefined)
+  // Track whether the user is near the bottom — true by default so the initial
+  // load + fresh channel switches scroll to the latest message as expected.
+  const isNearBottomRef = useRef(true)
+  // Set when the user sends a message: their own post always scrolls to the
+  // bottom, no matter how far up they were reading.
+  const forceScrollRef = useRef(false)
+  // Mirror of targetThreadId for the pin-to-bottom observer.
+  const targetThreadRef = useRef(targetThreadId)
+  targetThreadRef.current = targetThreadId
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>('all')
+  // New-message pill: count of messages that arrived while user was scrolled up
+  const [unreadCount, setUnreadCount] = useState(0)
+  const prevMsgCountRef = useRef(0)
+  // Tracks which group trigger IDs the user has scrolled into view
+  const [seenGroupIds, setSeenGroupIds] = useState<Set<string>>(new Set())
 
-  // Filters reset when switching channels — each channel starts unfiltered.
+  // Keep isNearBottomRef in sync with the user's scroll position.
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    isNearBottomRef.current = distFromBottom < NEAR_BOTTOM_THRESHOLD_PX
+    // Clear unread pill once user scrolls back near bottom
+    if (distFromBottom < SCROLLED_UP_THRESHOLD_PX) {
+      setUnreadCount(0)
+    }
+  }, [])
+
+  // Filters reset when switching channels — each channel starts unfiltered and
+  // scrolled to the bottom.
   useEffect(() => {
     setStatusFilter('all')
     setRangeFilter('all')
+    setUnreadCount(0)
+    setSeenGroupIds(new Set())
+    prevMsgCountRef.current = 0
+    isNearBottomRef.current = true
   }, [channel.id])
 
-  // Scroll to bottom on new messages (unless we have a target thread to focus)
+  // Auto-scroll to bottom ONLY when a genuinely new message arrives AND the
+  // user is already near the bottom. Streaming updates, run_status events, and
+  // reactions all mutate the `messages` array reference without changing its
+  // length — using messages.length as the dep means those high-frequency events
+  // never steal the viewport from a user who's scrolled up to read history.
   useEffect(() => {
-    if (!targetThreadId) bottomRef.current?.scrollIntoView()
-  }, [messages, targetThreadId])
+    if (targetThreadId) return
+    const newCount = messages.length
+    const prevCount = prevMsgCountRef.current
+    const arrivedCount = Math.max(0, newCount - prevCount)
+    prevMsgCountRef.current = newCount
+
+    // Decide from the position BEFORE this message rendered (isNearBottomRef is
+    // maintained by scroll events) — measuring after the render lets a tall new
+    // message push the user past the threshold and skip the scroll.
+    if (forceScrollRef.current || isNearBottomRef.current) {
+      forceScrollRef.current = false
+      bottomRef.current?.scrollIntoView()
+      isNearBottomRef.current = true
+      setUnreadCount(0)
+      return
+    }
+    // User is scrolled up reading — increment the unread pill instead of scrolling
+    if (arrivedCount > 0) {
+      setUnreadCount((n) => n + arrivedCount)
+    }
+    // Not following: re-sync the ref against the grown content.
+    handleScroll()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, targetThreadId])
+
+  // Callback for ConversationGroup to mark itself as seen
+  const markGroupSeen = useCallback((groupId: string) => {
+    setSeenGroupIds((prev) => {
+      if (prev.has(groupId)) return prev
+      const next = new Set(prev)
+      next.add(groupId)
+      return next
+    })
+  }, [])
+
+  // Pin-to-bottom: while the user is near the bottom, ANY content growth keeps
+  // the view pinned there. This is what actually makes auto-scroll reliable:
+  // streaming agent text, inline threads finishing their fetch, and images
+  // loading all grow the feed WITHOUT changing messages.length, so the
+  // length-based effect above never sees them.
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    const content = contentRef.current
+    if (!el || !content) return
+    const observer = new ResizeObserver(() => {
+      // A deep-linked thread is being centered — don't fight that scroll.
+      if (targetThreadRef.current) return
+      if (isNearBottomRef.current) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [channel.id])
 
   // When a targetThreadId is set, scroll to and flash-highlight that message
   useEffect(() => {
@@ -141,6 +234,16 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
 
   const groups = groupIntoConversations(messages)
   const workStatuses = useWorkStatuses()
+
+  const handleSend = useCallback(
+    async (content: string, images?: string[]) => {
+      forceScrollRef.current = true
+      await post(content, images)
+      // The message lands via WS; scroll now and let the flag catch the render.
+      bottomRef.current?.scrollIntoView()
+    },
+    [post]
+  )
 
   const toggleDone = useCallback(async (rootId: string, done: boolean) => {
     try {
@@ -239,7 +342,23 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto py-2">
+      {/* "New messages" jump pill — only appears when user is scrolled up */}
+      {unreadCount > 0 && (
+        <div className="relative z-20">
+          <button
+            onClick={() => {
+              bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+              setUnreadCount(0)
+            }}
+            className="absolute left-1/2 top-2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow-lg transition-opacity hover:bg-indigo-500 animate-fade-in"
+          >
+            ↓ {unreadCount} new {unreadCount === 1 ? 'message' : 'messages'}
+          </button>
+        </div>
+      )}
+
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto py-2">
+        <div ref={contentRef}>
         {loading && <p className="px-4 text-sm text-zinc-500">Loading…</p>}
         {!loading && messages.length === 0 && (
           <div className="px-4 py-8 text-sm text-zinc-500">
@@ -264,21 +383,29 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
             </button>
           </div>
         )}
-        {visible.map((entry, i) => (
-          <ConversationGroup
-            key={entry.group.trigger?.id ?? `group-${i}`}
-            group={entry.group}
-            channelId={channel.id}
-            onOpenRun={onOpenRun}
-            targetThreadId={targetThreadId}
-            status={entry.status}
-            onToggleDone={(rootId, done) => void toggleDone(rootId, done)}
-          />
-        ))}
+        {visible.map((entry, i) => {
+          const groupId = entry.group.trigger?.id ?? `group-${i}`
+          const isUnread = !seenGroupIds.has(groupId) && entry.group.responses.length > 0
+          return (
+            <ConversationGroup
+              key={groupId}
+              group={entry.group}
+              channelId={channel.id}
+              onOpenRun={onOpenRun}
+              targetThreadId={targetThreadId}
+              status={entry.status}
+              onToggleDone={(rootId, done) => void toggleDone(rootId, done)}
+              isUnread={isUnread}
+              onSeen={() => markGroupSeen(groupId)}
+              defaultCollapsed={entry.status === 'done' && i < visible.length - 1}
+            />
+          )
+        })}
         <div ref={bottomRef} />
+        </div>
       </div>
       <div className="border-t border-zinc-800 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <MessageInput placeholder={`Message #${channel.name}`} onSend={post} />
+        <MessageInput placeholder={`Message #${channel.name}`} onSend={handleSend} />
       </div>
     </div>
   )

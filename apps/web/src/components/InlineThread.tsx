@@ -11,17 +11,26 @@ interface InlineThreadProps {
 
 /**
  * Inline thread — renders replies directly below the parent message.
- * Replaces the side ThreadPanel; everything stays in the main stream.
+ * Always mounted for threads with activity, so new replies (human or a
+ * streaming agent) appear live without the user expanding anything.
  */
 export function InlineThread({ channelId, rootId, onOpenRun }: InlineThreadProps) {
   const { messages, loading, post } = useMessages(channelId, rootId)
   // The server returns the root message + all replies; skip the root itself.
   const replies = messages.filter((m) => m.id !== rootId)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const hasLoadedRef = useRef(false)
 
+  // Follow NEW replies only. On initial load every mounted thread would
+  // otherwise call scrollIntoView and fight over the viewport.
   useEffect(() => {
+    if (loading) return
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true
+      return
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [replies.length])
+  }, [replies.length, loading])
 
   return (
     <div className="ml-7 mt-1.5 rounded-lg border border-zinc-800/50 bg-zinc-950/40">

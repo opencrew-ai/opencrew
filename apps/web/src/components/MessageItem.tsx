@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { REACTION_SET, type Message } from '@opencrew/shared'
 import { api } from '../lib/api'
@@ -10,6 +10,11 @@ import { ThreadRefCard } from './ThreadRefCard'
 import { ImageLightbox } from './ImageLightbox'
 
 const MD_PLUGINS = [remarkGfm]
+
+// Links must never navigate the app away — always open in a new tab.
+const MD_COMPONENTS: Components = {
+  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />
+}
 
 /** Reaction chips + hover picker. Constrained set, one toggle per emoji. */
 function Reactions({ message }: { message: Message }) {
@@ -90,12 +95,20 @@ function formatTime(ts: number): string {
 
 export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: MessageItemProps) {
   const { agents, users } = useWorkspace()
-  const [threadOpen, setThreadOpen] = useState(false)
+  // Threads with activity are ALWAYS visible by default — collapsing is the
+  // user's explicit opt-out, never the initial state. Agent work streams into
+  // threads, so hiding them by default hides the payload.
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  // For messages with no replies yet: "reply ↓" opens the empty thread + composer.
+  const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   // Auto-open the inline thread when deep-linked from a ThreadRefCard
   useEffect(() => {
-    if (autoOpenThread && channelId) setThreadOpen(true)
+    if (autoOpenThread && channelId) {
+      setIsCollapsed(false)
+      setIsComposerOpen(true)
+    }
   }, [autoOpenThread, channelId])
 
   if (message.authorType === 'system') {
@@ -104,7 +117,9 @@ export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: M
         <div className="text-xs text-zinc-500">
           <span className="mr-2">{formatTime(message.createdAt)}</span>
           <span className="md-content inline-block align-middle text-zinc-400">
-            <ReactMarkdown remarkPlugins={MD_PLUGINS}>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+              {message.content}
+            </ReactMarkdown>
           </span>
         </div>
         {message.approvalId && <ApprovalCard approvalId={message.approvalId} />}
@@ -128,7 +143,7 @@ export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: M
     : undefined
 
   return (
-    <div data-msg-id={message.id} className="group px-4 py-1.5 hover:bg-zinc-900/40">
+    <div data-msg-id={message.id} className="group animate-fade-in px-4 py-1.5 hover:bg-zinc-900/40">
       {/* Header row */}
       <div className="flex items-baseline gap-2">
         <span className="text-base">{isAgent ? message.authorEmoji : '👤'}</span>
@@ -159,7 +174,9 @@ export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: M
       {/* Message content */}
       <div className="md-content ml-7 text-sm leading-relaxed text-zinc-200">
         {message.content ? (
-          <ReactMarkdown remarkPlugins={MD_PLUGINS}>{message.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+            {message.content}
+          </ReactMarkdown>
         ) : (
           <span className="italic text-zinc-500">thinking…</span>
         )}
@@ -218,28 +235,30 @@ export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: M
       {/* Thread actions — only shown when channelId is provided */}
       {channelId && (
         <div className="ml-7 mt-0.5 flex items-center gap-3">
-          {/* Reply count — always visible when > 0 */}
-          {!!message.replyCount && (
+          {message.replyCount ? (
+            // Active thread: replies are visible by default, this collapses/restores
             <button
-              onClick={() => setThreadOpen((v) => !v)}
+              onClick={() => setIsCollapsed((v) => !v)}
               className="text-xs font-medium text-sky-400 hover:underline"
             >
-              {threadOpen ? '▲ ' : ''}
-              {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
+              {isCollapsed ? '▼' : '▲'} {message.replyCount}{' '}
+              {message.replyCount === 1 ? 'reply' : 'replies'}
+            </button>
+          ) : (
+            // No thread yet: offer to start one
+            <button
+              onClick={() => setIsComposerOpen((v) => !v)}
+              className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              {isComposerOpen ? 'cancel ↑' : 'reply ↓'}
             </button>
           )}
-          {/* Reply / collapse — always visible */}
-          <button
-            onClick={() => setThreadOpen((v) => !v)}
-            className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-          >
-            {threadOpen ? 'collapse ↑' : message.replyCount ? 'open thread' : 'reply ↓'}
-          </button>
         </div>
       )}
 
-      {/* Inline thread — expands below the message */}
-      {channelId && threadOpen && (
+      {/* Inline thread — always visible when it has activity (unless the user
+          collapsed it), or when the user is starting a new one */}
+      {channelId && !isCollapsed && (!!message.replyCount || isComposerOpen) && (
         <InlineThread channelId={channelId} rootId={threadRootId} onOpenRun={onOpenRun} />
       )}
     </div>
