@@ -120,23 +120,30 @@ export async function enqueueMentionRuns(
   // trigger directly, so their messages always reach the watchers.
   if (mentioned.length > 0 && !restricted) return
 
-  const watchers: { agentId: string; watchesAll: boolean }[] = []
+  const createdAtById = new Map(agentRows.map((row) => [row.id, row.createdAt]))
+  const watchers: { agentId: string; watchesAll: boolean; createdAt: number }[] = []
   for (const agent of allAgents) {
     const full = await getAgentWithVersion(ctx.db, agent.id)
     const watched = full?.currentVersion.capabilities.watchesChannels ?? []
     // '*' = watches every channel (orchestrator pattern).
     if (full && (watched.includes('*') || watched.includes(message.channelId))) {
-      watchers.push({ agentId: agent.id, watchesAll: watched.includes('*') })
+      watchers.push({
+        agentId: agent.id,
+        watchesAll: watched.includes('*'),
+        createdAt: createdAtById.get(agent.id) ?? Number.MAX_SAFE_INTEGER
+      })
     }
   }
-  // ONE front desk, not a pile-on: when an orchestrator ('*' watcher, i.e.
-  // Captain) exists, untargeted human messages go only to it — it delegates
-  // by @mentioning specialists. Channel-scoped watchers still respond in
-  // workspaces that have no orchestrator.
+  // EXACTLY ONE front desk answers an untargeted message — never a pile-on,
+  // even when several agents are configured as watchers. Preference: an
+  // orchestrator ('*' watcher) over channel-scoped watchers; earliest-created
+  // wins ties (the workspace's original orchestrator, e.g. Captain). It
+  // delegates by @mentioning specialists.
   const orchestrators = watchers.filter((w) => w.watchesAll)
-  const responders = orchestrators.length > 0 ? orchestrators : watchers
-  for (const watcher of responders) {
-    await enqueueRun(ctx, watcher.agentId, message, 0, 'watch', restricted)
+  const pool = orchestrators.length > 0 ? orchestrators : watchers
+  const frontDesk = pool.sort((a, b) => a.createdAt - b.createdAt)[0]
+  if (frontDesk) {
+    await enqueueRun(ctx, frontDesk.agentId, message, 0, 'watch', restricted)
   }
 }
 
