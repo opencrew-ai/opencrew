@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { REACTION_SET, type Message } from '@opencrew/shared'
+import { REACTION_SET, type Message, type SharedTask } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { useWorkspace } from '../lib/workspace'
 import { ApprovalCard } from './ApprovalCard'
 import { InlineThread } from './InlineThread'
+import { ArtifactCard } from './ArtifactCard'
+import { TaskChecklist } from './TaskChecklist'
 import { ThreadRefCard } from './ThreadRefCard'
+import { useArtifactsForRun } from '../lib/useChannelArtifacts'
 import { ImageLightbox } from './ImageLightbox'
 
 const MD_PLUGINS = [remarkGfm]
@@ -87,14 +90,24 @@ interface MessageItemProps {
   onOpenRun?: (runId: string) => void
   /** When true the inline thread opens automatically (e.g. deep-linked from a ThreadRefCard). */
   autoOpenThread?: boolean
+  /** Shared task list for the conversation this message roots. */
+  tasksList?: SharedTask[]
 }
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: MessageItemProps) {
+export function MessageItem({
+  message,
+  channelId,
+  onOpenRun,
+  autoOpenThread,
+  tasksList
+}: MessageItemProps) {
   const { agents, users } = useWorkspace()
+  // Docs produced by this message's run render inline right under it.
+  const runArtifacts = useArtifactsForRun(message.runId)
   // Threads with activity are ALWAYS visible by default — collapsing is the
   // user's explicit opt-out, never the initial state. Agent work streams into
   // threads, so hiding them by default hides the payload.
@@ -182,6 +195,11 @@ export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: M
         )}
       </div>
 
+      {/* Docs this reply produced — the doc, not the chat, is the reference */}
+      {runArtifacts.map((artifact) => (
+        <ArtifactCard key={artifact.id} artifact={artifact} />
+      ))}
+
       {/* Thread citation card */}
       {message.refThreadId && message.refChannelId && (
         <div className="ml-7 mt-1">
@@ -231,6 +249,12 @@ export function MessageItem({ message, channelId, onOpenRun, autoOpenThread }: M
 
       {/* Emoji reactions */}
       <Reactions message={message} />
+
+      {/* Shared plan — appears once the conversation actually has tasks
+          (committed from a plan doc, added by a human, or via TodoWrite) */}
+      {tasksList && tasksList.length > 0 && (
+        <TaskChecklist rootId={message.id} items={tasksList} />
+      )}
 
       {/* Thread actions — only shown when channelId is provided */}
       {channelId && (

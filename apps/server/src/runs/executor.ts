@@ -41,6 +41,7 @@ import {
   findAutoApproveRule
 } from './guardrails'
 import {
+  ALWAYS_AVAILABLE_TOOLS,
   BROWSER_MCP_SERVER,
   BROWSER_TOOL,
   MCP_SERVER_NAME,
@@ -51,6 +52,13 @@ import {
   type ToolRunContext
 } from '../tools'
 import { broadcastPresence } from '../services/presence'
+import {
+  buildTaskPromptSection,
+  parseTodoWriteInput,
+  reconcileTodoSnapshot,
+  toolActivityLabel
+} from '../services/tasks'
+import { buildDocsPromptSection } from '../services/artifacts'
 import { env } from '../env'
 
 // Build sessions can legitimately run long.
@@ -93,6 +101,15 @@ async function setRunStatus(
     agentId: runEnv.agentId,
     status
   })
+  // Run reached a terminal state — the agent is no longer "doing" anything.
+  if (status === 'done' || status === 'failed' || status === 'cancelled') {
+    ctx.hub.broadcast({
+      type: 'agent_activity',
+      agentId: runEnv.agentId,
+      runId: runEnv.runId,
+      label: null
+    })
+  }
   broadcastPresence(ctx)
 }
 
@@ -281,8 +298,18 @@ async function runSessionAttempt(
   const intro = session
     ? `The conversation in #${runEnv.channel.name} continues. New messages since your last turn:`
     : `Recent conversation in #${runEnv.channel.name}:`
+  // Humans co-edit the conversation's task list (with priorities) — the agent
+  // must see it every turn so human-added items and priorities steer the work.
+  const taskSection = runEnv.threadRootId
+    ? await buildTaskPromptSection(ctx.db, runEnv.threadRootId)
+    : ''
+  // Existing docs + their review comments — agents point to docs by title,
+  // and revisions must address the feedback.
+  const docsSection = runEnv.threadRootId
+    ? await buildDocsPromptSection(ctx.db, runEnv.threadRootId)
+    : ''
   const prompt =
-    `${intro}\n\n${transcript}\n\n` +
+    `${intro}\n\n${transcript}${taskSection}${docsSection}\n\n` +
     (runEnv.triggerType === 'watch'
       ? `A new message was just posted in #${runEnv.channel.name}, a channel you watch ` +
         `(you were NOT @mentioned). Follow your standing instructions for handling new ` +
@@ -518,6 +545,8 @@ function browserMcpServer(
 function allowedToolsFor(version: AgentVersion): string[] {
   return [
     'ToolSearch',
+    // Safe-by-construction tools every agent gets — see tools/registry.ts.
+    ...ALWAYS_AVAILABLE_TOOLS.map(toSdkToolName),
     ...version.tools
       .filter((t) => !version.capabilities.requiresApprovalFor.includes(t))
       .map(toSdkToolName)
@@ -526,9 +555,12 @@ function allowedToolsFor(version: AgentVersion): string[] {
 
 function disallowedToolsFor(version: AgentVersion): string[] {
   const catalogNames = toolCatalog().map((t) => t.name)
+  const alwaysAvailable = new Set<string>(ALWAYS_AVAILABLE_TOOLS)
   return [
     ...ALWAYS_DISALLOWED,
-    ...catalogNames.filter((name) => !version.tools.includes(name)).map(toSdkToolName)
+    ...catalogNames
+      .filter((name) => !alwaysAvailable.has(name) && !version.tools.includes(name))
+      .map(toSdkToolName)
   ]
 }
 
@@ -628,11 +660,13 @@ async function handleAssistantMessage(
     if (block.type === 'text') {
       text += block.text
     } else if (block.type === 'tool_use') {
+      const tool = fromSdkToolName(block.name)
       await recordStep(ctx, runEnv.runId, 'tool_call', {
-        tool: fromSdkToolName(block.name),
+        tool,
         input: block.input,
         toolUseId: block.id
       })
+      await publishActivity(ctx, runEnv, tool, block.input)
     }
   }
   await recordStep(ctx, runEnv.runId, 'llm_call', {
@@ -641,6 +675,38 @@ async function handleAssistantMessage(
     usage: msg.message.usage
   })
   if (text.trim()) await appendReplyText(ctx, runEnv, reply, text)
+}
+
+/**
+ * Surface what the agent is doing right now, member-visibly. TodoWrite calls
+ * additionally persist the full checklist for the conversation's task board.
+ */
+async function publishActivity(
+  ctx: AppContext,
+  runEnv: RunEnv,
+  tool: string,
+  input: unknown
+): Promise<void> {
+  let label = toolActivityLabel(tool)
+  if (tool === 'TodoWrite' && runEnv.threadRootId) {
+    const items = parseTodoWriteInput(input)
+    if (items) {
+      await reconcileTodoSnapshot(ctx, {
+        conversationRootId: runEnv.threadRootId,
+        channelId: runEnv.channel.id,
+        agentId: runEnv.agentId,
+        items
+      })
+      const active = items.find((item) => item.status === 'in_progress')
+      if (active) label = active.activeForm ?? active.content
+    }
+  }
+  ctx.hub.broadcast({
+    type: 'agent_activity',
+    agentId: runEnv.agentId,
+    runId: runEnv.runId,
+    label
+  })
 }
 
 async function handleUserMessage(

@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
 import type { AppContext } from '../context'
-import { agents, channels, messages, runs, users } from '../db/schema'
+import { agents, channels, messages, runs, tasks, users } from '../db/schema'
+import {
+  broadcastTaskState,
+  createTask,
+  deleteTask,
+  listChannelTasks,
+  updateTask
+} from '../services/tasks'
+import { postMessage } from '../services/post'
 import { z } from 'zod'
 import { authGuard, fail, memberGuard, ok } from './helpers'
 
@@ -37,6 +45,10 @@ export interface WorkItem {
   runCount: number
   createdAt: number
   lastActivityAt: number
+  /** Aggregated checklist progress across all agents on this conversation. */
+  tasks?: { done: number; total: number }
+  /** Present-continuous label of the item currently in progress, if any. */
+  currentActivity?: string
 }
 
 interface MessageLite {
@@ -123,9 +135,141 @@ function makeRootResolver(
   }
 }
 
+/** Per-conversation checklist rollup: counts + the active item's label. */
+function taskRollup(
+  rows: {
+    conversationRootId: string
+    status: string
+    activeForm: string | null
+    content: string
+  }[]
+): Map<string, { done: number; total: number; current?: string }> {
+  const byRoot = new Map<string, { done: number; total: number; current?: string }>()
+  for (const row of rows) {
+    const acc = byRoot.get(row.conversationRootId) ?? { done: 0, total: 0 }
+    acc.total += 1
+    if (row.status === 'completed') acc.done += 1
+    if (row.status === 'in_progress' && !acc.current) {
+      acc.current = row.activeForm ?? row.content
+    }
+    byRoot.set(row.conversationRootId, acc)
+  }
+  return byRoot
+}
+
+const createTaskSchema = z.object({
+  content: z.string().min(1).max(500),
+  priority: z.enum(['high', 'medium', 'low']).default('medium')
+})
+
+const updateTaskSchema = z.object({
+  status: z.enum(['pending', 'in_progress', 'completed']).optional(),
+  priority: z.enum(['high', 'medium', 'low']).optional(),
+  content: z.string().min(1).max(500).optional()
+})
+
 export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void {
+  /** Shared task lists for every conversation in a channel. */
+  app.get(
+    '/api/channels/:channelId/tasks',
+    { preHandler: authGuard(ctx) },
+    async (req) => {
+      const { channelId } = req.params as { channelId: string }
+      return ok(await listChannelTasks(ctx.db, channelId))
+    }
+  )
+
+  /** Human adds a task (with priority) to a conversation's shared list. */
+  app.post(
+    '/api/conversations/:rootId/tasks',
+    { preHandler: memberGuard(ctx) },
+    async (req, reply) => {
+      const { rootId } = req.params as { rootId: string }
+      const parsed = createTaskSchema.safeParse(req.body)
+      if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+      const [root] = await ctx.db
+        .select({ id: messages.id, channelId: messages.channelId })
+        .from(messages)
+        .where(eq(messages.id, rootId))
+        .limit(1)
+      if (!root) return reply.code(404).send(fail('conversation not found'))
+      const task = await createTask(ctx, {
+        conversationRootId: root.id,
+        channelId: root.channelId,
+        content: parsed.data.content,
+        priority: parsed.data.priority,
+        createdByType: 'human',
+        createdById: req.user!.id
+      })
+      return ok(task)
+    }
+  )
+
+  app.patch('/api/tasks/:taskId', { preHandler: memberGuard(ctx) }, async (req, reply) => {
+    const { taskId } = req.params as { taskId: string }
+    const parsed = updateTaskSchema.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+    const task = await updateTask(ctx, taskId, parsed.data)
+    if (!task) return reply.code(404).send(fail('task not found'))
+    return ok(task)
+  })
+
+  app.delete('/api/tasks/:taskId', { preHandler: memberGuard(ctx) }, async (req, reply) => {
+    const { taskId } = req.params as { taskId: string }
+    const deleted = await deleteTask(ctx, taskId)
+    if (!deleted) return reply.code(404).send(fail('task not found'))
+    return ok({ deleted: true })
+  })
+
+  /**
+   * Start a task as its own ACTION THREAD: posts a channel message for the
+   * task (mentioning the chosen agent, or none so the front desk picks it
+   * up), then re-homes the task to that new conversation. Every thread is an
+   * action; the thread is where the work happens.
+   */
+  app.post(
+    '/api/tasks/:taskId/start',
+    { preHandler: memberGuard(ctx) },
+    async (req, reply) => {
+      const { taskId } = req.params as { taskId: string }
+      const parsed = z
+        .object({ agentId: z.string().optional() })
+        .safeParse(req.body ?? {})
+      if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+
+      const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1)
+      if (!task) return reply.code(404).send(fail('task not found'))
+
+      let mention = ''
+      if (parsed.data.agentId) {
+        const [agent] = await ctx.db
+          .select({ name: agents.name })
+          .from(agents)
+          .where(eq(agents.id, parsed.data.agentId))
+          .limit(1)
+        if (!agent) return reply.code(404).send(fail('agent not found'))
+        mention = `@${agent.name} `
+      }
+
+      const oldRootId = task.conversationRootId
+      const message = await postMessage(ctx, {
+        channelId: task.channelId,
+        authorType: 'human',
+        authorId: req.user!.id,
+        content: `${mention}📌 ${task.content} _(priority: ${task.priority})_`
+      })
+      await ctx.db
+        .update(tasks)
+        .set({ conversationRootId: message.id, status: 'in_progress', updatedAt: Date.now() })
+        .where(eq(tasks.id, taskId))
+      await broadcastTaskState(ctx, oldRootId, task.channelId)
+      await broadcastTaskState(ctx, message.id, task.channelId)
+      return ok({ channelId: task.channelId, rootId: message.id })
+    }
+  )
+
   app.get('/api/work', { preHandler: authGuard(ctx) }, async () => {
-    const [messageRows, runRows, channelRows, agentRows, userRows] = await Promise.all([
+    const [messageRows, runRows, channelRows, taskRows, agentRows, userRows] = await Promise.all([
       ctx.db
         .select({
           id: messages.id,
@@ -154,6 +298,14 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
         .limit(RUN_WINDOW),
       ctx.db.select({ id: channels.id, name: channels.name }).from(channels),
       ctx.db
+        .select({
+          conversationRootId: tasks.conversationRootId,
+          status: tasks.status,
+          activeForm: tasks.activeForm,
+          content: tasks.content
+        })
+        .from(tasks),
+      ctx.db
         .select({ id: agents.id, name: agents.name, avatarEmoji: agents.avatarEmoji })
         .from(agents),
       ctx.db.select({ id: users.id, name: users.name }).from(users)
@@ -165,6 +317,7 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
     const agentById = new Map(agentRows.map((a) => [a.id, a]))
     const userNameById = new Map(userRows.map((u) => [u.id, u.name]))
     const resolveRoot = makeRootResolver(msgById, runById)
+    const tasksByRoot = taskRollup(taskRows)
 
     interface Accumulator {
       runStatuses: RunLite['status'][]
@@ -233,7 +386,14 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
         replyCount: acc.replyCount,
         runCount: acc.runStatuses.length,
         createdAt: root.createdAt,
-        lastActivityAt: acc.lastActivityAt || root.createdAt
+        lastActivityAt: acc.lastActivityAt || root.createdAt,
+        tasks: tasksByRoot.has(rootId)
+          ? {
+              done: tasksByRoot.get(rootId)!.done,
+              total: tasksByRoot.get(rootId)!.total
+            }
+          : undefined,
+        currentActivity: tasksByRoot.get(rootId)?.current
       })
     }
 

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import type { AgentVersion } from '@opencrew/shared'
 import type { DB } from '../db'
 import { approvalRules, approvals } from '../db/schema'
+import { ALWAYS_AVAILABLE_TOOLS } from '../tools/registry'
 
 export class ToolForbiddenError extends Error {}
 export class ApprovalRequiredError extends Error {}
@@ -16,8 +17,10 @@ export type ToolUseVerdict = 'allow' | 'deny' | 'needs_approval'
  * Harness meta-tools that are always allowed: ToolSearch only loads tool
  * SCHEMAS (needed for deferred MCP tools like the browser); invoking the
  * loaded tools still passes through the allowlist + approval gate.
+ * The ALWAYS_AVAILABLE_TOOLS (task board + doc lifecycle) are safe by
+ * construction — see tools/registry.ts.
  */
-const ALWAYS_ALLOWED_META = ['ToolSearch']
+const ALWAYS_ALLOWED_META = ['ToolSearch', ...ALWAYS_AVAILABLE_TOOLS]
 
 /**
  * GUARDRAIL decision for a tool call (friendly tool names). Runs inside the

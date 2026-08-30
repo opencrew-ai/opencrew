@@ -187,6 +187,88 @@ export interface PresenceEntry {
   state: PresenceState
 }
 
+/** One item of an agent's working task list (from TodoWrite). */
+export interface AgentTaskItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+  /** Present-continuous label shown while the item is in progress. */
+  activeForm?: string
+}
+
+export type TaskPriority = 'high' | 'medium' | 'low'
+export type TaskStatus = 'pending' | 'in_progress' | 'completed'
+
+/**
+ * One item of a conversation's SHARED task list. Humans and agents co-edit:
+ * humans add/reprioritize/complete items in the UI; agents mirror the list
+ * via TodoWrite and their status updates reconcile back by content match.
+ */
+export interface SharedTask {
+  id: string
+  conversationRootId: string
+  channelId: string
+  content: string
+  status: TaskStatus
+  priority: TaskPriority
+  /** Present-continuous label while an agent works the item. */
+  activeForm?: string
+  createdByType: 'human' | 'agent'
+  createdById: string
+  /** Agent currently/last working this item (from TodoWrite reconcile). */
+  sourceAgentId?: string
+  position: number
+  updatedAt: number
+}
+
+/** Full shared task list for one conversation (task_state event payload). */
+export interface ConversationTasks {
+  conversationRootId: string
+  channelId: string
+  items: SharedTask[]
+}
+
+/** A draft task inside a proposed plan artifact. */
+export interface PlanTaskDraft {
+  content: string
+  priority: TaskPriority
+}
+
+/**
+ * A conversation artifact — a durable document an agent produced. 'plan'
+ * artifacts carry a task list and wait for HUMAN approval: committing them
+ * populates the shared task board. The doc, not chat, is the reference.
+ */
+/** A review comment on an artifact, optionally anchored to selected text. */
+export interface ArtifactComment {
+  id: string
+  artifactId: string
+  /** The selected doc text this comment anchors to (undefined = whole doc). */
+  quote?: string
+  body: string
+  createdByUserId: string
+  authorName?: string
+  createdAt: number
+}
+
+export interface Artifact {
+  id: string
+  conversationRootId: string
+  channelId: string
+  runId: string
+  kind: 'plan'
+  /** Folder path in the artifacts tree, e.g. "plans" or "marketing/launch". */
+  folder: string
+  title: string
+  content: string
+  tasks: PlanTaskDraft[]
+  status: 'proposed' | 'committed' | 'discarded'
+  version: number
+  createdByAgentId: string
+  committedBy?: string
+  createdAt: number
+  updatedAt: number
+}
+
 /** Server → client WebSocket events. */
 export type ServerEvent =
   | { type: 'message_created'; message: Message }
@@ -201,6 +283,14 @@ export type ServerEvent =
   | { type: 'user_updated'; user: User }
   | { type: 'thread_status'; rootId: string; channelId: string; manualStatus: 'done' | null }
   | { type: 'reaction_updated'; messageId: string; channelId: string; reactions: ReactionGroup[] }
+  /** Member-visible: an agent's task checklist for a conversation changed. */
+  | { type: 'task_state'; tasks: ConversationTasks }
+  /** Member-visible: coarse "now doing" label for an agent (null = idle). */
+  | { type: 'agent_activity'; agentId: string; runId: string; label: string | null }
+  /** Member-visible: an artifact was proposed, committed, or discarded. */
+  | { type: 'artifact_state'; artifact: Artifact }
+  /** Member-visible: a review comment was added to an artifact. */
+  | { type: 'artifact_comment'; comment: ArtifactComment }
 
 /** Client → server WebSocket events. */
 export type ClientEvent = { type: 'ping' }

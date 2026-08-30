@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Message, RunStatus } from '@opencrew/shared'
+import type { Message, RunStatus, SharedTask } from '@opencrew/shared'
 import { MessageItem } from './MessageItem'
 
 // ---------------------------------------------------------------------------
@@ -159,6 +159,8 @@ interface ConversationGroupProps {
   onSeen?: () => void
   /** Finished conversations start collapsed to a single card. */
   defaultCollapsed?: boolean
+  /** Shared task list for this conversation. */
+  tasksList?: SharedTask[]
 }
 
 export function ConversationGroup({
@@ -170,7 +172,8 @@ export function ConversationGroup({
   onToggleDone,
   isUnread = false,
   onSeen,
-  defaultCollapsed = false
+  defaultCollapsed = false,
+  tasksList
 }: ConversationGroupProps) {
   // null = no manual choice yet. The default is FROZEN at mount: a live
   // conversation finishing mid-read must never snap shut on the reader —
@@ -243,6 +246,7 @@ export function ConversationGroup({
           channelId={channelId}
           onOpenRun={onOpenRun}
           autoOpenThread={targetThreadId === trigger.id}
+          tasksList={tasksList}
         />
       </div>
     ) : null
@@ -285,6 +289,7 @@ export function ConversationGroup({
           channelId={channelId}
           onOpenRun={onOpenRun}
           autoOpenThread={targetThreadId === trigger.id}
+          tasksList={tasksList}
         />
       )}
 

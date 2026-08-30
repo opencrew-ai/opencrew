@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
 import { showAlert, showPrompt } from '../lib/dialogs'
 import { useAgentLoad } from '../lib/useAgentLoad'
+import { useAgentActivity } from '../lib/useAgentActivity'
 import { Logo } from './Logo'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
@@ -20,6 +21,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const { me, channels, agents, users, presence, logout, refreshChannels } = useWorkspace()
   const navigate = useNavigate()
   const agentLoad = useAgentLoad()
+  const agentActivity = useAgentActivity()
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
 
@@ -135,6 +137,15 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-2 py-4">
+        <Link
+          to="/artifacts"
+          onClick={onClose}
+          className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+        >
+          <span>📁</span>
+          <span>Artifacts</span>
+        </Link>
+
         <section>
           <div className="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             <span>Channels</span>
@@ -192,8 +203,13 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
                   >
                     <PresenceDot state={stateOf('agent', a.id)} />
                     <span>{a.avatarEmoji}</span>
-                    <span className={`flex-1 ${a.status === 'paused' ? 'line-through opacity-50' : ''}`}>
-                      {a.name}
+                    <span className={`min-w-0 flex-1 ${a.status === 'paused' ? 'line-through opacity-50' : ''}`}>
+                      <span className="block truncate">{a.name}</span>
+                      {agentActivity.get(a.id) && (
+                        <span className="block truncate text-[10px] italic text-amber-400/90">
+                          {agentActivity.get(a.id)}
+                        </span>
+                      )}
                     </span>
                     {load?.status === 'rate_limited' && (
                       <span className="text-[10px] text-red-400" title="Rate limited">⛔</span>

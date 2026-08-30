@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 const NEAR_BOTTOM_THRESHOLD_PX = 120
 // How many px from the bottom counts as "reading history" (not near bottom)
 const SCROLLED_UP_THRESHOLD_PX = 300
-import type { Channel } from '@opencrew/shared'
+import type { Artifact, Channel } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { useMessages } from '../lib/useMessages'
+import { useConversationTasks } from '../lib/useConversationTasks'
+import { ArtifactsByRunContext, useChannelArtifacts } from '../lib/useChannelArtifacts'
 import {
   ConversationGroup,
   deriveGroupStatus,
@@ -234,6 +236,18 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
 
   const groups = groupIntoConversations(messages)
   const workStatuses = useWorkStatuses()
+  const conversationTasks = useConversationTasks(channel.id)
+  const channelArtifacts = useChannelArtifacts(channel.id)
+  // Regroup by producing run so doc cards render under the announcing reply.
+  const artifactsByRun = useMemo(() => {
+    const byRun = new Map<string, Artifact[]>()
+    for (const list of channelArtifacts.values()) {
+      for (const artifact of list) {
+        byRun.set(artifact.runId, [...(byRun.get(artifact.runId) ?? []), artifact])
+      }
+    }
+    return byRun
+  }, [channelArtifacts])
 
   const handleSend = useCallback(
     async (content: string, images?: string[]) => {
@@ -290,6 +304,7 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
   }, [annotated, isFiltered, statusFilter, rangeFilter])
 
   return (
+    <ArtifactsByRunContext.Provider value={artifactsByRun}>
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="border-b border-zinc-800 px-4 py-3">
         <h2 className="font-bold"># {channel.name}</h2>
@@ -398,6 +413,11 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
               isUnread={isUnread}
               onSeen={() => markGroupSeen(groupId)}
               defaultCollapsed={entry.status === 'done' && i < visible.length - 1}
+              tasksList={
+                entry.group.trigger
+                  ? (conversationTasks.get(entry.group.trigger.id) ?? [])
+                  : undefined
+              }
             />
           )
         })}
@@ -408,5 +428,6 @@ export function ChannelView({ channel, onOpenRun, targetThreadId, onThreadFocuse
         <MessageInput placeholder={`Message #${channel.name}`} onSend={handleSend} />
       </div>
     </div>
+    </ArtifactsByRunContext.Provider>
   )
 }

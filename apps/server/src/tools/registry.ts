@@ -30,6 +30,19 @@ export interface OpenCrewToolDef<Shape extends ZodRawShape = ZodRawShape> {
   ) => Promise<string>
 }
 
+/**
+ * Tools every agent gets regardless of its configured tool list. All of them
+ * are safe by construction: TodoWrite records the agent's own plan,
+ * propose_plan awaits human approval, update_doc touches only already-
+ * committed docs, read_doc is read-only.
+ */
+export const ALWAYS_AVAILABLE_TOOLS = [
+  'TodoWrite',
+  'propose_plan',
+  'update_doc',
+  'read_doc'
+] as const
+
 const openCrewTools = new Map<string, OpenCrewToolDef>()
 
 export function registerOpenCrewTool<Shape extends ZodRawShape>(

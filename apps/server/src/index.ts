@@ -18,6 +18,7 @@ import { registerNetworkRoutes } from './routes/network'
 import { registerCloudLinkRoutes } from './routes/cloudlink'
 import { registerSearchRoutes } from './routes/search'
 import { registerWorkRoutes } from './routes/work'
+import { registerArtifactRoutes } from './routes/artifacts'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerStatsRoutes } from './routes/stats'
 import { registerCrewsRoutes } from './routes/crews'
@@ -84,6 +85,7 @@ async function main(): Promise<void> {
   registerCloudLinkRoutes(app, ctx)
   registerSearchRoutes(app, ctx)
   registerWorkRoutes(app, ctx)
+  registerArtifactRoutes(app, ctx)
   registerReactionRoutes(app, ctx)
   registerStatsRoutes(app, ctx)
 

@@ -159,6 +159,54 @@ CREATE TABLE IF NOT EXISTS invites (
   used_by TEXT,
   role TEXT NOT NULL DEFAULT 'member'
 );
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  conversation_root_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  folder TEXT NOT NULL DEFAULT 'plans',
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  tasks TEXT NOT NULL,
+  status TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  created_by_agent_id TEXT NOT NULL,
+  committed_by TEXT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_conversation ON artifacts (conversation_root_id);
+CREATE TABLE IF NOT EXISTS artifact_comments (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  artifact_id TEXT NOT NULL,
+  quote TEXT,
+  body TEXT NOT NULL,
+  created_by_user_id TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_artifact_comments_artifact ON artifact_comments (artifact_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_channel ON artifacts (channel_id);
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  conversation_root_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL,
+  priority TEXT NOT NULL,
+  active_form TEXT,
+  created_by_type TEXT NOT NULL,
+  created_by_id TEXT NOT NULL,
+  source_agent_id TEXT,
+  position INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_conversation ON tasks (conversation_root_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_channel ON tasks (channel_id);
 CREATE TABLE IF NOT EXISTS reactions (
   workspace_slug TEXT NOT NULL DEFAULT 'default',
   message_id TEXT NOT NULL,
@@ -179,6 +227,7 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_thread_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_channel_id TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS manual_status TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS restricted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS folder TEXT NOT NULL DEFAULT 'plans';
 `
 
 // ---------------------------------------------------------------------------

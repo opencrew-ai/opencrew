@@ -228,3 +228,66 @@ export const reactions = pgTable(
     pk: primaryKey({ columns: [t.messageId, t.emoji, t.userId] })
   })
 )
+
+/**
+ * SHARED task list items, one row per task, keyed by conversation. Humans
+ * create/edit/prioritize in the UI; agents mirror the list via TodoWrite and
+ * their snapshots reconcile back into these rows by exact content match.
+ */
+export const tasks = pgTable('tasks', {
+  id: text('id').primaryKey(),
+  ...ws,
+  conversationRootId: text('conversation_root_id').notNull(),
+  channelId: text('channel_id').notNull(),
+  content: text('content').notNull(),
+  status: text('status', { enum: ['pending', 'in_progress', 'completed'] }).notNull(),
+  priority: text('priority', { enum: ['high', 'medium', 'low'] }).notNull(),
+  activeForm: text('active_form'),
+  createdByType: text('created_by_type', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  /** Agent currently/last working this item. */
+  sourceAgentId: text('source_agent_id'),
+  position: integer('position').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
+/**
+ * Conversation artifacts — durable documents an agent produces (plans first;
+ * design docs and files later). A 'plan' artifact carries a structured task
+ * list and waits for HUMAN approval: committing it populates the shared task
+ * board. Versions increment per (conversationRootId, title).
+ */
+export const artifacts = pgTable('artifacts', {
+  id: text('id').primaryKey(),
+  ...ws,
+  conversationRootId: text('conversation_root_id').notNull(),
+  channelId: text('channel_id').notNull(),
+  runId: text('run_id').notNull(),
+  kind: text('kind', { enum: ['plan'] }).notNull(),
+  /** Folder path like "plans" or "marketing/launch" — the artifacts tree. */
+  folder: text('folder').notNull().default('plans'),
+  title: text('title').notNull(),
+  /** Markdown document body. */
+  content: text('content').notNull(),
+  /** JSON array of {content, priority} drafts (plan kind). */
+  tasks: text('tasks').notNull(),
+  status: text('status', { enum: ['proposed', 'committed', 'discarded'] }).notNull(),
+  version: integer('version').notNull(),
+  createdByAgentId: text('created_by_agent_id').notNull(),
+  committedBy: text('committed_by'),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
+/** Review comments on an artifact, optionally anchored to a quoted selection. */
+export const artifactComments = pgTable('artifact_comments', {
+  id: text('id').primaryKey(),
+  ...ws,
+  artifactId: text('artifact_id').notNull(),
+  /** The selected text this comment anchors to (null = whole-doc comment). */
+  quote: text('quote'),
+  body: text('body').notNull(),
+  createdByUserId: text('created_by_user_id').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull()
+})
