@@ -1,12 +1,12 @@
+import { Logo } from './components/Logo'
+
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-[#05070a] text-zinc-200">
       {/* Nav */}
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-lg">
-            ⚓
-          </span>
+          <Logo className="h-8 w-8" />
           <span className="font-bold text-zinc-100" style={{ fontFamily: 'var(--font-display)' }}>
             OpenCrew
           </span>
@@ -359,7 +359,7 @@ export function LandingPage() {
       <footer className="border-t border-zinc-800/60 py-10">
         <div className="mx-auto max-w-5xl px-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
           <div className="flex items-center gap-2 text-sm text-zinc-600">
-            <span>⚓</span>
+            <Logo className="h-4 w-4" />
             <span>OpenCrew — MIT License</span>
           </div>
           <div className="flex gap-6 text-sm text-zinc-600">

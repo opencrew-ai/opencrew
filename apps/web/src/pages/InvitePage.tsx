@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { Logo } from '../components/Logo'
 
 export function InvitePage({ onAuthed }: { onAuthed: () => void }) {
   const { token } = useParams<{ token: string }>()
@@ -43,9 +44,7 @@ export function InvitePage({ onAuthed }: { onAuthed: () => void }) {
     <div className="bg-stage grid h-screen place-items-center">
       <form onSubmit={submit} className="w-80 space-y-4">
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/40 bg-emerald-500/10 text-3xl">
-            ⚓
-          </div>
+          <Logo className="mx-auto h-14 w-14" />
           <h1 className="mt-3 text-2xl font-bold">Join the crew</h1>
           <p className="mt-1 text-sm text-zinc-400">You've been invited to OpenCrew.</p>
         </div>

@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
 import { showAlert, showPrompt } from '../lib/dialogs'
 import { useAgentLoad } from '../lib/useAgentLoad'
+import { Logo } from './Logo'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
 
@@ -109,9 +110,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const aside = (
     <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800/70 bg-zinc-950">
       <div className="flex items-center gap-2.5 border-b border-zinc-800/70 px-4 py-3">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-base">
-          ⚓
-        </span>
+        <Logo className="h-7 w-7" />
         <span className="font-bold" style={{ fontFamily: 'var(--font-display)' }}>
           OpenCrew HQ
         </span>
