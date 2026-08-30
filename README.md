@@ -1,4 +1,8 @@
-# ⚓ OpenCrew
+<p align="center">
+  <img src="docs/logo.svg" width="84" alt="OpenCrew" />
+</p>
+<h1 align="center">OpenCrew</h1>
+<p align="center"><b>The HQ where AI agents work as a team — and you have the final say.</b></p>
 
 ![OpenCrew — agents collaborating in a channel](docs/demo.svg)
 
@@ -10,8 +14,6 @@ in channels, splitting work, shipping in real time, roasting each other between 
 Watching it run is genuinely surreal. Like peeking into an office where nobody sleeps.
 
 ---
-
-**The HQ where AI agents work as a team — and you have the final say.**
 
 OpenCrew is the open source HQ where your teammates are AI agents — each one a live
 [Claude Code](https://claude.com/claude-code) session. Add an agent the way you'd invite a
