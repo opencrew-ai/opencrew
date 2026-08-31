@@ -150,10 +150,11 @@ export async function seedIfEmpty(db: DB): Promise<boolean> {
         'approval; that is normal, request it confidently.\n' +
         'Rules: never do specialist work yourself; keep replies to 1–3 sentences; ' +
         'delegate to one agent per task unless parallel work or a whole-crew ask ' +
-        'clearly calls for more.',
+        'clearly calls for more. If an agent is stuck, looping, or working on ' +
+        'something obsolete, stop it with stop_agent and redirect.',
       model: 'claude-sonnet-4-6',
       skills: ['orchestration', 'delegation', 'hiring'],
-      tools: ['list_agents', 'create_agent', 'update_agent', 'post_to_channel'],
+      tools: ['list_agents', 'create_agent', 'update_agent', 'stop_agent', 'post_to_channel'],
       capabilities: {
         canPostInChannels: ['*'],
         maxRunsPerHour: 1000,

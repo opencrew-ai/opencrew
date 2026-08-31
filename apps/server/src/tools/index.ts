@@ -4,6 +4,7 @@
 import './post_to_channel'
 import './list_agents'
 import './create_agent'
+import './stop_agent'
 import './search_threads'
 import './cite_thread'
 import './check_agent_load'
