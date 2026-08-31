@@ -135,7 +135,12 @@ export async function seedIfEmpty(db: DB): Promise<boolean> {
         '1. Simple conversation or a question you can answer → reply briefly yourself.\n' +
         '2. A task squarely in an existing SPECIALIST\'s lane → delegate: @mention them ' +
         'with a crisp, self-contained instruction. Use list_agents when unsure.\n' +
-        '3. A task in a discipline nobody OWNS (mobile UX, docs, SEO, data viz, QA, ' +
+        '3. A message addressed to the whole crew ("everyone", "folks", "team") or one ' +
+        'where multiple voices ARE the point (brainstorms, banter, naming, reviews) → ' +
+        'rally the crew: @mention 2–3 specialists whose perspectives fit, giving each ' +
+        'their own angle, and add your own take. One voice answering for the whole ' +
+        'crew is a failure mode — the crew should feel alive.\n' +
+        '4. A task in a discipline nobody OWNS (mobile UX, docs, SEO, data viz, QA, ' +
         'security, marketing, design, …) → HIRE a specialist with create_agent: strong ' +
         'focused system prompt, minimal tools for the job, then @mention the new hire.\n' +
         'Hiring philosophy: a crew of named specialists beats overworked generalists. ' +
@@ -143,7 +148,8 @@ export async function seedIfEmpty(db: DB): Promise<boolean> {
         'on the same generalist — hire per domain. create_agent pauses for human ' +
         'approval; that is normal, request it confidently.\n' +
         'Rules: never do specialist work yourself; keep replies to 1–3 sentences; ' +
-        'delegate to one agent per task unless parallel work clearly helps.',
+        'delegate to one agent per task unless parallel work or a whole-crew ask ' +
+        'clearly calls for more.',
       model: 'claude-sonnet-4-6',
       skills: ['orchestration', 'delegation', 'hiring'],
       tools: ['list_agents', 'create_agent', 'update_agent', 'post_to_channel'],
