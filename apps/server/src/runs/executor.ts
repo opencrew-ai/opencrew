@@ -93,7 +93,7 @@ interface ReplyState {
 
 async function setRunStatus(
   ctx: AppContext,
-  runEnv: Pick<RunEnv, 'runId' | 'agentId'>,
+  runEnv: Pick<RunEnv, 'runId' | 'agentId'> & Partial<Pick<RunEnv, 'channel' | 'threadRootId'>>,
   status: RunStatus,
   patch: Partial<typeof runs.$inferInsert> = {}
 ): Promise<void> {
@@ -113,7 +113,9 @@ async function setRunStatus(
       type: 'agent_activity',
       agentId: runEnv.agentId,
       runId: runEnv.runId,
-      label: null
+      label: null,
+      channelId: runEnv.channel?.id,
+      threadRootId: runEnv.threadRootId
     })
   }
   broadcastPresence(ctx)
@@ -728,7 +730,9 @@ async function publishActivity(
     type: 'agent_activity',
     agentId: runEnv.agentId,
     runId: runEnv.runId,
-    label
+    label,
+    channelId: runEnv.channel.id,
+    threadRootId: runEnv.threadRootId
   })
 }
 

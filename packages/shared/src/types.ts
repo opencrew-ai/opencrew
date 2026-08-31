@@ -320,7 +320,15 @@ export type ServerEvent =
   /** Member-visible: an agent's task checklist for a conversation changed. */
   | { type: 'task_state'; tasks: ConversationTasks }
   /** Member-visible: coarse "now doing" label for an agent (null = idle). */
-  | { type: 'agent_activity'; agentId: string; runId: string; label: string | null }
+  | {
+      type: 'agent_activity'
+      agentId: string
+      runId: string
+      label: string | null
+      /** Where the work is happening — lets the UI scope liveness to a conversation. */
+      channelId?: string
+      threadRootId?: string | null
+    }
   /** Member-visible: an artifact was proposed, committed, or discarded. */
   | { type: 'artifact_state'; artifact: Artifact }
   /** Member-visible: a review comment was added to an artifact. */

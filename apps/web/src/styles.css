@@ -67,6 +67,41 @@ h3 {
   animation: fade-in 0.18s ease-out both;
 }
 
+/* ---------- live conversation: phosphor breathing while agents work ---------- */
+
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(52, 211, 153, 0.14),
+      0 0 14px -6px rgba(52, 211, 153, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(52, 211, 153, 0.38),
+      0 0 24px -6px rgba(52, 211, 153, 0.55);
+  }
+}
+
+.card-live {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.cursor-blink {
+  animation: cursor-blink 1.1s step-end infinite;
+}
+
 /* ---------- controls ---------- */
 
 .label {

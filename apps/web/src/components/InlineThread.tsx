@@ -1,5 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { useMessages } from '../lib/useMessages'
+import { useConversationActivity } from '../lib/useAgentActivity'
+import { useWorkspace } from '../lib/workspace'
 import { MessageItem } from './MessageItem'
 import { MessageInput } from './MessageInput'
 
@@ -16,6 +18,9 @@ interface InlineThreadProps {
  */
 export function InlineThread({ channelId, rootId, onOpenRun }: InlineThreadProps) {
   const { messages, loading, post } = useMessages(channelId, rootId)
+  const { agents } = useWorkspace()
+  // Agents live-working THIS conversation — rendered like a typing indicator.
+  const workers = useConversationActivity(rootId)
   // The server returns the root message + all replies; skip the root itself.
   const replies = messages.filter((m) => m.id !== rootId)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -47,6 +52,23 @@ export function InlineThread({ channelId, rootId, onOpenRun }: InlineThreadProps
           // (avoids infinite nesting)
           <MessageItem key={m.id} message={m} onOpenRun={onOpenRun} />
         ))}
+
+        {/* Live workers — who is on it right now, with their current move */}
+        {workers.map(({ agentId, label }) => {
+          const agent = agents.find((a) => a.id === agentId)
+          if (!agent) return null
+          return (
+            <div key={agentId} className="flex items-center gap-2 px-4 py-1.5 text-xs">
+              <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-emerald-500/40 bg-zinc-900 text-sm shadow-[0_0_8px_-2px_rgba(52,211,153,0.5)]">
+                {agent.avatarEmoji}
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              </span>
+              <span className="font-display font-semibold text-zinc-300">{agent.name}</span>
+              <span className="min-w-0 truncate italic text-emerald-300/80">{label}</span>
+              <span className="cursor-blink text-emerald-400">▊</span>
+            </div>
+          )
+        })}
         <div ref={bottomRef} />
       </div>
 

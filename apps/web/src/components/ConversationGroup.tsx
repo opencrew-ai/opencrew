@@ -257,7 +257,17 @@ export function ConversationGroup({
       ref={groupRef}
       className={[
         'relative mx-3 mb-3 overflow-hidden rounded-xl border bg-zinc-950/30 transition-colors',
-        isUnread ? 'border-emerald-500/40' : 'border-zinc-800/60',
+        // Live conversations breathe: phosphor frame + faint wash while agents
+        // work; amber frame while waiting on a human; red edge on failure.
+        groupStatus === 'in_progress'
+          ? 'card-live border-emerald-500/30 bg-emerald-500/[0.03]'
+          : groupStatus === 'waiting'
+            ? 'border-amber-500/30'
+            : groupStatus === 'failed'
+              ? 'border-red-500/20'
+              : isUnread
+                ? 'border-emerald-500/40'
+                : 'border-zinc-800/60',
       ].join(' ')}
     >
       {/* Status pill + unread dot — top-right corner */}

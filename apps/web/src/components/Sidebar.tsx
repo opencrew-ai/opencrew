@@ -5,7 +5,7 @@ import { wsClient } from '../lib/ws'
 import { presenceKey, useWorkspace } from '../lib/workspace'
 import { showAlert, showPrompt } from '../lib/dialogs'
 import { useAgentLoad } from '../lib/useAgentLoad'
-import { useAgentActivity } from '../lib/useAgentActivity'
+import { useAgentActivity, useLiveChannels } from '../lib/useAgentActivity'
 import { useAttention } from '../lib/useAttention'
 import { AttentionModal } from './AttentionModal'
 import type { AttentionItem } from '@opencrew/shared'
@@ -64,6 +64,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const agentActivity = useAgentActivity()
   const attention = useAttention()
   const todayStats = useTodayStats()
+  const liveChannels = useLiveChannels()
   const [activeAttention, setActiveAttention] = useState<AttentionItem | null>(null)
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
@@ -270,13 +271,19 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
                   key={c.id}
                   to={`/channels/${c.id}`}
                   onClick={onClose}
-                  className={`block rounded-md px-2 py-1 text-sm ${
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-sm ${
                     c.id === activeChannelId
                       ? 'bg-emerald-500/15 font-medium text-emerald-100'
                       : 'text-zinc-300 hover:bg-zinc-800/80'
                   }`}
                 >
-                  # {c.name}
+                  <span># {c.name}</span>
+                  {liveChannels.has(c.id) && (
+                    <span
+                      title="Agents working here now"
+                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.7)]"
+                    />
+                  )}
                 </Link>
               ))}
           </nav>
