@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
-import { gt, sql } from 'drizzle-orm'
+import { and, eq, gt, sql } from 'drizzle-orm'
 import type { AppContext } from '../context'
-import { agents, messages, runs } from '../db/schema'
+import { agents, messages, runs, runSteps } from '../db/schema'
 import { authGuard, ok } from './helpers'
 
 /** Workspace-level counters + a daily interaction series for the last two weeks. */
@@ -36,10 +36,34 @@ export function registerStatsRoutes(app: FastifyInstance, ctx: AppContext): void
       if (bucket) bucket.count += 1
     }
 
+    // Today's crew economics: run count + real model spend, summed from the
+    // per-run session results. Cumulative session costs on resumed runs can
+    // overlap slightly, so this reads as an honest approximation (≈).
+    const [todayRuns] = await ctx.db
+      .select({ n: sql<number>`count(*)` })
+      .from(runs)
+      .where(gt(runs.createdAt, today))
+    const costRows = await ctx.db
+      .select({ payload: runSteps.payload })
+      .from(runSteps)
+      .where(and(eq(runSteps.type, 'llm_call'), gt(runSteps.createdAt, today)))
+    let todayCostUsd = 0
+    for (const row of costRows) {
+      try {
+        const payload = JSON.parse(row.payload) as { phase?: string; costUsd?: number }
+        if (payload.phase === 'result' && typeof payload.costUsd === 'number') {
+          todayCostUsd += payload.costUsd
+        }
+      } catch {
+        // malformed step payloads never break stats
+      }
+    }
+
     return ok({
       agents: Number(agentCount?.n ?? 0),
       messages: Number(messageCount?.n ?? 0),
       runs: Number(runCount?.n ?? 0),
+      today: { runs: Number(todayRuns?.n ?? 0), costUsd: todayCostUsd },
       series
     })
   })

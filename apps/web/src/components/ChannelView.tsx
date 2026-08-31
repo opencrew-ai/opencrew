@@ -47,6 +47,31 @@ const RANGE_CHIPS: { key: RangeFilter; label: string }[] = [
   { key: 'all', label: 'All' }
 ]
 
+// Only these interrupt at rest — they're the ones that need a human.
+const ATTENTION_CHIPS = [
+  {
+    key: 'waiting' as GroupStatus,
+    label: '⏸ waiting',
+    activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+    idleClass: 'text-amber-400/80'
+  },
+  {
+    key: 'failed' as GroupStatus,
+    label: '✗ failed',
+    activeClass: 'bg-red-500/20 text-red-300 border-red-500/50',
+    idleClass: 'text-red-400/80'
+  }
+]
+
+function filterSummary(status: StatusFilter, range: RangeFilter): string {
+  const chip = STATUS_CHIPS.find((c) => c.key === status)
+  const parts = [
+    ...(chip ? [chip.label] : []),
+    ...(range !== 'all' ? [RANGE_CHIPS.find((c) => c.key === range)!.label] : [])
+  ]
+  return parts.length > 0 ? parts.join(' · ') : 'Filter'
+}
+
 function rangeStart(range: RangeFilter): number {
   if (range === 'all') return 0
   const now = new Date()
@@ -143,6 +168,7 @@ export function ChannelView({
   targetThreadRef.current = targetThreadId
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>('all')
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
   // New-message pill: count of messages that arrived while user was scrolled up
   const [unreadCount, setUnreadCount] = useState(0)
   const prevMsgCountRef = useRef(0)
@@ -335,20 +361,11 @@ export function ChannelView({
         {channel.topic && <p className="text-xs text-zinc-500">{channel.topic}</p>}
       </div>
 
-      {/* Conversation filters — chips only appear for statuses present */}
+      {/* Conversation filters — attention chips (waiting/failed) surface only
+          when nonzero; everything else lives behind one Filter menu. */}
       {!loading && groups.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-800/50 px-4 py-1.5 text-xs">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`rounded-full border px-2.5 py-0.5 transition ${
-              statusFilter === 'all'
-                ? 'border-zinc-400 bg-zinc-100 font-semibold text-zinc-900'
-                : 'border-transparent text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            All {rangeFilter === 'all' ? groups.length : [...counts.values()].reduce((a, b) => a + b, 0)}
-          </button>
-          {STATUS_CHIPS.map((chip) => {
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-800/50 px-4 py-1 text-xs">
+          {ATTENTION_CHIPS.map((chip) => {
             const count = counts.get(chip.key) ?? 0
             if (count === 0 && statusFilter !== chip.key) return null
             const active = statusFilter === chip.key
@@ -357,27 +374,85 @@ export function ChannelView({
                 key={chip.key}
                 onClick={() => setStatusFilter(active ? 'all' : chip.key)}
                 className={`rounded-full border px-2.5 py-0.5 transition ${
-                  active ? chip.activeClass : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                  active ? chip.activeClass : `border-transparent ${chip.idleClass} hover:brightness-125`
                 }`}
               >
                 {chip.label} {count}
               </button>
             )
           })}
-          <span className="mx-1 h-4 w-px bg-zinc-800" />
-          {RANGE_CHIPS.map((chip) => (
+          <span className="flex-1" />
+          {(statusFilter !== 'all' || rangeFilter !== 'all') && (
             <button
-              key={chip.key}
-              onClick={() => setRangeFilter(chip.key)}
-              className={`rounded px-2 py-0.5 transition ${
-                rangeFilter === chip.key
-                  ? 'bg-zinc-800 font-medium text-zinc-100'
-                  : 'text-zinc-600 hover:text-zinc-300'
+              onClick={() => {
+                setStatusFilter('all')
+                setRangeFilter('all')
+                setIsFilterOpen(false)
+              }}
+              className="text-zinc-500 hover:text-zinc-300"
+            >
+              clear ×
+            </button>
+          )}
+          <div className="relative">
+            <button
+              onClick={() => setIsFilterOpen((v) => !v)}
+              className={`rounded border px-2 py-0.5 transition ${
+                statusFilter !== 'all' || rangeFilter !== 'all'
+                  ? 'border-zinc-600 text-zinc-200'
+                  : 'border-transparent text-zinc-600 hover:text-zinc-300'
               }`}
             >
-              {chip.label}
+              {filterSummary(statusFilter, rangeFilter)} ▾
             </button>
-          ))}
+            {isFilterOpen && (
+              <div className="absolute right-0 top-6 z-30 w-44 rounded-lg border border-zinc-700 bg-zinc-900 p-2 shadow-xl">
+                <p className="px-1 pb-1 text-[10px] uppercase tracking-wide text-zinc-600">
+                  Status
+                </p>
+                {(['all', ...STATUS_CHIPS.map((c) => c.key)] as StatusFilter[]).map((key) => {
+                  const chip = STATUS_CHIPS.find((c) => c.key === key)
+                  const count = key === 'all' ? groups.length : (counts.get(key) ?? 0)
+                  if (key !== 'all' && count === 0) return null
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setStatusFilter(key)
+                        setIsFilterOpen(false)
+                      }}
+                      className={`flex w-full items-center justify-between rounded px-1.5 py-1 text-left ${
+                        statusFilter === key
+                          ? 'bg-zinc-800 text-zinc-100'
+                          : 'text-zinc-400 hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span>{chip ? chip.label : 'All'}</span>
+                      <span className="text-zinc-600">{count}</span>
+                    </button>
+                  )
+                })}
+                <p className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wide text-zinc-600">
+                  Time
+                </p>
+                <div className="flex gap-1 px-1">
+                  {RANGE_CHIPS.map((chip) => (
+                    <button
+                      key={chip.key}
+                      onClick={() => setRangeFilter(chip.key)}
+                      className={`flex-1 rounded px-1.5 py-0.5 ${
+                        rangeFilter === chip.key
+                          ? 'bg-zinc-800 font-medium text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

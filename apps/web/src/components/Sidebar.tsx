@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { wsClient } from '../lib/ws'
 import { presenceKey, useWorkspace } from '../lib/workspace'
 import { showAlert, showPrompt } from '../lib/dialogs'
 import { useAgentLoad } from '../lib/useAgentLoad'
@@ -11,6 +12,41 @@ import type { AttentionItem } from '@opencrew/shared'
 import { Logo } from './Logo'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
+
+interface TodayStats {
+  runs: number
+  costUsd: number
+}
+
+const STATS_REFRESH_DEBOUNCE_MS = 3000
+
+/** Today's crew economics — refreshed when runs reach a terminal state. */
+function useTodayStats(): TodayStats | null {
+  const [stats, setStats] = useState<TodayStats | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const load = () => {
+      api
+        .get<{ today?: TodayStats }>('/api/stats')
+        .then((data) => setStats(data.today ?? null))
+        .catch(() => {})
+    }
+    load()
+    const unsubscribe = wsClient.subscribe((event) => {
+      if (event.type !== 'run_status') return
+      if (event.status !== 'done' && event.status !== 'failed') return
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(load, STATS_REFRESH_DEBOUNCE_MS)
+    })
+    return () => {
+      unsubscribe()
+      if (timer.current) clearTimeout(timer.current)
+    }
+  }, [])
+
+  return stats
+}
 
 interface SidebarProps {
   activeChannelId?: string
@@ -26,6 +62,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const agentLoad = useAgentLoad()
   const agentActivity = useAgentActivity()
   const attention = useAttention()
+  const todayStats = useTodayStats()
   const [activeAttention, setActiveAttention] = useState<AttentionItem | null>(null)
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
@@ -342,6 +379,17 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           )}
         </section>
       </div>
+
+      {/* Today's crew economics — the honest counter nobody else shows */}
+      {todayStats && todayStats.runs > 0 && (
+        <div
+          className="border-t border-zinc-800/60 px-4 py-1.5 text-[11px] text-zinc-500"
+          title="Runs and actual model spend today (≈ — resumed sessions can overlap)"
+        >
+          ⚡ {todayStats.runs} run{todayStats.runs === 1 ? '' : 's'} today
+          {todayStats.costUsd > 0 && ` · ≈$${todayStats.costUsd.toFixed(2)}`}
+        </div>
+      )}
 
       <div className="border-t border-zinc-800 px-4 py-3 text-sm">
         <div className="flex items-center justify-between">
