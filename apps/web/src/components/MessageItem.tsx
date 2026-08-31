@@ -9,6 +9,7 @@ import { InlineThread } from './InlineThread'
 import { ArtifactCard } from './ArtifactCard'
 import { TaskChecklist } from './TaskChecklist'
 import { ThreadRefCard } from './ThreadRefCard'
+import { ShareThreadButton } from './ShareThreadButton'
 import { useArtifactById, useArtifactsForRun } from '../lib/useChannelArtifacts'
 import { ImageLightbox } from './ImageLightbox'
 
@@ -265,13 +266,16 @@ export function MessageItem({
         <div className="ml-7 mt-0.5 flex items-center gap-3">
           {message.replyCount ? (
             // Active thread: replies are visible by default, this collapses/restores
-            <button
-              onClick={() => setIsCollapsed((v) => !v)}
-              className="text-xs font-medium text-sky-400 hover:underline"
-            >
-              {isCollapsed ? '▼' : '▲'} {message.replyCount}{' '}
-              {message.replyCount === 1 ? 'reply' : 'replies'}
-            </button>
+            <>
+              <button
+                onClick={() => setIsCollapsed((v) => !v)}
+                className="text-xs font-medium text-sky-400 hover:underline"
+              >
+                {isCollapsed ? '▼' : '▲'} {message.replyCount}{' '}
+                {message.replyCount === 1 ? 'reply' : 'replies'}
+              </button>
+              <ShareThreadButton rootId={threadRootId} />
+            </>
           ) : (
             // No thread yet: offer to start one
             <button

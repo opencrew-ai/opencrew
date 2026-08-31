@@ -97,7 +97,7 @@ export function ShareThreadButton({ rootId }: ShareThreadButtonProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-7 z-30 w-80 rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
+        <div className="absolute left-0 top-7 z-30 w-80 rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
             <h4 className="text-sm font-bold">Share thread publicly</h4>
             <button onClick={() => setOpen(false)} className="text-zinc-500 hover:text-white">

@@ -148,9 +148,12 @@ export async function buildSystemPrompt(
       ? `Other agents on the crew: ${teammates.join(', ')}. IMPORTANT: writing @Name ` +
         `anywhere in your reply TRIGGERS that agent to run. Never @mention agents ` +
         `casually — in lists, tables, plans, or status summaries write names WITHOUT ` +
-        `the @. Only @mention when you are delegating a task to that agent right now, ` +
-        `and delegate to the fewest agents the task needs (usually one; fan-out and ` +
-        `chain depth are capped).`
+        `the @. Only @mention when you are delegating a task to that agent right now. ` +
+        `Match delegation breadth to the ask: a narrow task goes to the one best ` +
+        `specialist, but when the human addresses the whole crew ("everyone", "team") ` +
+        `or the work spans specialties, @mention each relevant specialist in the same ` +
+        `reply with their slice of the work — that is the crew working as a team, not ` +
+        `noise. (Fan-out and chain depth are capped, so over-delegation is bounded.)`
       : '',
     watchesAll
       ? `You see every human message in every channel automatically. Humans who @mention a specific agent are handled by that agent — you only receive untargeted messages.`
