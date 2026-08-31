@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -96,8 +96,17 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
   }
   const docRef = useRef<HTMLDivElement>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   const [comments, setComments] = useState<ArtifactComment[]>([])
-  const [pendingQuote, setPendingQuote] = useState<string | null>(null)
+  // Floating selection popover — anchored at the selected text, Medium-style.
+  const [popover, setPopover] = useState<{
+    x: number
+    top: number
+    bottom: number
+    quote: string
+    mode: 'actions' | 'comment'
+  } | null>(null)
+  const [popoverDraft, setPopoverDraft] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
   const [isRevising, setIsRevising] = useState(false)
   const [feedbackDraft, setFeedbackDraft] = useState('')
@@ -110,7 +119,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
   const startEdit = (quote?: string | null) => {
     setEditDraft(doc.content)
     setIsEditing(true)
-    setPendingQuote(null)
+    setPopover(null)
     requestAnimationFrame(() => {
       const area = editRef.current
       if (!area) return
@@ -182,26 +191,49 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
     })
   }, [doc.id])
 
-  // Select text in the doc → the comment composer opens anchored to it.
+  // Select text in the doc → a floating popover appears at the selection
+  // with the actions (comment / edit) right where the user is looking.
   const captureSelection = () => {
     if (!canReview) return
     const selection = window.getSelection()
-    if (!selection || selection.isCollapsed) return
+    if (!selection || selection.isCollapsed) {
+      setPopover(null)
+      return
+    }
     const text = selection.toString().trim()
     if (!text || !docRef.current) return
     if (!docRef.current.contains(selection.anchorNode)) return
-    setPendingQuote(text.slice(0, 1000))
+    const rect = selection.getRangeAt(0).getBoundingClientRect()
+    setPopoverDraft('')
+    setPopover({
+      x: rect.left + rect.width / 2,
+      top: rect.top,
+      bottom: rect.bottom,
+      quote: text.slice(0, 1000),
+      mode: 'actions'
+    })
+  }
+
+  // Click anywhere outside the popover dismisses it.
+  const dismissPopover = (e: ReactMouseEvent) => {
+    if (popover && !popoverRef.current?.contains(e.target as Node)) setPopover(null)
   }
 
   const postComment = async () => {
     const body = commentDraft.trim()
     if (!body) return
     setCommentDraft('')
-    const quote = pendingQuote ?? undefined
-    setPendingQuote(null)
-    await api
-      .post(`/api/artifacts/${doc.id}/comments`, { body, quote })
-      .catch(() => {})
+    await api.post(`/api/artifacts/${doc.id}/comments`, { body }).catch(() => {})
+  }
+
+  const postSelectionComment = async () => {
+    if (!popover) return
+    const body = popoverDraft.trim()
+    if (!body) return
+    const { quote } = popover
+    setPopover(null)
+    setPopoverDraft('')
+    await api.post(`/api/artifacts/${doc.id}/comments`, { body, quote }).catch(() => {})
   }
 
   const sendFeedback = async () => {
@@ -228,6 +260,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={dismissPopover}
         className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl"
       >
         {/* Title bar */}
@@ -269,7 +302,14 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
             />
           </div>
         ) : (
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div
+          className="flex-1 overflow-y-auto px-6 py-4"
+          onScroll={() => {
+            // The popover is viewport-anchored; scrolling detaches it from
+            // the text, so let it go rather than float wrong.
+            if (popover?.mode === 'actions') setPopover(null)
+          }}
+        >
           {canReview && (
             <p className="mb-2 text-[11px] text-zinc-600">
               Tip: select any text in the doc to comment on it — or edit it in place.
@@ -341,33 +381,10 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
         </div>
         )}
 
-        {/* Comment composer — appears when text is selected (or write a
-            general comment any time) */}
+        {/* General comment composer — selection-anchored comments live in the
+            floating popover at the selection instead */}
         {canReview && !isEditing && (
           <div className="border-t border-zinc-800 px-5 py-2">
-            {pendingQuote && (
-              <p className="mb-1 flex items-start gap-2 text-xs text-zinc-500">
-                <span className="mt-px">💬 on:</span>
-                <span className="min-w-0 flex-1 truncate border-l-2 border-amber-600/60 pl-2 italic">
-                  “{pendingQuote.slice(0, QUOTE_PREVIEW)}
-                  {pendingQuote.length > QUOTE_PREVIEW ? '…' : ''}”
-                </span>
-                <button
-                  onClick={() => startEdit(pendingQuote)}
-                  className="whitespace-nowrap rounded border border-zinc-700 px-1.5 py-px text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-                  title="Rewrite this text yourself"
-                >
-                  ✏️ Edit this text
-                </button>
-                <button
-                  onClick={() => setPendingQuote(null)}
-                  className="text-zinc-600 hover:text-zinc-300"
-                  title="Drop selection"
-                >
-                  ×
-                </button>
-              </p>
-            )}
             <div className="flex items-center gap-2">
               <input
                 value={commentDraft}
@@ -375,7 +392,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void postComment()
                 }}
-                placeholder={pendingQuote ? 'Comment on the selection…' : 'Add a comment…'}
+                placeholder="Add a comment…"
                 className="min-w-0 flex-1 rounded border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-sm text-zinc-200 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
               />
               <button
@@ -466,6 +483,61 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
           )}
         </div>
       </div>
+
+      {/* Selection popover — floats at the selected text */}
+      {popover && !isEditing && (
+        <div
+          ref={popoverRef}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="fixed z-[10000] rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
+          style={{
+            left: Math.min(Math.max(popover.x, 170), window.innerWidth - 170),
+            ...(popover.top > 130
+              ? { top: popover.top - 8, transform: 'translate(-50%, -100%)' }
+              : { top: popover.bottom + 8, transform: 'translateX(-50%)' })
+          }}
+        >
+          {popover.mode === 'actions' ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPopover({ ...popover, mode: 'comment' })}
+                className="rounded px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800"
+              >
+                💬 Comment
+              </button>
+              <span className="h-4 w-px bg-zinc-700" />
+              <button
+                onClick={() => startEdit(popover.quote)}
+                className="rounded px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800"
+              >
+                ✏️ Edit
+              </button>
+            </div>
+          ) : (
+            <div className="flex w-72 items-center gap-1.5 p-1">
+              <input
+                autoFocus
+                value={popoverDraft}
+                onChange={(e) => setPopoverDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void postSelectionComment()
+                  if (e.key === 'Escape') setPopover(null)
+                }}
+                placeholder="Comment on the selection…"
+                className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
+              />
+              <button
+                onClick={() => void postSelectionComment()}
+                disabled={!popoverDraft.trim()}
+                className="rounded bg-zinc-100 px-2 py-1 text-xs font-bold text-zinc-900 transition hover:bg-white disabled:opacity-40"
+              >
+                Post
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>,
     document.body
   )
