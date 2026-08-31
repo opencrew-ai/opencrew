@@ -67,6 +67,28 @@ h3 {
   animation: fade-in 0.18s ease-out both;
 }
 
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out both;
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /* ---------- live conversation: phosphor breathing while agents work ---------- */
 
 @keyframes breathe {

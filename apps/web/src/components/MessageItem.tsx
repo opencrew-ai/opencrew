@@ -12,12 +12,29 @@ import { ThreadRefCard } from './ThreadRefCard'
 import { ShareThreadButton } from './ShareThreadButton'
 import { useArtifactById, useArtifactsForRun } from '../lib/useChannelArtifacts'
 import { ImageLightbox } from './ImageLightbox'
+import { DocLinkChip } from './DocDrawer'
 
 const MD_PLUGINS = [remarkGfm]
 
+/** Extract the plain-text string from a ReactMarkdown children value. */
+function childrenToText(children: React.ReactNode): string {
+  if (typeof children === 'string') return children
+  if (Array.isArray(children))
+    return children.map((c) => (typeof c === 'string' ? c : '')).join('')
+  return ''
+}
+
 // Links must never navigate the app away — always open in a new tab.
+// Bold text that matches a known artifact title renders as a DocLinkChip so
+// users can open the doc in the right-side drawer without leaving the chat.
 const MD_COMPONENTS: Components = {
-  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />
+  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  strong: ({ children }) => {
+    const text = childrenToText(children)
+    return (
+      <DocLinkChip title={text} fallback={<strong>{children}</strong>} />
+    )
+  }
 }
 
 /** Reaction chips + hover picker. Constrained set, one toggle per emoji. */
