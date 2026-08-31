@@ -177,7 +177,7 @@ export function AgentDetailPage() {
               </div>
             )}
             {agent.currentVersion.tools.includes('Browser') && (
-              <div className="mb-6 max-w-2xl rounded-lg border border-sky-900/60 bg-sky-950/20 p-4">
+              <div className="mb-6 max-w-2xl rounded-lg border border-zinc-700/60 bg-zinc-900/40 p-4">
                 <h3 className="flex items-center gap-2 font-semibold">
                   🌐 Agent browser
                   <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-zinc-400">

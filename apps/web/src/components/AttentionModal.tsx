@@ -219,7 +219,7 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
               onClick={() => void askAgent()}
               disabled={isActing}
               title="Hand this to the crew — starts its own thread"
-              className="rounded border border-sky-700/60 px-2.5 py-1 text-sky-300 transition hover:bg-sky-900/40 disabled:opacity-40"
+              className="rounded border border-zinc-600 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800/60 disabled:opacity-40"
             >
               ▶ ask agent
             </button>

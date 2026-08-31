@@ -10,6 +10,7 @@ import { useAttention } from '../lib/useAttention'
 import { AttentionModal } from './AttentionModal'
 import type { AttentionItem } from '@opencrew/shared'
 import { Logo } from './Logo'
+import { FolderIcon, GearIcon, TasksIcon } from './Icons'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
 
@@ -164,7 +165,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           className="ml-auto text-zinc-500 hover:text-white"
           title="Workspace settings"
         >
-          ⚙
+          <GearIcon />
         </Link>
         {/* Close button — mobile only */}
         {onClose && (
@@ -184,7 +185,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           onClick={onClose}
           className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
         >
-          <span>📁</span>
+          <FolderIcon className="text-zinc-500" />
           <span>Artifacts</span>
         </Link>
         <Link
@@ -192,7 +193,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           onClick={onClose}
           className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
         >
-          <span>☑</span>
+          <TasksIcon className="text-zinc-500" />
           <span>Tasks</span>
         </Link>
 
@@ -360,7 +361,7 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
               <div className="flex items-center gap-1.5">
                 <input
                   readOnly
-                  className="min-w-0 flex-1 bg-transparent text-sky-400"
+                  className="min-w-0 flex-1 bg-transparent font-mono text-emerald-300"
                   value={inviteUrl}
                   onFocus={(e) => e.target.select()}
                 />
@@ -383,10 +384,10 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
       {/* Today's crew economics — the honest counter nobody else shows */}
       {todayStats && todayStats.runs > 0 && (
         <div
-          className="border-t border-zinc-800/60 px-4 py-1.5 text-[11px] text-zinc-500"
+          className="border-t border-zinc-800/60 px-4 py-1.5 font-mono text-[11px] tabular-nums text-zinc-500"
           title="Runs and actual model spend today (≈ — resumed sessions can overlap)"
         >
-          ⚡ {todayStats.runs} run{todayStats.runs === 1 ? '' : 's'} today
+          {todayStats.runs} run{todayStats.runs === 1 ? '' : 's'} today
           {todayStats.costUsd > 0 && ` · ≈$${todayStats.costUsd.toFixed(2)}`}
         </div>
       )}

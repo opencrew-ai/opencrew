@@ -34,8 +34,8 @@ type RangeFilter = 'today' | '7d' | 'all'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const STATUS_CHIPS: { key: GroupStatus; label: string; activeClass: string }[] = [
-  { key: 'waiting', label: '⏸ Waiting', activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50' },
-  { key: 'in_progress', label: '● Running', activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50' },
+  { key: 'waiting', label: 'Waiting', activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50' },
+  { key: 'in_progress', label: '● Running', activeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' },
   { key: 'not_started', label: '○ Not started', activeClass: 'bg-zinc-700/60 text-zinc-200 border-zinc-500' },
   { key: 'failed', label: '✗ Failed', activeClass: 'bg-red-500/20 text-red-300 border-red-500/50' },
   { key: 'done', label: '✓ Done', activeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' }
@@ -51,7 +51,7 @@ const RANGE_CHIPS: { key: RangeFilter; label: string }[] = [
 const ATTENTION_CHIPS = [
   {
     key: 'waiting' as GroupStatus,
-    label: '⏸ waiting',
+    label: '● waiting',
     activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
     idleClass: 'text-amber-400/80'
   },
@@ -266,9 +266,9 @@ export function ChannelView({
     if (!el) return
     focusedRef.current = targetThreadId
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2', 'ring-offset-zinc-950', 'rounded-md')
+    el.classList.add('ring-2', 'ring-emerald-500', 'ring-offset-2', 'ring-offset-zinc-950', 'rounded-md')
     setTimeout(() => {
-      el.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2', 'ring-offset-zinc-950', 'rounded-md')
+      el.classList.remove('ring-2', 'ring-emerald-500', 'ring-offset-2', 'ring-offset-zinc-950', 'rounded-md')
       onThreadFocused?.()
     }, 2000)
   }, [targetThreadId, loading, onThreadFocused])
@@ -355,7 +355,7 @@ export function ChannelView({
   return (
     <ArtifactsByRunContext.Provider value={artifactsByRun}>
     <ArtifactsByIdContext.Provider value={artifactsById}>
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="bg-stage flex min-w-0 flex-1 flex-col">
       <div className="border-b border-zinc-800 px-4 py-3">
         <h2 className="font-bold"># {channel.name}</h2>
         {channel.topic && <p className="text-xs text-zinc-500">{channel.topic}</p>}
@@ -464,7 +464,7 @@ export function ChannelView({
               bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
               setUnreadCount(0)
             }}
-            className="absolute left-1/2 top-2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1 text-xs font-medium text-white shadow-lg transition-opacity hover:bg-indigo-500 animate-fade-in"
+            className="absolute left-1/2 top-2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white shadow-lg transition-opacity hover:bg-emerald-500 animate-fade-in"
           >
             ↓ {unreadCount} new {unreadCount === 1 ? 'message' : 'messages'}
           </button>

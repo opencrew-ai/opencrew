@@ -4,7 +4,7 @@ const COLORS: Record<PresenceState, string> = {
   online: 'bg-emerald-500',
   offline: 'bg-zinc-600',
   idle: 'bg-zinc-500',
-  running: 'bg-amber-400 animate-pulse'
+  running: 'bg-emerald-400 animate-pulse'
 }
 
 export function PresenceDot({ state }: { state: PresenceState }) {

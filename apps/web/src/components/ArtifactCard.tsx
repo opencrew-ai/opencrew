@@ -6,6 +6,15 @@ import type { Artifact, ArtifactComment } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { useWorkspace } from '../lib/workspace'
+import { DiffIcon, DocIcon } from './Icons'
+
+function KindIcon({ kind, className }: { kind: Artifact['kind']; className?: string }) {
+  return kind === 'change' ? (
+    <DiffIcon className={className} />
+  ) : (
+    <DocIcon className={className} />
+  )
+}
 
 const MD_PLUGINS = [remarkGfm]
 const MD_COMPONENTS: Components = {
@@ -65,20 +74,20 @@ function similarTitle(a: string, b: string): boolean {
 function StatusBadge({ status }: { status: Artifact['status'] }) {
   if (status === 'review') {
     return (
-      <span className="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
-        📚 in review
+      <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-wide text-zinc-300">
+        in review
       </span>
     )
   }
   if (status === 'proposed') {
     return (
-      <span className="rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+      <span className="rounded bg-amber-900/60 px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-wide text-amber-300">
         awaiting approval
       </span>
     )
   }
   return (
-    <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
+    <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-wide text-emerald-300">
       ✓ committed
     </span>
   )
@@ -286,9 +295,9 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
       >
         {/* Title bar */}
         <div className="flex items-center gap-2 border-b border-zinc-800 px-5 py-3">
-          <span>{doc.kind === 'change' ? '🧩' : '📄'}</span>
+          <KindIcon kind={doc.kind} className="text-zinc-500" />
           <h2 className="min-w-0 flex-1 truncate font-bold text-zinc-100">{doc.title}</h2>
-          <span className="text-xs text-zinc-500">v{doc.version}</span>
+          <span className="font-mono text-xs tabular-nums text-zinc-500">v{doc.version}</span>
           <StatusBadge status={doc.status} />
           {canReview && !isEditing && (
             <button
@@ -359,7 +368,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
                         task.priority === 'high'
                           ? 'text-red-400'
                           : task.priority === 'medium'
-                            ? 'text-sky-400'
+                            ? 'text-zinc-300'
                             : 'text-zinc-500'
                       }
                     >
@@ -464,7 +473,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
               <button
                 onClick={() => void sendFeedback()}
                 disabled={isSending || !feedbackDraft.trim()}
-                className="rounded border border-sky-700/60 bg-sky-900/40 px-2.5 py-1 text-xs font-medium text-sky-300 transition hover:bg-sky-800/50 disabled:opacity-40"
+                className="rounded border border-zinc-600 bg-zinc-800/60 px-2.5 py-1 text-xs font-medium text-zinc-200 transition hover:bg-zinc-700/60 disabled:opacity-40"
               >
                 Send for revision
               </button>
@@ -487,7 +496,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
                   </button>
                   <button
                     onClick={() => setIsRevising(true)}
-                    className="rounded border border-sky-700/60 px-2.5 py-1 text-sky-300 transition hover:bg-sky-900/40"
+                    className="rounded border border-zinc-600 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800/60"
                   >
                     ✏ Request changes
                   </button>
@@ -578,9 +587,9 @@ export function ArtifactRow({ artifact }: { artifact: Artifact }) {
         onClick={() => setIsModalOpen(true)}
         className="ml-7 mt-1 flex w-fit max-w-full items-center gap-2 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-2.5 py-1 text-xs transition hover:border-zinc-600"
       >
-        <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
+        <KindIcon kind={artifact.kind} className="text-zinc-500" />
         <span className="min-w-0 truncate font-medium text-zinc-200">{artifact.title}</span>
-        <span className="text-[10px] text-zinc-600">v{artifact.version}</span>
+        <span className="font-mono text-[10px] tabular-nums text-zinc-600">v{artifact.version}</span>
         <StatusBadge status={artifact.status} />
       </button>
       {isModalOpen && (
@@ -634,7 +643,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
     >
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
+        <KindIcon kind={artifact.kind} className="text-zinc-500" />
         <button
           onClick={() => setIsModalOpen(true)}
           className="min-w-0 flex-1 truncate text-left font-semibold text-zinc-100 hover:underline"
@@ -642,7 +651,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
         >
           {artifact.title}
         </button>
-        <span className="text-[10px] text-zinc-500">v{artifact.version}</span>
+        <span className="font-mono text-[10px] tabular-nums text-zinc-500">v{artifact.version}</span>
         <StatusBadge status={artifact.status} />
         {agentLabel && <span className="text-xs text-zinc-500">{agentLabel}</span>}
         <span className="text-xs text-zinc-500">

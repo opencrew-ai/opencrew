@@ -14,7 +14,7 @@ const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2
 const PRIORITY_GLYPH: Record<TaskPriority, string> = { high: '‼', medium: '•', low: '·' }
 const PRIORITY_STYLE: Record<TaskPriority, string> = {
   high: 'text-red-400',
-  medium: 'text-sky-400',
+  medium: 'text-zinc-300',
   low: 'text-zinc-500'
 }
 
@@ -250,7 +250,7 @@ export function TasksPage() {
                     {group.title}
                   </span>
                   {group.running > 0 && (
-                    <span className="animate-pulse text-xs text-sky-400">
+                    <span className="animate-pulse text-xs text-emerald-400">
                       ▸ {group.running} running
                     </span>
                   )}
@@ -261,7 +261,7 @@ export function TasksPage() {
                         style={{ width: `${group.total ? (group.done / group.total) * 100 : 0}%` }}
                       />
                     </div>
-                    <span className="text-xs tabular-nums text-zinc-500">
+                    <span className="font-mono text-xs tabular-nums text-zinc-500">
                       {group.done}/{group.total}
                     </span>
                   </div>
@@ -297,11 +297,11 @@ export function TasksPage() {
                           {task.content}
                         </button>
                         {task.status === 'in_progress' && (
-                          <span className="animate-pulse text-xs text-sky-400">▸ running</span>
+                          <span className="animate-pulse text-xs text-emerald-400">▸ running</span>
                         )}
                         {task.scheduledFor ? (
                           <span
-                            className={`text-xs group-hover/row:hidden ${
+                            className={`font-mono text-[11px] tabular-nums group-hover/row:hidden ${
                               overdue ? 'text-red-400' : 'text-zinc-500'
                             }`}
                           >
@@ -394,7 +394,7 @@ export function TasksPage() {
                       className={`mt-0.5 block w-full truncate rounded px-1 py-0.5 text-left text-[10px] ${
                         task.assigneeType === 'human'
                           ? 'bg-amber-900/40 text-amber-200'
-                          : 'bg-sky-900/40 text-sky-200'
+                          : 'bg-emerald-900/40 text-emerald-200'
                       } ${task.status === 'completed' ? 'line-through opacity-50' : ''}`}
                       title={task.content}
                     >
@@ -410,7 +410,7 @@ export function TasksPage() {
             </div>
             <p className="mt-2 text-xs text-zinc-600">
               <span className="text-amber-300">■</span> yours ·{' '}
-              <span className="text-sky-300">■</span> agents — unscheduled tasks appear only in
+              <span className="text-emerald-300">■</span> agents — unscheduled tasks appear only in
               the list view.
             </p>
           </div>

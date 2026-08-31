@@ -80,7 +80,7 @@ function DocRow({ artifact, depth, onOpen }: DocRowProps) {
       <span className="min-w-0 flex-1 truncate text-zinc-200">{artifact.title}</span>
       <span className="text-[10px] text-zinc-600">v{artifact.version}</span>
       {artifact.status === 'review' ? (
-        <span className="rounded bg-sky-900/60 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] lowercase text-zinc-300">
           📚 in review
         </span>
       ) : artifact.status === 'proposed' ? (

@@ -42,10 +42,10 @@ function Reactions({ message }: { message: Message }) {
             key={group.emoji}
             onClick={() => toggle(group.emoji)}
             title={mine ? 'Remove reaction' : 'React'}
-            className={`rounded-full border px-1.5 py-0.5 text-xs transition ${
+            className={`rounded-full px-1.5 py-0.5 text-xs transition ${
               mine
-                ? 'border-sky-600/60 bg-sky-950/50'
-                : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600'
+                ? 'bg-emerald-950/60 ring-1 ring-emerald-600/50'
+                : 'bg-zinc-800/60 hover:bg-zinc-800'
             }`}
           >
             {group.emoji} <span className="text-[10px] text-zinc-400">{group.userIds.length}</span>
@@ -208,13 +208,19 @@ export function MessageItem({
           timestamp/owner/terminal reveal on hover to keep the resting view calm */}
       <div className="flex items-center gap-2">
         <span
-          className={`flex h-5 w-5 shrink-0 items-center justify-center text-sm ${
-            isAgent ? 'rounded-md bg-zinc-800/90' : 'rounded-full bg-zinc-700/60 text-xs'
+          className={`flex h-5 w-5 shrink-0 items-center justify-center ${
+            isAgent
+              ? 'rounded-md bg-zinc-800/90 text-sm'
+              : 'rounded-full bg-zinc-700/70 text-[10px] font-bold text-zinc-200'
           }`}
         >
-          {isAgent ? message.authorEmoji : '👤'}
+          {isAgent ? message.authorEmoji : (message.authorName ?? '?').slice(0, 1).toUpperCase()}
         </span>
-        <span className={`text-sm font-semibold ${isAgent ? 'text-violet-300' : 'text-zinc-50'}`}>
+        <span
+          className={`font-display text-sm font-semibold ${
+            isAgent ? 'text-zinc-200' : 'text-zinc-50'
+          }`}
+        >
           {message.authorName}
         </span>
         <span className="invisible flex items-baseline gap-2 group-hover:visible">
@@ -223,7 +229,7 @@ export function MessageItem({
               {owner.name}'s crew
             </span>
           )}
-          <span className="text-xs text-zinc-500">{formatTime(message.createdAt)}</span>
+          <span className="font-mono text-[11px] tabular-nums text-zinc-500">{formatTime(message.createdAt)}</span>
           {isAgent && message.runId && onOpenRun && (
             <button
               onClick={() => onOpenRun(message.runId!)}
@@ -276,7 +282,7 @@ export function MessageItem({
               key={i}
               type="button"
               onClick={() => setLightboxSrc(src)}
-              className="group/img relative overflow-hidden rounded-md border border-zinc-700 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="group/img relative overflow-hidden rounded-md border border-zinc-700 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               aria-label={`View attachment ${i + 1}`}
             >
               <img
@@ -321,7 +327,7 @@ export function MessageItem({
             <>
               <button
                 onClick={() => setIsCollapsed((v) => !v)}
-                className="text-xs font-medium text-sky-400 hover:underline"
+                className="text-xs font-medium text-emerald-400/90 hover:underline"
               >
                 {isCollapsed ? '▼' : '▲'} {message.replyCount}{' '}
                 {message.replyCount === 1 ? 'reply' : 'replies'}

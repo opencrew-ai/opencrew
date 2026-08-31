@@ -70,10 +70,10 @@ export function WorkspacePage() {
         {runId && (
           <button
             onClick={() => setRunId(null)}
-            className="text-amber-400 text-sm"
+            className="text-sm text-zinc-400 hover:text-zinc-200"
             aria-label="Close terminal"
           >
-            ⚡ close
+            ✕ close
           </button>
         )}
       </header>

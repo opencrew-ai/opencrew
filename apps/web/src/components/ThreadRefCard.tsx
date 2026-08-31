@@ -65,22 +65,22 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
   const visible = expanded ? replies : replies.slice(0, PREVIEW_COUNT)
 
   return (
-    <div className="mt-1.5 overflow-hidden rounded-lg border border-indigo-700/40 bg-zinc-950/60 text-sm">
+    <div className="mt-1.5 overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-950/60 text-sm">
       {/* Header bar — clicking anywhere on it navigates to the thread */}
       <div
-        className="flex cursor-pointer items-center justify-between border-b border-indigo-700/30 bg-indigo-950/30 px-3 py-1.5 transition-colors hover:bg-indigo-900/30"
+        className="flex cursor-pointer items-center justify-between border-b border-zinc-700/40 bg-zinc-900/40 px-3 py-1.5 transition-colors hover:bg-zinc-800/40"
         onClick={goToThread}
         title="Open original thread"
       >
-        <div className="flex items-center gap-2 text-xs text-indigo-300">
+        <div className="flex items-center gap-2 text-xs text-zinc-300">
           <span>📎</span>
           <span className="font-medium">#{channelName}</span>
           {root && (
             <>
-              <span className="text-indigo-500">·</span>
-              <span className="text-indigo-400">{formatDate(root.createdAt)}</span>
-              <span className="text-indigo-500">·</span>
-              <span className="text-indigo-400">
+              <span className="text-zinc-600">·</span>
+              <span className="text-zinc-400">{formatDate(root.createdAt)}</span>
+              <span className="text-zinc-600">·</span>
+              <span className="text-zinc-400">
                 {messages.length} message{messages.length !== 1 ? 's' : ''}
               </span>
             </>
@@ -89,7 +89,7 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
         <a
           href={`/channels/${refChannelId}?thread=${encodeURIComponent(refThreadId)}`}
           onClick={goToThread}
-          className="text-xs text-indigo-400 transition-colors hover:text-indigo-200"
+          className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
           title="Open original thread"
         >
           Go to thread →
@@ -109,7 +109,7 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
             <div className="flex items-baseline gap-1.5 text-xs">
               <span>{root.authorType === 'agent' ? root.authorEmoji : '👤'}</span>
               <span
-                className={`font-semibold ${root.authorType === 'agent' ? 'text-violet-300' : 'text-zinc-100'}`}
+                className={`font-semibold ${root.authorType === 'agent' ? 'text-zinc-300' : 'text-zinc-100'}`}
               >
                 {root.authorName}
               </span>
@@ -124,11 +124,11 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
         {/* Reply previews */}
         {!loading &&
           visible.map((m) => (
-            <div key={m.id} className="ml-3 border-l-2 border-indigo-800/50 px-3 py-1.5 pl-4">
+            <div key={m.id} className="ml-3 border-l-2 border-zinc-700/50 px-3 py-1.5 pl-4">
               <div className="flex items-baseline gap-1.5 text-xs">
                 <span>{m.authorType === 'agent' ? m.authorEmoji : '👤'}</span>
                 <span
-                  className={`font-semibold ${m.authorType === 'agent' ? 'text-violet-300' : 'text-zinc-100'}`}
+                  className={`font-semibold ${m.authorType === 'agent' ? 'text-zinc-300' : 'text-zinc-100'}`}
                 >
                   {m.authorName}
                 </span>
@@ -146,14 +146,14 @@ export function ThreadRefCard({ refThreadId, refChannelId }: ThreadRefCardProps)
             {hidden > 0 && !expanded ? (
               <button
                 onClick={() => setExpanded(true)}
-                className="text-xs text-indigo-400 transition-colors hover:text-indigo-200"
+                className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
               >
                 + {hidden} more {hidden === 1 ? 'reply' : 'replies'} ↓
               </button>
             ) : expanded && hidden > 0 ? (
               <button
                 onClick={() => setExpanded(false)}
-                className="text-xs text-indigo-500 transition-colors hover:text-indigo-300"
+                className="text-xs text-zinc-600 transition-colors hover:text-zinc-300"
               >
                 collapse ↑
               </button>

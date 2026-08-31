@@ -27,7 +27,7 @@ export function PresenceBar({ onSpectate }: PresenceBarProps) {
       {users.map((user) => {
         const online = humanOnline(user.id)
         const working = crewWorking(user.id)
-        const dot = working ? 'animate-pulse bg-amber-400' : online ? 'bg-emerald-400' : 'bg-zinc-600'
+        const dot = working ? 'animate-pulse bg-emerald-400' : online ? 'bg-emerald-400' : 'bg-zinc-600'
         return (
           <button
             key={user.id}
@@ -43,7 +43,7 @@ export function PresenceBar({ onSpectate }: PresenceBarProps) {
         )
       })}
       {workingAgentCount > 0 && (
-        <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-300">
+        <span className="ml-auto shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">
           ⚡ {workingAgentCount} agent{workingAgentCount === 1 ? '' : 's'} working
         </span>
       )}

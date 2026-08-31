@@ -54,8 +54,8 @@ function renderPill(status: GroupStatus) {
   }
   if (status === 'in_progress') {
     return (
-      <span className="flex items-center gap-1 text-xs text-amber-400">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+      <span className="flex items-center gap-1 text-xs text-emerald-400">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
         In progress
       </span>
     )
@@ -64,7 +64,7 @@ function renderPill(status: GroupStatus) {
     return (
       <span className="flex items-center gap-1 text-xs text-amber-400">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-        ⏸ Waiting
+        Waiting
       </span>
     )
   }
@@ -257,7 +257,7 @@ export function ConversationGroup({
       ref={groupRef}
       className={[
         'relative mx-3 mb-3 overflow-hidden rounded-xl border bg-zinc-950/30 transition-colors',
-        isUnread ? 'border-indigo-500/40' : 'border-zinc-800/60',
+        isUnread ? 'border-emerald-500/40' : 'border-zinc-800/60',
       ].join(' ')}
     >
       {/* Status pill + unread dot — top-right corner */}
@@ -266,7 +266,7 @@ export function ConversationGroup({
           {isUnread && (
             <span
               title="New activity"
-              className="h-2 w-2 rounded-full bg-indigo-400 shadow-[0_0_6px_2px_rgba(99,102,241,0.5)]"
+              className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_2px_rgba(52,211,153,0.5)]"
             />
           )}
           <StatusPill status={groupStatus} onToggleDone={toggleDone} />

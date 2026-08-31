@@ -119,7 +119,7 @@ export function ShareThreadButton({ rootId }: ShareThreadButtonProps) {
                   readOnly
                   value={share.url}
                   onClick={(e) => e.currentTarget.select()}
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs text-sky-300"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs text-emerald-300"
                 />
                 <button
                   onClick={copy}

@@ -74,9 +74,9 @@ export function CrewActivityBar() {
                 : 'working'
               return (
                 <div key={a.id} className="flex items-center gap-2 text-xs">
-                  <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-amber-500/40 bg-zinc-900 text-sm">
+                  <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-emerald-500/40 bg-zinc-900 text-sm shadow-[0_0_10px_-2px_rgba(52,211,153,0.4)]">
                     {a.avatarEmoji}
-                    <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                    <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
                   </span>
                   <span className="font-medium text-zinc-200">{a.name}</span>
                   <span className="truncate italic text-zinc-500">{label}</span>
@@ -96,7 +96,7 @@ export function CrewActivityBar() {
               title="Emergency stop — abort all agent runs"
               className="shrink-0 rounded-full bg-red-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-[0_0_20px_-4px_rgba(239,68,68,0.8)] transition hover:bg-red-500 disabled:opacity-50"
             >
-              {stopping ? '…' : '🛑 STOP'}
+              {stopping ? '…' : 'STOP'}
             </button>
           )}
         </div>

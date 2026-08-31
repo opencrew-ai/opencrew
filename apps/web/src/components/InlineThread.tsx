@@ -33,7 +33,7 @@ export function InlineThread({ channelId, rootId, onOpenRun }: InlineThreadProps
   }, [replies.length, loading])
 
   return (
-    <div className="ml-7 mt-1.5 rounded-lg border border-zinc-800/50 bg-zinc-950/40">
+    <div className="ml-7 mt-1.5 rounded-lg bg-zinc-900/25">
       {/* Replies */}
       <div className="border-l-2 border-emerald-800/30 pl-1">
         {loading && (

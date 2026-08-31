@@ -18,7 +18,7 @@ const PRIORITY_CYCLE: Record<TaskPriority, TaskPriority> = {
 
 const PRIORITY_STYLE: Record<TaskPriority, string> = {
   high: 'text-red-400',
-  medium: 'text-sky-400',
+  medium: 'text-zinc-300',
   low: 'text-zinc-500'
 }
 
@@ -83,7 +83,7 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
     api.post(`/api/tasks/${taskId}/start`, agentId ? { agentId } : {}).catch(() => {})
 
   return (
-    <div className="ml-7 mt-1.5 rounded-lg border border-zinc-800/60 bg-zinc-900/30 text-sm">
+    <div className="ml-7 mt-1.5 rounded-lg bg-zinc-900/40 text-sm">
       <button
         onClick={() => {
           setHasUserToggled(true)
@@ -92,13 +92,13 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
         className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
       >
         <span className="font-semibold uppercase tracking-wide">Plan</span>
-        <span className={allDone ? 'text-emerald-500' : 'text-zinc-500'}>
+        <span className={`font-mono tabular-nums ${allDone ? 'text-emerald-500' : 'text-zinc-500'}`}>
           {done}/{total} done
         </span>
         <span className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800">
           <span
             className={`block h-full rounded-full transition-all ${
-              allDone ? 'bg-emerald-600' : 'bg-sky-600'
+              allDone ? 'bg-emerald-600' : 'bg-emerald-600/70'
             }`}
             style={{ width: `${(done / total) * 100}%` }}
           />
@@ -128,7 +128,7 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
                   >
                     {task.status === 'completed' && <span className="text-emerald-500">✓</span>}
                     {task.status === 'in_progress' && (
-                      <span className="animate-pulse text-sky-400">▸</span>
+                      <span className="animate-pulse text-emerald-400">▸</span>
                     )}
                     {task.status === 'pending' && <span className="text-zinc-600">○</span>}
                   </button>

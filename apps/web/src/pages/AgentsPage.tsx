@@ -83,7 +83,7 @@ export function AgentsPage() {
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-1">
                 {a.currentVersion.skills.map((s) => (
-                  <span key={s} className="rounded bg-violet-900/40 px-1.5 py-0.5 text-xs text-violet-300">
+                  <span key={s} className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">
                     {s}
                   </span>
                 ))}

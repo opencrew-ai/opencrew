@@ -72,7 +72,10 @@ export function TerminalDrawer({ runId, onClose }: { runId: string; onClose: () 
           {isLive ? 'Working' : run?.status === 'done' ? 'Done' : (run?.status ?? '…')}
         </span>
         {totals.costUsd > 0 && (
-          <span className="text-xs text-zinc-500" title="Actual model spend for this run">
+          <span
+            className="font-mono text-xs tabular-nums text-zinc-500"
+            title="Actual model spend for this run"
+          >
             ${totals.costUsd.toFixed(3)} · {totals.outTokens.toLocaleString()} tok
           </span>
         )}
@@ -195,7 +198,7 @@ function ActivityLine({ step }: { step: RunStep }) {
     }
     case 'post_message':
       return (
-        <div className="flex gap-2 py-0.5 text-violet-300">
+        <div className="flex gap-2 py-0.5 text-emerald-300">
           <span className="text-zinc-600">{stepTime(step.createdAt)}</span>
           <span>replied in the conversation</span>
         </div>
@@ -256,10 +259,10 @@ function RawLine({ step }: { step: RunStep }) {
           ? String(input.command)
           : JSON.stringify(input ?? {})
       return (
-        <div className="mt-1 text-sky-300">
+        <div className="mt-1 text-zinc-200">
           <span className="text-zinc-700">[{time}]</span>{' '}
           <span className="text-emerald-400">$</span> {String(p.tool)}{' '}
-          <span className="break-all text-sky-200/80">
+          <span className="break-all text-zinc-400">
             {preview.length > 300 ? `${preview.slice(0, 300)}…` : preview}
           </span>
         </div>
@@ -280,7 +283,7 @@ function RawLine({ step }: { step: RunStep }) {
     }
     case 'post_message':
       return (
-        <div className="text-violet-300">
+        <div className="text-emerald-300">
           <span className="text-zinc-700">[{time}]</span> ✉ posted message to channel
         </div>
       )

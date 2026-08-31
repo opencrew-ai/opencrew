@@ -61,7 +61,7 @@ export function DeviceAccessCard() {
           {lanUrl ? (
             <div className="space-y-2">
               <QrCode value={lanUrl} />
-              <code className="block break-all font-mono text-xs text-sky-400">{lanUrl}</code>
+              <code className="block break-all font-mono text-xs text-emerald-300">{lanUrl}</code>
             </div>
           ) : (
             <p className="text-xs text-zinc-500">No LAN address detected.</p>

@@ -122,7 +122,7 @@ export function MessageInput({ placeholder, onSend }: MessageInputProps) {
 
   return (
     <div
-      className={`relative ${dragging ? 'ring-2 ring-violet-500 rounded-lg' : ''}`}
+      className={`relative ${dragging ? 'ring-2 ring-emerald-500 rounded-lg' : ''}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -169,7 +169,7 @@ export function MessageInput({ placeholder, onSend }: MessageInputProps) {
       {/* Drag-drop overlay label */}
       {dragging && (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-zinc-900/80 pointer-events-none">
-          <span className="text-sm text-violet-400">Drop images here</span>
+          <span className="text-sm text-emerald-400">Drop images here</span>
         </div>
       )}
 
@@ -214,7 +214,7 @@ export function MessageInput({ placeholder, onSend }: MessageInputProps) {
           type="button"
           onClick={() => void send()}
           disabled={!canSend}
-          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           aria-label="Send message"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
