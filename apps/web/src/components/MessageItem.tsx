@@ -13,6 +13,7 @@ import { ShareThreadButton } from './ShareThreadButton'
 import { useArtifactById, useArtifactsForRun } from '../lib/useChannelArtifacts'
 import { ImageLightbox } from './ImageLightbox'
 import { DocLinkChip } from './DocDrawer'
+import { CodeFileChip, looksLikeFilePath } from './CodeFileDrawer'
 
 const MD_PLUGINS = [remarkGfm]
 
@@ -24,16 +25,37 @@ function childrenToText(children: React.ReactNode): string {
   return ''
 }
 
-// Links must never navigate the app away — always open in a new tab.
-// Bold text that matches a known artifact title renders as a DocLinkChip so
-// users can open the doc in the right-side drawer without leaving the chat.
-const MD_COMPONENTS: Components = {
-  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-  strong: ({ children }) => {
-    const text = childrenToText(children)
-    return (
-      <DocLinkChip title={text} fallback={<strong>{children}</strong>} />
-    )
+/**
+ * Build the shared markdown component overrides for a given message.
+ * We need agentId to pass to CodeFileChip so relative paths resolve correctly.
+ */
+function buildMdComponents(agentId?: string): Components {
+  return {
+    // Links must never navigate the app away — always open in a new tab.
+    a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+
+    // Bold text matching a known artifact title → clickable DocLinkChip.
+    strong: ({ children }) => {
+      const text = childrenToText(children)
+      return <DocLinkChip title={text} fallback={<strong>{children}</strong>} />
+    },
+
+    // Inline `code` spans that look like file paths → clickable CodeFileChip.
+    // Block code fences (node.inline === false) stay as plain <code>.
+    code: ({ children, node, ...rest }) => {
+      // ReactMarkdown passes inline=false for fenced blocks; inline=true for backtick spans.
+      // The `inline` prop isn't always in the type definition so we check the node position.
+      const isBlock = node?.position
+        ? (node.position.start.line !== node.position.end.line)
+        : false
+      if (!isBlock) {
+        const text = childrenToText(children)
+        if (looksLikeFilePath(text)) {
+          return <CodeFileChip path={text} agentId={agentId} />
+        }
+      }
+      return <code {...rest}>{children}</code>
+    },
   }
 }
 
@@ -124,6 +146,10 @@ export function MessageItem({
   tasksList
 }: MessageItemProps) {
   const { agents, users } = useWorkspace()
+  // Build markdown components once per message, keyed to the author's agentId
+  // so CodeFileChip can resolve relative paths against the right workspace dir.
+  const isAgentMsg = message.authorType === 'agent'
+  const mdComponents = buildMdComponents(isAgentMsg ? (message.authorId ?? undefined) : undefined)
   // Docs produced by this message's run render inline right under it.
   const runArtifacts = useArtifactsForRun(message.runId)
   // Explicitly anchored card (review notices) — reachable even when the
@@ -161,7 +187,7 @@ export function MessageItem({
         <div className="text-[11px] text-zinc-500">
           <span className="mr-2 hidden group-hover:inline">{formatTime(message.createdAt)}</span>
           <span className="md-content inline-block align-middle text-zinc-500">
-            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={mdComponents}>
               {message.content}
             </ReactMarkdown>
           </span>
@@ -202,7 +228,7 @@ export function MessageItem({
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           <span>✅</span>
           <span className="md-content min-w-0 [&_p]:truncate">
-            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={mdComponents}>
               {message.content.replace('✅ ', '')}
             </ReactMarkdown>
           </span>
@@ -265,7 +291,7 @@ export function MessageItem({
         }`}
       >
         {message.content ? (
-          <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+          <ReactMarkdown remarkPlugins={MD_PLUGINS} components={mdComponents}>
             {message.content}
           </ReactMarkdown>
         ) : (
