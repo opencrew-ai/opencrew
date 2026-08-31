@@ -41,3 +41,21 @@ export function toolCatalog(): ToolCatalogEntry[] {
 export function isKnownToolName(name: string): boolean {
   return toolCatalog().some((t) => t.name === name)
 }
+
+/**
+ * Models an agent version may pin. Agents run as Claude Code sessions, so
+ * anything the workspace's Claude login can use belongs here — keep in sync
+ * with MODEL_OPTIONS in apps/web AgentForm.
+ */
+export const KNOWN_MODELS = [
+  'claude-fable-5',
+  'claude-opus-5',
+  'claude-opus-4-8',
+  'claude-sonnet-5',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5'
+] as const
+
+export function isKnownModel(id: string): boolean {
+  return (KNOWN_MODELS as readonly string[]).includes(id)
+}

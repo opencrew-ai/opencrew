@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { registerOpenCrewTool } from './registry'
-import { isKnownToolName } from './catalog'
+import { isKnownToolName, isKnownModel, KNOWN_MODELS } from './catalog'
 import { agents } from '../db/schema'
 import { createVersion, getAgentWithVersion } from '../services/agents'
 import { recordStep } from '../runs/audit'
@@ -26,6 +26,10 @@ registerOpenCrewTool({
       .regex(/^[A-Za-z0-9 _-]+$/)
       .describe('Agent name, e.g. "DataViz"'),
     avatarEmoji: z.string().min(1).max(8).describe('One emoji avatar'),
+    model: z
+      .string()
+      .optional()
+      .describe(`Model id for the new agent (default claude-sonnet-4-6). One of: ${KNOWN_MODELS.join(', ')}`),
     systemPrompt: z
       .string()
       .min(20)
@@ -50,6 +54,9 @@ registerOpenCrewTool({
       .describe('Absolute path to a repo the agent works in; empty = own workspace')
   },
   execute: async (input, ctx) => {
+    if (input.model && !isKnownModel(input.model)) {
+      throw new Error(`unknown model "${input.model}" — use one of: ${KNOWN_MODELS.join(', ')}`)
+    }
     const unknown = input.tools.filter((t) => !isKnownToolName(t))
     if (unknown.length > 0) {
       throw new Error(`unknown tools: ${unknown.join(', ')} — use names from the catalog`)
@@ -81,7 +88,7 @@ registerOpenCrewTool({
       agentId,
       {
         systemPrompt: input.systemPrompt,
-        model: 'claude-sonnet-4-6',
+        model: input.model ?? 'claude-sonnet-4-6',
         skills: input.skills,
         tools: input.tools,
         capabilities: {

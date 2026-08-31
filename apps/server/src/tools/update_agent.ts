@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { registerOpenCrewTool } from './registry'
-import { isKnownToolName } from './catalog'
+import { isKnownToolName, isKnownModel, KNOWN_MODELS } from './catalog'
 import { agents } from '../db/schema'
 import { createVersion, getAgentWithVersion } from '../services/agents'
 import { recordStep } from '../runs/audit'
@@ -9,13 +9,17 @@ import { recordStep } from '../runs/audit'
 registerOpenCrewTool({
   name: 'update_agent',
   description:
-    "Update an existing agent's configuration: system prompt, tools, channels it may post " +
-    'in or watch, or rate limit. Creates a new immutable version (full audit + rollback). ' +
+    "Update an existing agent's configuration: system prompt, model, tools, channels it may " +
+    'post in or watch, or rate limit. Creates a new immutable version (full audit + rollback). ' +
     'Use for fixes like granting a specialist access to a channel it needs, tightening a ' +
-    'prompt, or adding a missing tool. Omitted fields stay unchanged.',
+    'prompt, switching its model, or adding a missing tool. Omitted fields stay unchanged.',
   inputShape: {
     name: z.string().min(1).max(40).describe('Exact name of the agent to update'),
     systemPrompt: z.string().min(20).max(20_000).optional().describe('Replacement system prompt'),
+    model: z
+      .string()
+      .optional()
+      .describe(`Replacement model id. One of: ${KNOWN_MODELS.join(', ')}`),
     addTools: z.array(z.string()).max(12).optional().describe('Tool names to grant'),
     removeTools: z.array(z.string()).max(12).optional().describe('Tool names to revoke'),
     canPostInChannels: z
@@ -43,6 +47,9 @@ registerOpenCrewTool({
     if (unknown.length > 0) {
       throw new Error(`unknown tools: ${unknown.join(', ')} — use names from the catalog`)
     }
+    if (input.model && !isKnownModel(input.model)) {
+      throw new Error(`unknown model "${input.model}" — use one of: ${KNOWN_MODELS.join(', ')}`)
+    }
 
     const current = full.currentVersion
     const tools = [
@@ -56,7 +63,7 @@ registerOpenCrewTool({
       row.id,
       {
         systemPrompt: input.systemPrompt ?? current.systemPrompt,
-        model: current.model,
+        model: input.model ?? current.model,
         skills: [...current.skills],
         tools,
         capabilities: {

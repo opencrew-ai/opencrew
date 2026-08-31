@@ -30,6 +30,7 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6'
 // Current Claude models (agents run as Claude Code sessions, so any model
 // the local Claude login can use works here).
 const MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: 'claude-fable-5', label: 'Fable 5 — deepest reasoning (Mythos-class)' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced (default)' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5 — fast + near-Opus coding' },
   { id: 'claude-opus-5', label: 'Opus 5 — most capable for agents' },
