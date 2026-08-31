@@ -115,6 +115,19 @@ export const messages = pgTable('messages', {
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
 })
 
+/** Threads published as public pages on the relay (opencrew.run/t/:token). */
+export const threadShares = pgTable('thread_shares', {
+  threadRootId: text('thread_root_id').primaryKey(),
+  ...ws,
+  channelId: text('channel_id').notNull(),
+  /** Relay-side token — resharing with it updates the page in place. */
+  token: text('token').notNull(),
+  url: text('url').notNull(),
+  sharedBy: text('shared_by').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
 export const runs = pgTable('runs', {
   id: text('id').primaryKey(),
   ...ws,

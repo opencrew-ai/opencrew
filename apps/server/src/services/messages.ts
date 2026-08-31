@@ -33,7 +33,7 @@ export interface CreateMessageInput {
 
 export class GuardrailViolation extends Error {}
 
-async function resolveAuthor(db: DB, authorType: AuthorType, authorId: string | null) {
+export async function resolveAuthor(db: DB, authorType: AuthorType, authorId: string | null) {
   if (authorType === 'human' && authorId) {
     const [user] = await db.select().from(users).where(eq(users.id, authorId)).limit(1)
     return { name: user?.name ?? 'Unknown', emoji: '' }

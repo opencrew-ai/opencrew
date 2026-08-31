@@ -24,6 +24,7 @@ import { ensureBuiltinReviewers } from './services/artifacts'
 import { startTaskScheduler } from './services/scheduler'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerStatsRoutes } from './routes/stats'
+import { registerThreadShareRoutes } from './routes/threadshare'
 import { registerCrewsRoutes } from './routes/crews'
 import { registerExportRoutes } from './routes/export'
 import { startCloudLink } from './services/cloudlink'
@@ -92,6 +93,7 @@ async function main(): Promise<void> {
   registerAttentionRoutes(app, ctx)
   registerReactionRoutes(app, ctx)
   registerStatsRoutes(app, ctx)
+  registerThreadShareRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
