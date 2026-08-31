@@ -22,6 +22,18 @@ const PRIORITY_STYLE: Record<TaskPriority, string> = {
   low: 'text-zinc-500'
 }
 
+// Long plans preview the ACTIVE surface (running + next pending), not the
+// whole backlog — the Tasks page owns the full board.
+const CHECKLIST_PREVIEW = 6
+
+function visibleSlice(items: SharedTask[]): SharedTask[] {
+  if (items.length <= CHECKLIST_PREVIEW + 2) return items
+  const active = items.filter((t) => t.status === 'in_progress')
+  const pending = items.filter((t) => t.status === 'pending')
+  const merged = [...active, ...pending.slice(0, Math.max(0, CHECKLIST_PREVIEW - active.length))]
+  return merged.length > 0 ? merged : items.slice(0, CHECKLIST_PREVIEW)
+}
+
 /**
  * The conversation's SHARED plan — humans and agents co-edit it. Humans add
  * tasks with a priority, tick/untick, reprioritize, delete, or launch a task
@@ -36,6 +48,7 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
   // Empty plans start collapsed (just the affordance row); active plans open.
   const [isOpen, setIsOpen] = useState(total > 0 && !allDone)
   const [hasUserToggled, setHasUserToggled] = useState(false)
+  const [showAll, setShowAll] = useState(false)
   const [draft, setDraft] = useState('')
   const [draftPriority, setDraftPriority] = useState<TaskPriority>('medium')
 
@@ -96,7 +109,7 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
       {isOpen && (
         <div className="border-t border-zinc-800/50 px-3 py-1.5">
           <ul>
-            {items.map((task) => {
+            {(showAll ? items : visibleSlice(items)).map((task) => {
               const agent = task.sourceAgentId
                 ? agents.find((a) => a.id === task.sourceAgentId)
                 : undefined
@@ -195,6 +208,15 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
               )
             })}
           </ul>
+
+          {!showAll && items.length > CHECKLIST_PREVIEW + 2 && (
+            <button
+              onClick={() => setShowAll(true)}
+              className="w-full py-1 text-center text-[11px] text-zinc-500 transition hover:text-zinc-300"
+            >
+              ▾ show all {items.length} ({items.length - visibleSlice(items).length} more)
+            </button>
+          )}
 
           {/* Add a task */}
           {canEdit && (

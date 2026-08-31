@@ -6,6 +6,18 @@ import { Sidebar } from '../components/Sidebar'
 import { AgentForm } from '../components/AgentForm'
 import { useWorkspace } from '../lib/workspace'
 
+/**
+ * Card blurb from the system prompt: drop the "You are X," incantation and
+ * keep the first sentence — a role description, not raw prompt engineering.
+ */
+function agentBlurb(systemPrompt: string, name: string): string {
+  const stripped = systemPrompt
+    .replace(new RegExp(`^You are ${name},?\\s*`, 'i'), '')
+    .replace(/^you are\s+/i, '')
+  const sentence = stripped.split(/(?<=[.!?])\s/)[0] ?? stripped
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1)
+}
+
 export function AgentsPage() {
   const { me, agents, refreshAgents } = useWorkspace()
   const navigate = useNavigate()
@@ -67,19 +79,23 @@ export function AgentsPage() {
                 </div>
               </div>
               <p className="mt-3 line-clamp-2 text-sm text-zinc-400">
-                {a.currentVersion.systemPrompt}
+                {agentBlurb(a.currentVersion.systemPrompt, a.name)}
               </p>
-              <div className="mt-3 flex flex-wrap gap-1">
+              <div className="mt-3 flex flex-wrap items-center gap-1">
                 {a.currentVersion.skills.map((s) => (
                   <span key={s} className="rounded bg-violet-900/40 px-1.5 py-0.5 text-xs text-violet-300">
                     {s}
                   </span>
                 ))}
-                {a.currentVersion.tools.map((t) => (
-                  <code key={t} className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">
-                    {t}
-                  </code>
-                ))}
+                {a.currentVersion.tools.length > 0 && (
+                  <span
+                    className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-500"
+                    title={a.currentVersion.tools.join(', ')}
+                  >
+                    {a.currentVersion.tools.length} tool
+                    {a.currentVersion.tools.length === 1 ? '' : 's'}
+                  </span>
+                )}
               </div>
             </Link>
           ))}

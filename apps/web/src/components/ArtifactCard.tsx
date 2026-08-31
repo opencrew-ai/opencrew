@@ -41,6 +41,27 @@ function relativeTime(ts: number): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
+/**
+ * Docs almost always open with an H1 repeating their own title — the card
+ * chrome already shows it, so drop that line (and a leading status-metadata
+ * blockquote) from previews to kill the triple-title effect.
+ */
+function stripLeadingTitle(content: string, title: string): string {
+  const lines = content.split('\n')
+  let i = 0
+  while (i < lines.length && lines[i]!.trim() === '') i++
+  const heading = /^#{1,3}\s+(.*)$/.exec(lines[i] ?? '')
+  if (heading && similarTitle(heading[1]!, title)) i++
+  return lines.slice(i).join('\n').trimStart()
+}
+
+function similarTitle(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '')
+  const na = norm(a)
+  const nb = norm(b)
+  return na.includes(nb) || nb.includes(na)
+}
+
 function StatusBadge({ status }: { status: Artifact['status'] }) {
   if (status === 'review') {
     return (
@@ -321,7 +342,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
             className="md-content text-sm leading-relaxed text-zinc-300"
           >
             <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
-              {doc.content}
+              {stripLeadingTitle(doc.content, doc.title)}
             </ReactMarkdown>
           </div>
 
@@ -544,6 +565,32 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Compact row — one line, opens the modal. Used for review notices, approval
+// rows, and messages that ship several docs at once (a stack of full cards
+// would drown the feed).
+// ---------------------------------------------------------------------------
+
+export function ArtifactRow({ artifact }: { artifact: Artifact }) {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setIsModalOpen(true)}
+        className="ml-7 mt-1 flex w-fit max-w-full items-center gap-2 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-2.5 py-1 text-xs transition hover:border-zinc-600"
+      >
+        <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
+        <span className="min-w-0 truncate font-medium text-zinc-200">{artifact.title}</span>
+        <span className="text-[10px] text-zinc-600">v{artifact.version}</span>
+        <StatusBadge status={artifact.status} />
+      </button>
+      {isModalOpen && (
+        <ArtifactDocModal artifact={artifact} onClose={() => setIsModalOpen(false)} />
+      )}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Inline card — compact preview + expand + open-modal
 // ---------------------------------------------------------------------------
 
@@ -633,7 +680,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
           }`}
         >
           <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
-            {artifact.content}
+            {stripLeadingTitle(artifact.content, artifact.title)}
           </ReactMarkdown>
         </div>
         {!isExpanded && (

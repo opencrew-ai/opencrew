@@ -8,11 +8,16 @@ export interface WorkspaceSettings {
   maxMentionDepth: number
   /** How many agents a single AGENT message may trigger via @mentions. */
   maxAgentFanout: number
+  /**
+   * Append a "Built by OpenCrew" attribution badge to crew-generated
+   * artifacts (docs, plans, change diffs). Default on; admins can opt out.
+   */
+  badgeEnabled: boolean
 }
 
 /** Defaults come from env (which itself defaults sensibly). */
 function defaults(): WorkspaceSettings {
-  return { maxMentionDepth: env.maxMentionDepth, maxAgentFanout: 3 }
+  return { maxMentionDepth: env.maxMentionDepth, maxAgentFanout: 3, badgeEnabled: true }
 }
 
 export async function getSettings(db: DB): Promise<WorkspaceSettings> {
@@ -21,9 +26,12 @@ export async function getSettings(db: DB): Promise<WorkspaceSettings> {
   const byKey = new Map(rows.map((r) => [r.key, r.value]))
   const depth = Number(byKey.get('maxMentionDepth'))
   const fanout = Number(byKey.get('maxAgentFanout'))
+  const badgeRaw = byKey.get('badgeEnabled')
   return {
     maxMentionDepth: Number.isInteger(depth) && depth >= 1 ? depth : base.maxMentionDepth,
-    maxAgentFanout: Number.isInteger(fanout) && fanout >= 1 ? fanout : base.maxAgentFanout
+    maxAgentFanout: Number.isInteger(fanout) && fanout >= 1 ? fanout : base.maxAgentFanout,
+    // Default true when unset; explicit 'false' string opts out.
+    badgeEnabled: badgeRaw === undefined ? true : badgeRaw !== 'false'
   }
 }
 

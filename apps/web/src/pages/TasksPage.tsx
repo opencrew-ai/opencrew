@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { AttentionItem, SharedTask, TaskPriority } from '@opencrew/shared'
+import type { Artifact, AttentionItem, SharedTask, TaskPriority } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { Sidebar } from '../components/Sidebar'
@@ -29,6 +29,11 @@ function toInputValue(ms: number | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/** Quiet relative date — "Sep 7", not a form control. */
+function shortDate(ms: number): string {
+  return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 function taskToAttentionItem(task: SharedTask): AttentionItem {
   return {
     kind: 'task',
@@ -44,9 +49,10 @@ function taskToAttentionItem(task: SharedTask): AttentionItem {
 }
 
 export function TasksPage() {
-  const { agents } = useWorkspace()
+  const { agents, channels } = useWorkspace()
   const navigate = useNavigate()
   const [tasks, setTasks] = useState<SharedTask[]>([])
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('list')
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all')
@@ -67,6 +73,11 @@ export function TasksPage() {
         .finally(() => setLoading(false))
     }
     load()
+    // Plan docs name the task groups — best-effort, groups fall back to channels.
+    api
+      .get<Artifact[]>('/api/artifacts')
+      .then(setArtifacts)
+      .catch(() => {})
     const unsubscribe = wsClient.subscribe((event) => {
       if (event.type !== 'task_state') return
       if (timer.current) clearTimeout(timer.current)
@@ -89,6 +100,44 @@ export function TasksPage() {
           a.position - b.position
       )
   }, [tasks, showDone, assigneeFilter])
+
+  // Group the flat list by the conversation (= plan) each task belongs to,
+  // so the page answers "is the crew on track?" per initiative instead of
+  // presenting a wall of interchangeable rows.
+  const groups = useMemo(() => {
+    const titleByRoot = new Map<string, string>()
+    for (const artifact of artifacts) {
+      if (artifact.status === 'discarded') continue
+      // Prefer plan docs; first (newest-listed) wins.
+      if (!titleByRoot.has(artifact.conversationRootId) || artifact.kind === 'plan') {
+        titleByRoot.set(artifact.conversationRootId, artifact.title)
+      }
+    }
+    const byRoot = new Map<string, SharedTask[]>()
+    for (const task of visible) {
+      byRoot.set(task.conversationRootId, [...(byRoot.get(task.conversationRootId) ?? []), task])
+    }
+    return [...byRoot.entries()]
+      .map(([rootId, rows]) => {
+        const all = tasks.filter((t) => t.conversationRootId === rootId)
+        const done = all.filter((t) => t.status === 'completed').length
+        const running = all.filter((t) => t.status === 'in_progress').length
+        const channel = channels.find((c) => c.id === rows[0]!.channelId)
+        return {
+          rootId,
+          rows,
+          done,
+          total: all.length,
+          running,
+          channelId: rows[0]!.channelId,
+          title:
+            titleByRoot.get(rootId) ??
+            (channel ? `#${channel.name} — ad-hoc tasks` : 'Ad-hoc tasks'),
+          nextAt: Math.min(...rows.map((t) => t.scheduledFor ?? Infinity))
+        }
+      })
+      .sort((a, b) => b.running - a.running || a.nextAt - b.nextAt)
+  }, [visible, tasks, artifacts, channels])
 
   const setSchedule = (task: SharedTask, value: string) => {
     const ms = value ? new Date(value).getTime() : null
@@ -187,80 +236,130 @@ export function TasksPage() {
           <p className="mt-6 text-sm text-zinc-500">No tasks match this filter.</p>
         )}
 
-        {/* ---- List view ---- */}
+        {/* ---- List view: grouped by plan/conversation ---- */}
         {view === 'list' && !loading && visible.length > 0 && (
-          <div className="mt-5 max-w-4xl space-y-1">
-            {visible.map((task) => {
-              const agent = agentOf(task)
-              const overdue =
-                task.scheduledFor && task.scheduledFor < Date.now() && task.status === 'pending'
-              return (
-                <div
-                  key={task.id}
-                  className="flex items-center gap-3 rounded-lg border border-zinc-800/60 bg-zinc-950/30 px-3 py-2 text-sm"
-                >
-                  <span className={`font-semibold ${PRIORITY_STYLE[task.priority]}`}>
-                    {PRIORITY_GLYPH[task.priority]}
+          <div className="mt-5 max-w-4xl space-y-5">
+            {groups.map((group) => (
+              <div
+                key={group.rootId}
+                className="overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/30"
+              >
+                {/* Group header: title + progress at a glance */}
+                <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/50 px-4 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-100">
+                    {group.title}
                   </span>
-                  <span title={task.assigneeType === 'human' ? 'Yours' : 'Agent task'}>
-                    {task.assigneeType === 'human' ? '👤' : (agent?.avatarEmoji ?? '🤖')}
-                  </span>
-                  <button
-                    onClick={() => setOpenItem(taskToAttentionItem(task))}
-                    className={`min-w-0 flex-1 truncate text-left hover:underline ${
-                      task.status === 'completed' ? 'text-zinc-500 line-through' : 'text-zinc-200'
-                    }`}
-                  >
-                    {task.content}
-                  </button>
-                  {task.status === 'in_progress' && (
-                    <span className="animate-pulse text-xs text-sky-400">▸ running</span>
+                  {group.running > 0 && (
+                    <span className="animate-pulse text-xs text-sky-400">
+                      ▸ {group.running} running
+                    </span>
                   )}
-                  {task.status === 'pending' && (
-                    <button
-                      onClick={() => void askAgent(task)}
-                      title="Ask an agent to do this now — starts its own thread"
-                      className="rounded border border-zinc-700 px-1.5 py-0.5 text-xs text-zinc-400 transition hover:border-emerald-600/60 hover:text-emerald-300"
-                    >
-                      ▶ ask agent
-                    </button>
-                  )}
-                  <input
-                    type="datetime-local"
-                    value={toInputValue(task.scheduledFor)}
-                    onChange={(e) => setSchedule(task, e.target.value)}
-                    className={`rounded border bg-zinc-900/60 px-1.5 py-0.5 text-xs ${
-                      overdue ? 'border-red-700/60 text-red-300' : 'border-zinc-800 text-zinc-400'
-                    }`}
-                    title="Schedule — agent tasks fire at this time"
-                  />
-                  <button
-                    onClick={() =>
-                      void api
-                        .patch(`/api/tasks/${task.id}`, {
-                          status: task.status === 'completed' ? 'pending' : 'completed'
-                        })
-                        .catch(() => {})
-                    }
-                    title={task.status === 'completed' ? 'Reopen' : 'Mark done'}
-                    className={`text-sm ${
-                      task.status === 'completed'
-                        ? 'text-emerald-500 hover:text-zinc-400'
-                        : 'text-zinc-600 hover:text-emerald-400'
-                    }`}
-                  >
-                    ✓
-                  </button>
-                  <button
-                    onClick={() => void api.delete(`/api/tasks/${task.id}`).catch(() => {})}
-                    title="Remove task — completed or not needed"
-                    className="text-sm text-zinc-600 hover:text-red-400"
-                  >
-                    ×
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full rounded-full bg-emerald-500/80 transition-all"
+                        style={{ width: `${group.total ? (group.done / group.total) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <span className="text-xs tabular-nums text-zinc-500">
+                      {group.done}/{group.total}
+                    </span>
+                  </div>
                 </div>
-              )
-            })}
+
+                {/* Rows — controls stay quiet until you hover a row */}
+                <div className="divide-y divide-zinc-800/30">
+                  {group.rows.map((task) => {
+                    const agent = agentOf(task)
+                    const overdue =
+                      task.scheduledFor &&
+                      task.scheduledFor < Date.now() &&
+                      task.status === 'pending'
+                    return (
+                      <div
+                        key={task.id}
+                        className="group/row flex items-center gap-3 px-4 py-1.5 text-sm hover:bg-zinc-900/40"
+                      >
+                        <span className={`font-semibold ${PRIORITY_STYLE[task.priority]}`}>
+                          {PRIORITY_GLYPH[task.priority]}
+                        </span>
+                        <span title={task.assigneeType === 'human' ? 'Yours' : 'Agent task'}>
+                          {task.assigneeType === 'human' ? '👤' : (agent?.avatarEmoji ?? '🤖')}
+                        </span>
+                        <button
+                          onClick={() => setOpenItem(taskToAttentionItem(task))}
+                          className={`min-w-0 flex-1 truncate text-left hover:underline ${
+                            task.status === 'completed'
+                              ? 'text-zinc-500 line-through'
+                              : 'text-zinc-300'
+                          }`}
+                        >
+                          {task.content}
+                        </button>
+                        {task.status === 'in_progress' && (
+                          <span className="animate-pulse text-xs text-sky-400">▸ running</span>
+                        )}
+                        {task.scheduledFor ? (
+                          <span
+                            className={`text-xs group-hover/row:hidden ${
+                              overdue ? 'text-red-400' : 'text-zinc-500'
+                            }`}
+                          >
+                            {overdue ? 'overdue · ' : ''}
+                            {shortDate(task.scheduledFor)}
+                          </span>
+                        ) : null}
+                        <span className="hidden items-center gap-2 group-hover/row:flex">
+                          {task.status === 'pending' && (
+                            <button
+                              onClick={() => void askAgent(task)}
+                              title="Ask an agent to do this now — starts its own thread"
+                              className="rounded border border-zinc-700 px-1.5 py-0.5 text-xs text-zinc-400 transition hover:border-emerald-600/60 hover:text-emerald-300"
+                            >
+                              ▶ ask agent
+                            </button>
+                          )}
+                          <input
+                            type="datetime-local"
+                            value={toInputValue(task.scheduledFor)}
+                            onChange={(e) => setSchedule(task, e.target.value)}
+                            className="rounded border border-zinc-800 bg-zinc-900/60 px-1.5 py-0.5 text-xs text-zinc-400"
+                            title="Schedule — agent tasks fire at this time"
+                          />
+                          <button
+                            onClick={() =>
+                              void api
+                                .patch(`/api/tasks/${task.id}`, {
+                                  status:
+                                    task.status === 'completed' ? 'pending' : 'completed'
+                                })
+                                .catch(() => {})
+                            }
+                            title={task.status === 'completed' ? 'Reopen' : 'Mark done'}
+                            className={`text-sm ${
+                              task.status === 'completed'
+                                ? 'text-emerald-500 hover:text-zinc-400'
+                                : 'text-zinc-600 hover:text-emerald-400'
+                            }`}
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() =>
+                              void api.delete(`/api/tasks/${task.id}`).catch(() => {})
+                            }
+                            title="Remove task — completed or not needed"
+                            className="text-sm text-zinc-600 hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

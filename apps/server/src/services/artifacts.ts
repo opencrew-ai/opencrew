@@ -8,7 +8,7 @@ import { enrichMessage, postSystemMessage } from './messages'
 import { postMessage } from './post'
 import { createTask } from './tasks'
 import { getAgent } from './agents'
-import { getRawSetting } from './settings'
+import { getRawSetting, getSettings } from './settings'
 import { enqueueRun } from '../runs/enqueue'
 
 export const DOC_REVIEWER_SETTING = 'docReviewerAgentId'
@@ -477,9 +477,10 @@ export async function commitPlan(
       threadRootId: row.conversationRootId,
       authorType: 'human',
       authorId: userId,
+      refArtifactId: row.id,
       content:
         `${agent ? `@${agent.name} ` : ''}✅ Approved & committed **${row.title}** ` +
-        `(\`${result.sha}\`). Carry on with the next step.`
+        `(\`${result.sha}\`).`
     })
     const artifact: Artifact = {
       ...toArtifact(row),
@@ -494,20 +495,20 @@ export async function commitPlan(
   const taskCount = parseDrafts(row.tasks).length
   // The approval IS the go signal: posted as the approving human and
   // @mentioning the authoring agent, so the run pipeline kicks off execution
-  // immediately (a system message would trigger nothing).
+  // immediately (a system message would trigger nothing). Kept to one line —
+  // the standing system prompt already tells agents how to execute a board;
+  // refArtifactId lets the feed render this as a compact approval row.
   await postMessage(ctx, {
     channelId: row.channelId,
     threadRootId: row.conversationRootId,
     authorType: 'human',
     authorId: userId,
+    refArtifactId: row.id,
     content:
       taskCount > 0
-        ? `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** (v${row.version}) — ` +
-          `${taskCount} task${taskCount === 1 ? '' : 's'} are on the board. Start executing: ` +
-          `work the board top-down by priority, delegate tasks to the right specialists, and ` +
-          `keep the doc updated with update_doc as tasks complete.`
-        : `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** (v${row.version}). ` +
-          `It's committed as the reference — carry on.`
+        ? `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** — ` +
+          `${taskCount} task${taskCount === 1 ? '' : 's'} on the board, work it top-down.`
+        : `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** — carry on.`
   })
 
   const artifact: Artifact = {

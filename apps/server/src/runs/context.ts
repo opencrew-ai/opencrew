@@ -130,6 +130,10 @@ export async function buildSystemPrompt(
       `only a human can do (posting on their accounts, payments, external sign-offs), call ` +
       `request_human with one crisp sentence. Never bury asks to humans inside chat prose — ` +
       `chat scrolls away; the inbox does not.`,
+    `Channel replies are STATUS LINES, not reports: lead with the outcome, 1-2 sentences, ` +
+      `then stop. Details, analysis, and specs go into docs (propose_plan / update_doc) — ` +
+      `chat scrolls away, docs are the record. Never restate a doc's content in chat; link ` +
+      `it by title.`,
     `While executing committed work, track progress with the built-in TodoWrite tool (call it ` +
       `directly — never via ToolSearch). When the shared task list appears in your context, ` +
       `echo item text verbatim so your status updates match the board. BEFORE ENDING EVERY ` +

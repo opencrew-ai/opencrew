@@ -6,7 +6,8 @@ import { adminGuard, authGuard, fail, ok } from './helpers'
 
 const updateSchema = z.object({
   maxMentionDepth: z.number().int().min(1).optional(),
-  maxAgentFanout: z.number().int().min(1).optional()
+  maxAgentFanout: z.number().int().min(1).optional(),
+  badgeEnabled: z.boolean().optional()
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -22,6 +23,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): v
     }
     if (parsed.data.maxAgentFanout !== undefined) {
       await setSetting(ctx.db, 'maxAgentFanout', parsed.data.maxAgentFanout)
+    }
+    if (parsed.data.badgeEnabled !== undefined) {
+      await setSetting(ctx.db, 'badgeEnabled', parsed.data.badgeEnabled)
     }
     return ok(await getSettings(ctx.db))
   })

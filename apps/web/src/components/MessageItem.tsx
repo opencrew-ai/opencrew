@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { useWorkspace } from '../lib/workspace'
 import { ApprovalCard } from './ApprovalCard'
 import { InlineThread } from './InlineThread'
-import { ArtifactCard } from './ArtifactCard'
+import { ArtifactCard, ArtifactRow } from './ArtifactCard'
 import { TaskChecklist } from './TaskChecklist'
 import { ThreadRefCard } from './ThreadRefCard'
 import { ShareThreadButton } from './ShareThreadButton'
@@ -129,22 +129,31 @@ export function MessageItem({
   }, [autoOpenThread, channelId])
 
   if (message.authorType === 'system') {
+    // Notices that anchor a doc render as ONE compact live row — the row's
+    // status comes from the artifact, so it can never contradict reality the
+    // way frozen notice text ("awaiting approval" on a committed doc) does.
+    if (anchoredArtifact) {
+      return (
+        <div className="group px-4 py-0.5">
+          <ArtifactRow artifact={anchoredArtifact} />
+        </div>
+      )
+    }
     return (
-      <div className="px-4 py-1">
-        <div className="text-xs text-zinc-500">
-          <span className="mr-2">{formatTime(message.createdAt)}</span>
-          <span className="md-content inline-block align-middle text-zinc-400">
+      <div className="group px-4 py-1">
+        <div className="text-[11px] text-zinc-500">
+          <span className="mr-2 hidden group-hover:inline">{formatTime(message.createdAt)}</span>
+          <span className="md-content inline-block align-middle text-zinc-500">
             <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
               {message.content}
             </ReactMarkdown>
           </span>
         </div>
         {message.approvalId && <ApprovalCard approvalId={message.approvalId} />}
-        {anchoredArtifact && <ArtifactCard artifact={anchoredArtifact} />}
         {message.runId && onOpenRun && (
           <button
             onClick={() => onOpenRun(message.runId!)}
-            className="mt-1 text-xs text-zinc-500 underline hover:text-zinc-300"
+            className="invisible mt-1 text-xs text-zinc-500 underline hover:text-zinc-300 group-hover:visible"
           >
             view terminal
           </button>
@@ -154,6 +163,39 @@ export function MessageItem({
   }
 
   const isAgent = message.authorType === 'agent'
+
+  // A run that ended without a text reply leaves an empty placeholder row —
+  // that's plumbing, not conversation. Show "thinking…" only while live.
+  const isRunActive = message.runStatus === 'running' || message.runStatus === 'queued'
+  if (isAgent && !message.content && !isRunActive && runArtifacts.length === 0) {
+    return null
+  }
+
+  // Approval kickoff (human message anchored to the doc it approved): the
+  // mention dispatches the agent, but visually it's a one-line receipt.
+  // The content-pattern check also catches kickoffs from before refArtifactId.
+  if (
+    !isAgent &&
+    (message.refArtifactId
+      ? message.content.includes('✅')
+      : /^@\S+ ✅ Approved/.test(message.content))
+  ) {
+    return (
+      <div className="group px-4 py-1">
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <span>✅</span>
+          <span className="md-content min-w-0 [&_p]:truncate">
+            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
+              {message.content.replace('✅ ', '')}
+            </ReactMarkdown>
+          </span>
+          <span className="hidden whitespace-nowrap text-zinc-600 group-hover:inline">
+            — {message.authorName} · {formatTime(message.createdAt)}
+          </span>
+        </div>
+      </div>
+    )
+  }
   const threadRootId = message.threadRootId ?? message.id
   // Personal crews: every agent message names the human whose crew it is.
   const owner = isAgent
@@ -162,35 +204,43 @@ export function MessageItem({
 
   return (
     <div data-msg-id={message.id} className="group animate-fade-in px-4 py-1.5 hover:bg-zinc-900/40">
-      {/* Header row */}
-      <div className="flex items-baseline gap-2">
-        <span className="text-base">{isAgent ? message.authorEmoji : '👤'}</span>
-        <span className={`text-sm font-semibold ${isAgent ? 'text-violet-300' : 'text-zinc-100'}`}>
+      {/* Header row — identity is visual (square tile = agent, round = human);
+          timestamp/owner/terminal reveal on hover to keep the resting view calm */}
+      <div className="flex items-center gap-2">
+        <span
+          className={`flex h-5 w-5 shrink-0 items-center justify-center text-sm ${
+            isAgent ? 'rounded-md bg-zinc-800/90' : 'rounded-full bg-zinc-700/60 text-xs'
+          }`}
+        >
+          {isAgent ? message.authorEmoji : '👤'}
+        </span>
+        <span className={`text-sm font-semibold ${isAgent ? 'text-violet-300' : 'text-zinc-50'}`}>
           {message.authorName}
         </span>
-        {isAgent && (
-          <span className="rounded bg-violet-900/50 px-1 text-[10px] uppercase tracking-wide text-violet-300">
-            agent
-          </span>
-        )}
-        {owner && (
-          <span className="text-[11px] text-zinc-500" title={`${owner.name}'s crew`}>
-            · {owner.name}
-          </span>
-        )}
-        <span className="text-xs text-zinc-500">{formatTime(message.createdAt)}</span>
-        {isAgent && message.runId && onOpenRun && (
-          <button
-            onClick={() => onOpenRun(message.runId!)}
-            className="invisible text-xs text-zinc-500 underline hover:text-zinc-300 group-hover:visible"
-          >
-            terminal
-          </button>
-        )}
+        <span className="invisible flex items-baseline gap-2 group-hover:visible">
+          {owner && (
+            <span className="text-[11px] text-zinc-500" title={`${owner.name}'s crew`}>
+              {owner.name}'s crew
+            </span>
+          )}
+          <span className="text-xs text-zinc-500">{formatTime(message.createdAt)}</span>
+          {isAgent && message.runId && onOpenRun && (
+            <button
+              onClick={() => onOpenRun(message.runId!)}
+              className="text-xs text-zinc-500 underline hover:text-zinc-300"
+            >
+              terminal
+            </button>
+          )}
+        </span>
       </div>
 
-      {/* Message content */}
-      <div className="md-content ml-7 text-sm leading-relaxed text-zinc-200">
+      {/* Message content — humans read a notch brighter than agents */}
+      <div
+        className={`md-content ml-7 text-sm leading-relaxed ${
+          isAgent ? 'text-zinc-300' : 'text-zinc-100'
+        }`}
+      >
         {message.content ? (
           <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
             {message.content}
@@ -200,10 +250,12 @@ export function MessageItem({
         )}
       </div>
 
-      {/* Docs this reply produced — the doc, not the chat, is the reference */}
-      {runArtifacts.map((artifact) => (
-        <ArtifactCard key={artifact.id} artifact={artifact} />
-      ))}
+      {/* Docs this reply produced — the doc, not the chat, is the reference.
+          One doc gets the full card; a batch renders as compact rows so a
+          single message can't wall off the feed with stacked cards. */}
+      {runArtifacts.length === 1 && <ArtifactCard artifact={runArtifacts[0]!} />}
+      {runArtifacts.length > 1 &&
+        runArtifacts.map((artifact) => <ArtifactRow key={artifact.id} artifact={artifact} />)}
 
       {/* Thread citation card */}
       {message.refThreadId && message.refChannelId && (
