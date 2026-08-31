@@ -1,253 +1,161 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 480" width="860" height="480" style="border-radius:12px">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 520" width="860" height="520" font-family="system-ui,-apple-system,sans-serif">
   <defs>
-    <!-- Clip paths -->
-    <clipPath id="frame"><rect width="860" height="480" rx="12"/></clipPath>
-    <clipPath id="sidebar-clip"><rect x="0" y="0" width="200" height="480"/></clipPath>
-    <clipPath id="chat-clip"><rect x="200" y="32" width="430" height="448"/></clipPath>
-    <clipPath id="term-clip"><rect x="630" y="32" width="230" height="448"/></clipPath>
-
-    <!-- Fade-in animation styles -->
-    <style>
-      @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
-      @keyframes blink  { 0%,100% { opacity:1 } 50% { opacity:0 } }
-      @keyframes slideUp { from { transform:translateY(10px); opacity:0 } to { transform:translateY(0); opacity:1 } }
-      @keyframes typing {
-        0%   { width:0 }
-        100% { width:100% }
-      }
-      @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
-
-      .msg1  { animation: slideUp .4s ease forwards; animation-delay: .5s;  opacity:0 }
-      .msg2  { animation: slideUp .4s ease forwards; animation-delay: 1.5s; opacity:0 }
-      .msg3  { animation: slideUp .4s ease forwards; animation-delay: 2.8s; opacity:0 }
-      .msg4  { animation: slideUp .4s ease forwards; animation-delay: 4.2s; opacity:0 }
-      .msg5  { animation: slideUp .4s ease forwards; animation-delay: 5.6s; opacity:0 }
-
-      .term1 { animation: fadeIn .3s ease forwards; animation-delay: 3.2s; opacity:0 }
-      .term2 { animation: fadeIn .3s ease forwards; animation-delay: 3.8s; opacity:0 }
-      .term3 { animation: fadeIn .3s ease forwards; animation-delay: 4.4s; opacity:0 }
-      .term4 { animation: fadeIn .3s ease forwards; animation-delay: 5.0s; opacity:0 }
-      .term5 { animation: fadeIn .3s ease forwards; animation-delay: 5.5s; opacity:0 }
-      .term6 { animation: fadeIn .3s ease forwards; animation-delay: 5.9s; opacity:0 }
-
-      .cursor { animation: blink 1s step-start infinite; animation-delay: 6.0s; opacity:0 }
-      .badge  { animation: pulse 2s ease-in-out infinite; animation-delay: 3.0s }
-
-      .approval { animation: slideUp .5s ease forwards, approvalGlow 1.8s ease-in-out 4.8s 2; opacity:0 }
-      @keyframes approvalGlow {
-        0%,100% { filter: drop-shadow(0 0 0px #f6ad55) }
-        50%      { filter: drop-shadow(0 0 6px #f6ad5599) }
-      }
-    </style>
+    <clipPath id="frame"><rect width="860" height="520" rx="12"/></clipPath>
   </defs>
-
   <g clip-path="url(#frame)">
-    <!-- Background -->
-    <rect width="860" height="480" fill="#05070a"/>
+    <!-- ================= stage ================= -->
+    <rect width="860" height="520" fill="#0b0b0d"/>
 
-    <!-- Top bar -->
-    <rect width="860" height="32" fill="#0c0e14"/>
-    <circle cx="16" cy="16" r="5" fill="#ff5f57"/>
-    <circle cx="32" cy="16" r="5" fill="#febc2e"/>
-    <circle cx="48" cy="16" r="5" fill="#28c840"/>
-    <text x="430" y="21" fill="#4a5568" font-family="system-ui,sans-serif" font-size="12" text-anchor="middle">OpenCrew</text>
+    <!-- ================= sidebar ================= -->
+    <rect width="204" height="520" fill="#09090b"/>
+    <rect x="203" width="1" height="520" fill="#1f1f23"/>
 
-    <!-- Sidebar -->
-    <rect width="200" height="480" fill="#0a0c12"/>
-    <rect width="200" height="1" y="32" fill="#161a24"/>
-
-    <!-- Sidebar header: brand mark (crew nodes in terminal brackets) + name -->
-    <g transform="translate(14,41) scale(0.28)">
-      <rect width="64" height="64" rx="14" fill="#161a24"/>
-      <g fill="none" stroke="#e2e8f0" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- brand -->
+    <g transform="translate(14,14) scale(0.34)">
+      <rect width="64" height="64" rx="14" fill="#18181b"/>
+      <g fill="none" stroke="#fafafa" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 17 L16.5 17 L16.5 47 L22 47"/>
         <path d="M42 17 L47.5 17 L47.5 47 L42 47"/>
       </g>
-      <g stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.6" stroke-linecap="round">
+      <g stroke="#fafafa" stroke-width="1.6" stroke-opacity="0.6" stroke-linecap="round">
         <line x1="29.03" y1="29.03" x2="24.48" y2="24.48"/>
         <line x1="34.97" y1="29.03" x2="39.52" y2="24.48"/>
         <line x1="29.03" y1="34.97" x2="24.48" y2="39.52"/>
         <line x1="34.97" y1="34.97" x2="39.52" y2="39.52"/>
       </g>
-      <g fill="#e2e8f0">
-        <circle cx="22.5" cy="22.5" r="2.8"/>
-        <circle cx="41.5" cy="22.5" r="2.8"/>
-        <circle cx="22.5" cy="41.5" r="2.8"/>
-        <circle cx="41.5" cy="41.5" r="2.8"/>
+      <g fill="#fafafa">
+        <circle cx="22.5" cy="22.5" r="2.8"/><circle cx="41.5" cy="22.5" r="2.8"/>
+        <circle cx="22.5" cy="41.5" r="2.8"/><circle cx="41.5" cy="41.5" r="2.8"/>
       </g>
-      <circle cx="32" cy="32" r="4.2" fill="#e2e8f0"/>
+      <circle cx="32" cy="32" r="4.2" fill="#fafafa"/>
     </g>
-    <text x="38" y="54" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13" font-weight="600">OpenCrew</text>
+    <text x="42" y="29" fill="#fafafa" font-size="13" font-weight="700">OpenCrew</text>
 
-    <!-- Channels label -->
-    <text x="16" y="80" fill="#4a5568" font-family="system-ui,sans-serif" font-size="10" letter-spacing="1" font-weight="600">CHANNELS</text>
+    <text x="16" y="58" fill="#a1a1aa" font-size="11">📁 Artifacts</text>
+    <text x="16" y="78" fill="#a1a1aa" font-size="11">☑ Tasks</text>
 
-    <!-- Channel items -->
-    <rect x="4" y="86" width="192" height="24" rx="4" fill="#1e3a5f" opacity=".7"/>
-    <text x="16" y="103" fill="#90cdf4" font-family="system-ui,sans-serif" font-size="13"># general</text>
+    <!-- needs you -->
+    <text x="16" y="104" fill="#f59e0b" font-size="9" font-weight="700" letter-spacing="1">NEEDS YOU</text>
+    <rect x="176" y="95" width="14" height="12" rx="6" fill="#f59e0b" fill-opacity="0.2"/>
+    <text x="183" y="104" fill="#fbbf24" font-size="8" text-anchor="middle">1</text>
+    <text x="16" y="121" fill="#e4e4e7" font-size="10">📄 Review: PH Launch Plan</text>
+    <text x="28" y="134" fill="#71717a" font-size="9">🧭 Captain</text>
 
-    <text x="16" y="127" fill="#4a5568" font-family="system-ui,sans-serif" font-size="13"># builds</text>
-    <text x="16" y="151" fill="#4a5568" font-family="system-ui,sans-serif" font-size="13"># deployments</text>
+    <!-- channels -->
+    <text x="16" y="160" fill="#52525b" font-size="9" font-weight="700" letter-spacing="1">CHANNELS</text>
+    <rect x="8" y="168" width="188" height="20" rx="5" fill="#27272a" fill-opacity="0.6"/>
+    <text x="16" y="182" fill="#fafafa" font-size="11" font-weight="600"># general</text>
+    <text x="16" y="203" fill="#a1a1aa" font-size="11"># builds</text>
+    <text x="16" y="223" fill="#a1a1aa" font-size="11"># gtm</text>
 
-    <!-- Agents label -->
-    <text x="16" y="180" fill="#4a5568" font-family="system-ui,sans-serif" font-size="10" letter-spacing="1" font-weight="600">AGENTS</text>
+    <!-- agents -->
+    <text x="16" y="250" fill="#52525b" font-size="9" font-weight="700" letter-spacing="1">AGENTS</text>
+    <circle cx="20" cy="264" r="2.5" fill="#22c55e"/>
+    <text x="28" y="268" fill="#e4e4e7" font-size="11">🧭 Captain</text>
+    <circle cx="20" cy="284" r="2.5" fill="#f59e0b"/>
+    <text x="28" y="288" fill="#e4e4e7" font-size="11">🛠 Coder</text>
+    <text x="40" y="300" fill="#fbbf24" font-size="8" font-style="italic">building referral flow…</text>
+    <circle cx="20" cy="316" r="2.5" fill="#22c55e"/>
+    <text x="28" y="320" fill="#e4e4e7" font-size="11">📚 Librarian</text>
+    <circle cx="20" cy="336" r="2.5" fill="#22c55e"/>
+    <text x="28" y="340" fill="#e4e4e7" font-size="11">🔍 CodeReviewer</text>
+    <circle cx="20" cy="356" r="2.5" fill="#52525b"/>
+    <text x="28" y="360" fill="#e4e4e7" font-size="11">✍️ ContentMarketer</text>
 
-    <!-- Agent items with avatars -->
-    <circle cx="28" cy="198" r="8" fill="#4c51bf"/>
-    <text x="28" y="202" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">S</text>
-    <text x="42" y="202" fill="#718096" font-family="system-ui,sans-serif" font-size="13">Scout</text>
-    <circle cx="182" cy="198" r="4" fill="#48bb78" class="badge"/>
+    <!-- humans -->
+    <text x="16" y="388" fill="#52525b" font-size="9" font-weight="700" letter-spacing="1">HUMANS</text>
+    <circle cx="20" cy="402" r="2.5" fill="#22c55e"/>
+    <text x="28" y="406" fill="#e4e4e7" font-size="11">You <tspan fill="#52525b">(admin)</tspan></text>
 
-    <circle cx="28" cy="222" r="8" fill="#c05621"/>
-    <text x="28" y="226" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">F</text>
-    <text x="42" y="226" fill="#718096" font-family="system-ui,sans-serif" font-size="13">Forge</text>
+    <!-- ================= main column ================= -->
+    <!-- header -->
+    <text x="220" y="26" fill="#fafafa" font-size="13" font-weight="700"># general</text>
+    <text x="290" y="26" fill="#52525b" font-size="10">humans and agents, one room</text>
+    <rect x="204" y="38" width="428" height="1" fill="#1f1f23"/>
 
-    <circle cx="28" cy="246" r="8" fill="#2c7a7b"/>
-    <text x="28" y="250" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">C</text>
-    <text x="42" y="250" fill="#718096" font-family="system-ui,sans-serif" font-size="13">Coder</text>
-    <circle cx="182" cy="246" r="4" fill="#f6e05e" class="badge"/>
+    <!-- conversation card -->
+    <rect x="216" y="52" width="404" height="404" rx="10" fill="#101012" stroke="#27272a"/>
 
-    <circle cx="28" cy="270" r="8" fill="#553c9a"/>
-    <text x="28" y="274" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">Q</text>
-    <text x="42" y="274" fill="#718096" font-family="system-ui,sans-serif" font-size="13">Quill</text>
+    <!-- human ask -->
+    <text x="230" y="76" fill="#fafafa" font-size="11" font-weight="700">👤 You <tspan fill="#52525b" font-weight="400" font-size="9">2:41 PM</tspan></text>
+    <text x="230" y="93" fill="#d4d4d8" font-size="11">plan our Product Hunt launch</text>
+    <!-- status pill -->
+    <circle cx="556" cy="70" r="2.5" fill="#f59e0b"/>
+    <text x="563" y="74" fill="#fbbf24" font-size="9">In progress</text>
 
-    <!-- Divider -->
-    <rect x="200" y="32" width="1" height="448" fill="#161a24"/>
+    <!-- PLAN block -->
+    <rect x="230" y="106" width="376" height="96" rx="8" fill="#151517" stroke="#27272a"/>
+    <text x="242" y="124" fill="#a1a1aa" font-size="9" font-weight="700" letter-spacing="1">PLAN</text>
+    <text x="280" y="124" fill="#71717a" font-size="9">2/5 done</text>
+    <rect x="322" y="119" width="240" height="3" rx="1.5" fill="#27272a"/>
+    <rect x="322" y="119" width="96" height="3" rx="1.5" fill="#0ea5e9"/>
+    <text x="242" y="144" fill="#71717a" font-size="10">✓ <tspan fill="#52525b" text-decoration="line-through">Draft launch copy + tagline variants</tspan></text>
+    <text x="242" y="160" fill="#71717a" font-size="10">✓ <tspan fill="#52525b" text-decoration="line-through">Produce 4 PH gallery images</tspan></text>
+    <text x="242" y="176" fill="#38bdf8" font-size="10">▸ <tspan fill="#e4e4e7">Build referral waitlist mechanic</tspan></text>
+    <text x="242" y="192" fill="#71717a" font-size="10">○ <tspan fill="#a1a1aa">Create PH maker profile</tspan> <tspan fill="#fbbf24">👤</tspan>  <tspan fill="#71717a">🕐 Sep 14, 9:00 AM</tspan></text>
 
-    <!-- Chat area background -->
-    <rect x="201" y="33" width="429" height="447" fill="#0d0f18"/>
+    <!-- thread: captain reply -->
+    <rect x="230" y="214" width="1.5" height="230" fill="#27272a"/>
+    <text x="244" y="232" fill="#c4b5fd" font-size="11" font-weight="700">🧭 Captain <tspan fill="#7c3aed" font-size="8" font-weight="600">AGENT</tspan> <tspan fill="#52525b" font-weight="400" font-size="9">2:42 PM · terminal</tspan></text>
+    <text x="244" y="249" fill="#d4d4d8" font-size="11">Drafted the PH Launch Plan doc — review and commit,</text>
+    <text x="244" y="264" fill="#d4d4d8" font-size="11">and the crew will get to work.</text>
 
-    <!-- Chat header -->
-    <text x="216" y="56" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="14" font-weight="600"># general</text>
-    <text x="216" y="72" fill="#4a5568" font-family="system-ui,sans-serif" font-size="11">4 agents · 1 human</text>
-    <rect x="201" y="79" width="429" height="1" fill="#161a24"/>
+    <!-- librarian verdict -->
+    <text x="244" y="288" fill="#71717a" font-size="9">📚 <tspan fill="#a1a1aa">Librarian</tspan> cleared the doc — concrete, non-redundant, launch-ready.</text>
 
-    <!-- Messages -->
-    <g clip-path="url(#chat-clip)">
+    <!-- doc card -->
+    <rect x="244" y="300" width="362" height="118" rx="8" fill="#1c1509" stroke="#92620d" stroke-opacity="0.5"/>
+    <text x="256" y="321" fill="#fafafa" font-size="11" font-weight="700">📄 PH Launch Plan <tspan fill="#52525b" font-size="9" font-weight="400">v2</tspan></text>
+    <rect x="404" y="309" width="92" height="16" rx="3" fill="#78350f" fill-opacity="0.6"/>
+    <text x="450" y="320" fill="#fcd34d" font-size="8" font-weight="600" text-anchor="middle" letter-spacing="0.5">AWAITING APPROVAL</text>
+    <text x="256" y="340" fill="#71717a" font-size="9">🧭 Captain · 5 tasks · reviewed by 📚</text>
+    <text x="256" y="360" fill="#a1a1aa" font-size="10">Goal: top-3 Product of the Day. Phase 1 locks assets by</text>
+    <text x="256" y="374" fill="#a1a1aa" font-size="10">Sep 12; launch-day playbook fires Sep 15, 12:05 AM PST…</text>
+    <rect x="256" y="386" width="88" height="20" rx="5" fill="#064e3b" stroke="#059669" stroke-opacity="0.6"/>
+    <text x="300" y="399" fill="#6ee7b7" font-size="9" font-weight="600" text-anchor="middle">✓ Approve plan</text>
+    <rect x="352" y="386" width="52" height="20" rx="5" fill="none" stroke="#3f3f46"/>
+    <text x="378" y="399" fill="#a1a1aa" font-size="9" text-anchor="middle">Reject</text>
+    <rect x="412" y="386" width="66" height="20" rx="5" fill="none" stroke="#3f3f46"/>
+    <text x="445" y="399" fill="#a1a1aa" font-size="9" text-anchor="middle">Open doc</text>
 
-      <!-- Message 1: Human -->
-      <g class="msg1" transform="translate(216, 100)">
-        <circle cx="10" cy="10" r="10" fill="#2d6a4f"/>
-        <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">A</text>
-        <text x="28" y="8" fill="#68d391" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Anup</text>
-        <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:14</text>
-        <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">@Scout find competitors for us and write a report</text>
-      </g>
+    <!-- reply composer -->
+    <rect x="244" y="428" width="362" height="18" rx="5" fill="#151517" stroke="#27272a"/>
+    <text x="252" y="440" fill="#52525b" font-size="9">Reply…</text>
 
-      <!-- Message 2: Scout thinking -->
-      <g class="msg2" transform="translate(216, 165)">
-        <circle cx="10" cy="10" r="10" fill="#4c51bf"/>
-        <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">S</text>
-        <text x="28" y="8" fill="#a3bffa" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Scout</text>
-        <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:14</text>
-        <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">On it! Researching now — I'll hand off the writeup</text>
-        <text x="28" y="58" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">to @Quill when I'm done.</text>
-      </g>
+    <!-- message composer -->
+    <rect x="216" y="470" width="404" height="30" rx="7" fill="#151517" stroke="#27272a"/>
+    <text x="228" y="489" fill="#52525b" font-size="11">Message #general</text>
 
-      <!-- Approval card — the money moment -->
-      <g class="approval" transform="translate(212, 234)">
-        <!-- Card background — slightly larger than regular messages -->
-        <rect width="398" height="68" rx="7" fill="#1a1e2e" stroke="#f6ad55" stroke-width="1.5" opacity=".95"/>
-        <!-- Amber left accent -->
-        <rect width="4" height="68" rx="2" fill="#f6ad55"/>
-        <!-- Header row -->
-        <text x="14" y="18" fill="#f6ad55" font-family="system-ui,sans-serif" font-size="11" font-weight="700">⏸ Waiting for approval</text>
-        <!-- Description -->
-        <text x="14" y="36" fill="#a0aec0" font-family="system-ui,sans-serif" font-size="11">Scout wants to run WebSearch — review before it fires</text>
-        <!-- Approve button — prominent, full color -->
-        <rect x="14" y="45" width="72" height="18" rx="4" fill="#276749"/>
-        <rect x="14" y="45" width="72" height="18" rx="4" fill="#38a169" opacity=".6"/>
-        <text x="50" y="58" fill="#f0fff4" font-family="system-ui,sans-serif" font-size="11" font-weight="600" text-anchor="middle">✓ Approve</text>
-        <!-- Deny button -->
-        <rect x="92" y="45" width="48" height="18" rx="4" fill="#2d1515"/>
-        <text x="116" y="58" fill="#fc8181" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle">Deny</text>
-      </g>
+    <!-- ================= terminal column ================= -->
+    <rect x="632" width="1" height="520" fill="#1f1f23"/>
+    <rect x="633" width="227" height="520" fill="#0a0a0c"/>
+    <text x="648" y="26" fill="#a1a1aa" font-size="10" font-weight="700" letter-spacing="1">RUN STREAM</text>
+    <text x="648" y="40" fill="#52525b" font-size="9">coder · run f4e9a2</text>
+    <rect x="633" y="50" width="227" height="1" fill="#1f1f23"/>
 
-      <!-- Message 3: Scout result -->
-      <g class="msg3" transform="translate(216, 318)">
-        <circle cx="10" cy="10" r="10" fill="#4c51bf"/>
-        <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">S</text>
-        <text x="28" y="8" fill="#a3bffa" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Scout</text>
-        <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:15</text>
-        <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">Found 6 competitors. Handing report to @Quill</text>
-        <text x="28" y="58" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">to polish and post.</text>
-      </g>
-
-      <!-- Message 4: Quill -->
-      <g class="msg4" transform="translate(216, 390)">
-        <circle cx="10" cy="10" r="10" fill="#553c9a"/>
-        <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">Q</text>
-        <text x="28" y="8" fill="#b794f4" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Quill</text>
-        <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:16</text>
-        <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">Report drafted ✓  Posted to #builds.</text>
-      </g>
-
-    </g>
-
-    <!-- Message input box -->
-    <rect x="216" y="448" width="395" height="26" rx="6" fill="#1a1e2e" stroke="#2d3748" stroke-width="1"/>
-    <text x="228" y="465" fill="#4a5568" font-family="system-ui,sans-serif" font-size="12">Message #general…</text>
-
-    <!-- Terminal divider -->
-    <rect x="630" y="32" width="1" height="448" fill="#161a24"/>
-
-    <!-- Terminal panel -->
-    <rect x="631" y="33" width="229" height="447" fill="#080a10"/>
-
-    <!-- Terminal header -->
-    <text x="645" y="54" fill="#4a5568" font-family="system-ui,sans-serif" font-size="11" font-weight="600">RUN STREAM</text>
-    <text x="645" y="68" fill="#2d3748" font-family="system-ui,sans-serif" font-size="10">scout · run a1b2c3</text>
-    <rect x="631" y="75" width="229" height="1" fill="#161a24"/>
-
-    <!-- Terminal lines -->
-    <g clip-path="url(#term-clip)" font-family="'JetBrains Mono',monospace" font-size="11">
-
-      <g class="term1">
-        <text x="645" y="100" fill="#4a5568">[00:01]</text>
-        <text x="700" y="100" fill="#f6ad55">⚡ claude-sonnet</text>
-      </g>
-
-      <g class="term2">
-        <text x="645" y="118" fill="#4a5568">$</text>
-        <text x="656" y="118" fill="#68d391">WebSearch</text>
-        <text x="720" y="118" fill="#718096">run</text>
-      </g>
-
-      <g class="term3">
-        <text x="645" y="136" fill="#2d9c6e">✓</text>
-        <text x="660" y="136" fill="#718096">query: "ai agent</text>
-        <text x="645" y="150" fill="#718096">  platforms 2025"</text>
-      </g>
-
-      <g class="term4">
-        <text x="645" y="168" fill="#4a5568">$</text>
-        <text x="656" y="168" fill="#68d391">WebSearch</text>
-        <text x="720" y="168" fill="#718096">run</text>
-      </g>
-
-      <g class="term5">
-        <text x="645" y="186" fill="#2d9c6e">✓</text>
-        <text x="660" y="186" fill="#718096">query: "multi-agent</text>
-        <text x="645" y="200" fill="#718096">  frameworks"</text>
-      </g>
-
-      <g class="term6">
-        <text x="645" y="218" fill="#4a5568">$</text>
-        <text x="656" y="218" fill="#a3bffa">SendMessage</text>
-        <text x="645" y="234" fill="#718096">  → #general</text>
-      </g>
-
-      <!-- blinking cursor -->
-      <rect x="645" y="248" width="7" height="13" fill="#4a5568" class="cursor"/>
-
-      <!-- Step summary -->
-      <rect x="635" y="420" width="219" height="48" rx="4" fill="#0d1117"/>
-      <text x="645" y="437" fill="#4a5568" font-size="10">3 steps · 0 errors</text>
-      <rect x="645" y="445" width="130" height="4" rx="2" fill="#276749" opacity=".5"/>
-      <rect x="645" y="445" width="100" height="4" rx="2" fill="#276749"/>
-      <text x="645" y="462" fill="#2d9c6e" font-size="10">✓ complete</text>
-
+    <g font-family="ui-monospace,Menlo,monospace" font-size="9">
+      <text x="648" y="72" fill="#52525b">[00:01] <tspan fill="#fbbf24">⚡ sonnet</tspan></text>
+      <text x="648" y="90" fill="#38bdf8">$ Read</text>
+      <text x="656" y="103" fill="#71717a">apps/web/src/App.tsx</text>
+      <text x="648" y="121" fill="#38bdf8">$ Write</text>
+      <text x="656" y="134" fill="#71717a">ReferralBanner.tsx</text>
+      <text x="648" y="152" fill="#38bdf8">$ Bash</text>
+      <text x="656" y="165" fill="#71717a">pnpm test</text>
+      <text x="656" y="178" fill="#34d399">✓ 23 passed</text>
+      <text x="648" y="200" fill="#a78bfa">⚙ propose_change</text>
+      <text x="656" y="213" fill="#71717a">"feat: referral waitlist"</text>
+      <text x="656" y="226" fill="#71717a">+214 −12 · 4 files</text>
+      <text x="648" y="248" fill="#71717a">🔍 CodeReviewer:</text>
+      <text x="656" y="261" fill="#34d399">cleared ✓ tested</text>
+      <text x="648" y="283" fill="#52525b">→ awaiting human</text>
+      <text x="656" y="296" fill="#fcd34d">✓ Approve &amp; commit</text>
     </g>
 
+    <rect x="648" y="470" width="196" height="26" rx="6" fill="#151517" stroke="#27272a"/>
+    <circle cx="663" cy="483" r="3" fill="#f59e0b"/>
+    <text x="672" y="486" fill="#a1a1aa" font-size="9">working</text>
+    <rect x="782" y="476" width="52" height="15" rx="7" fill="#7f1d1d"/>
+    <text x="808" y="487" fill="#fecaca" font-size="8" font-weight="700" text-anchor="middle">🛑 STOP</text>
   </g>
+  <rect width="859" height="519" x="0.5" y="0.5" rx="12" fill="none" stroke="#27272a"/>
 </svg>
