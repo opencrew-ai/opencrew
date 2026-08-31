@@ -121,27 +121,42 @@ export async function enqueueMentionRuns(
   if (mentioned.length > 0 && !restricted) return
 
   const createdAtById = new Map(agentRows.map((row) => [row.id, row.createdAt]))
-  const watchers: { agentId: string; watchesAll: boolean; createdAt: number }[] = []
+  const watchers: {
+    agentId: string
+    watchesAll: boolean
+    canDelegate: boolean
+    createdAt: number
+  }[] = []
   for (const agent of allAgents) {
     const full = await getAgentWithVersion(ctx.db, agent.id)
-    const watched = full?.currentVersion.capabilities.watchesChannels ?? []
+    if (!full) continue
+    const watched = full.currentVersion.capabilities.watchesChannels ?? []
     // '*' = watches every channel (orchestrator pattern).
-    if (full && (watched.includes('*') || watched.includes(message.channelId))) {
+    if (watched.includes('*') || watched.includes(message.channelId)) {
+      const tools = full.currentVersion.tools
       watchers.push({
         agentId: agent.id,
         watchesAll: watched.includes('*'),
+        // Crew-directory / hiring tools mark a TRUE orchestrator — a
+        // specialist that merely watches everything shouldn't hold the desk.
+        canDelegate: tools.includes('list_agents') || tools.includes('create_agent'),
         createdAt: createdAtById.get(agent.id) ?? Number.MAX_SAFE_INTEGER
       })
     }
   }
   // EXACTLY ONE front desk answers an untargeted message — never a pile-on,
-  // even when several agents are configured as watchers. Preference: an
-  // orchestrator ('*' watcher) over channel-scoped watchers; earliest-created
-  // wins ties (the workspace's original orchestrator, e.g. Captain). It
-  // delegates by @mentioning specialists.
+  // even when several agents are configured as watchers. Preference:
+  // '*' watchers over channel-scoped ones, then agents that can actually
+  // delegate (orchestration tools), then earliest-created, then id — fully
+  // deterministic even when seeded agents share one createdAt timestamp.
   const orchestrators = watchers.filter((w) => w.watchesAll)
   const pool = orchestrators.length > 0 ? orchestrators : watchers
-  const frontDesk = pool.sort((a, b) => a.createdAt - b.createdAt)[0]
+  const frontDesk = pool.sort(
+    (a, b) =>
+      Number(b.canDelegate) - Number(a.canDelegate) ||
+      a.createdAt - b.createdAt ||
+      a.agentId.localeCompare(b.agentId)
+  )[0]
   if (frontDesk) {
     await enqueueRun(ctx, frontDesk.agentId, message, 0, 'watch', restricted)
   }
