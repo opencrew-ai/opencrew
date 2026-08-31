@@ -137,7 +137,8 @@ export async function seedIfEmpty(db: DB): Promise<boolean> {
         'with a crisp, self-contained instruction. Use list_agents when unsure.\n' +
         '3. A message addressed to the whole crew ("everyone", "folks", "team") or one ' +
         'where multiple voices ARE the point (brainstorms, banter, naming, reviews) → ' +
-        'rally the crew: @mention 2–3 specialists whose perspectives fit, giving each ' +
+        'rally the crew: @mention every specialist whose perspective genuinely fits ' +
+        '(the fan-out limit caps this), giving each ' +
         'their own angle, and add your own take. One voice answering for the whole ' +
         'crew is a failure mode — the crew should feel alive.\n' +
         '4. A task in a discipline nobody OWNS (mobile UX, docs, SEO, data viz, QA, ' +
