@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import type { ImageBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources'
 import {
   createSdkMcpServer,
   query,
@@ -836,7 +837,29 @@ async function finalizeRun(
   if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
     await flipRemainingReviewDocs(ctx, runEnv.threadRootId)
   }
+  await denyOrphanedApprovals(ctx, runEnv.runId)
   await setRunStatus(ctx, runEnv, 'done', { finishedAt: Date.now() })
+}
+
+/**
+ * Approvals must not outlive their run: a run that ends (done, cancelled,
+ * failed) with tool calls still waiting leaves zombie "waiting for an admin"
+ * cards that approve into a dead session. Deny them with a system attribution
+ * so every card shows a truthful terminal state.
+ */
+async function denyOrphanedApprovals(ctx: AppContext, runId: string): Promise<void> {
+  const { resolveApproval } = await import('../services/approvals')
+  const pending = await ctx.db
+    .select()
+    .from(approvals)
+    .where(and(eq(approvals.runId, runId), eq(approvals.status, 'pending')))
+  for (const approval of pending) {
+    try {
+      await resolveApproval(ctx, approval.id, 'denied', 'system:run-ended')
+    } catch {
+      // resolved in a race — fine
+    }
+  }
 }
 
 async function cancelRun(
@@ -851,6 +874,7 @@ async function cancelRun(
       `${reply.text}\n\n_(run cancelled — tool use was denied)_`
     )
   }
+  await denyOrphanedApprovals(ctx, runEnv.runId)
   await setRunStatus(ctx, runEnv, 'cancelled', {
     error: 'tool use denied by admin',
     finishedAt: Date.now()
@@ -875,6 +899,7 @@ async function failRun(
   if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
     await flipRemainingReviewDocs(ctx, runEnv.threadRootId)
   }
+  await denyOrphanedApprovals(ctx, runEnv.runId)
   await setRunStatus(ctx, runEnv, 'failed', { error, finishedAt: Date.now() })
   try {
     await postSystemMessage(

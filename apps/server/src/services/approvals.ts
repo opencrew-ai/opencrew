@@ -37,6 +37,27 @@ export async function resolveApproval(
   if (!row) throw new Error('approval not found')
   if (row.status !== 'pending') throw new Error('approval already resolved')
 
+  // Approving into a dead session is a no-op that LOOKS like consent — refuse
+  // it honestly. The run's terminal cleanup denies its own orphans; this
+  // guard covers the race where a human clicks just after the run ended.
+  if (decision === 'approved') {
+    const { runs } = await import('../db/schema')
+    const [run] = await ctx.db.select().from(runs).where(eq(runs.id, row.runId)).limit(1)
+    if (run && ['done', 'failed', 'cancelled'].includes(run.status)) {
+      await ctx.db
+        .update(approvals)
+        .set({ status: 'denied', resolvedBy: 'system:run-ended', resolvedAt: Date.now() })
+        .where(eq(approvals.id, approvalId))
+      const [stale] = await ctx.db
+        .select()
+        .from(approvals)
+        .where(eq(approvals.id, approvalId))
+        .limit(1)
+      ctx.hub.broadcast({ type: 'approval_updated', approval: toApproval(stale!) })
+      throw new Error('that run already ended — nothing is waiting on this approval')
+    }
+  }
+
   await ctx.db
     .update(approvals)
     .set({ status: decision, resolvedBy, resolvedAt: Date.now() })

@@ -162,7 +162,8 @@ export function CrewActivityBar() {
       }}
       onTouchStart={(e) => {
         if ((e.target as HTMLElement).closest('button')) return
-        startDrag(e.touches[0].clientX, e.touches[0].clientY)
+        const touch = e.touches[0]
+        if (touch) startDrag(touch.clientX, touch.clientY)
       }}
       className="fixed bottom-5 right-5 z-50 max-w-sm cursor-grab rounded-2xl border border-zinc-700/80 bg-zinc-950/95 px-4 py-2.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9)] backdrop-blur active:cursor-grabbing"
     >

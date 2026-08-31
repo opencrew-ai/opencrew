@@ -10,20 +10,52 @@ import { showAlert } from '../lib/dialogs'
  * approve or deny; everyone watches the state change live.
  */
 export function ApprovalCard({ approvalId }: { approvalId: string }) {
-  const { me } = useWorkspace()
+  const { me, users, agents } = useWorkspace()
   const [approval, setApproval] = useState<Approval | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  const load = () => {
+    setLoadFailed(false)
+    api
+      .get<Approval>(`/api/approvals/${approvalId}`)
+      .then(setApproval)
+      .catch(() => setLoadFailed(true))
+  }
+
   useEffect(() => {
-    api.get<Approval>(`/api/approvals/${approvalId}`).then(setApproval).catch(() => {})
+    load()
     return wsClient.subscribe((event) => {
       if (event.type === 'approval_updated' && event.approval.id === approvalId) {
         setApproval(event.approval)
       }
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvalId])
 
-  if (!approval) return null
+  // The card must never silently vanish — a gated run is waiting on it.
+  if (!approval) {
+    if (!loadFailed) return null
+    return (
+      <div className="mt-1 max-w-xl rounded-md border border-zinc-700 bg-zinc-900/40 p-2 text-xs text-zinc-400">
+        Couldn't load this approval —{' '}
+        <button onClick={load} className="underline hover:text-zinc-200">
+          retry
+        </button>
+      </div>
+    )
+  }
+
+  const resolverLabel = (() => {
+    if (!approval.resolvedBy) return null
+    if (approval.resolvedBy === 'system:run-ended') return 'run ended before a decision'
+    if (approval.resolvedBy.startsWith('agent:')) {
+      const agent = agents.find((a) => a.id === approval.resolvedBy!.slice(6))
+      return agent ? `by ${agent.avatarEmoji} ${agent.name}` : 'by an agent'
+    }
+    const user = users.find((u) => u.id === approval.resolvedBy)
+    return user ? `by ${user.name}` : 'by an admin'
+  })()
 
   const resolve = async (decision: 'approved' | 'denied', always = false) => {
     setBusy(true)
@@ -45,11 +77,19 @@ export function ApprovalCard({ approvalId }: { approvalId: string }) {
 
   return (
     <div className={`mt-1 max-w-xl rounded-md border p-3 text-sm ${border}`}>
-      <div className="flex items-center gap-2 font-medium">
+      <div className="flex flex-wrap items-center gap-2 font-medium">
         {approval.status === 'pending' && <span>🟡 Approval required</span>}
         {approval.status === 'approved' && <span>✅ Approved</span>}
         {approval.status === 'denied' && <span>⛔ Denied</span>}
         <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs">{approval.toolName}</code>
+        {approval.status !== 'pending' && resolverLabel && (
+          <span className="font-normal text-xs text-zinc-500">
+            {resolverLabel}
+            {approval.resolvedAt
+              ? ` · ${new Date(approval.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : ''}
+          </span>
+        )}
       </div>
       <pre className="mt-2 max-h-48 overflow-auto rounded bg-zinc-900/80 p-2 text-xs text-zinc-300">
         {JSON.stringify(approval.toolInput, null, 2)}
