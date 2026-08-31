@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { presenceKey, useWorkspace } from '../lib/workspace'
 import { useAgentActivity } from '../lib/useAgentActivity'
@@ -6,18 +6,104 @@ import { showConfirm } from '../lib/dialogs'
 
 const LABEL_MAX = 44
 const NAMED_ROWS = 3
+const WIDGET_MARGIN = 20 // min px gap from each viewport edge
 
 /**
  * Floating crew activity pill — visible on every page, but only while agents
  * are actually working. Shows who is running and carries the emergency stop,
  * so the kill switch is always one click away exactly when it matters.
+ *
+ * The pill is draggable (mouse + touch) and stays inside the viewport.
  */
+
+/** Clamp a position so the widget stays inside the viewport. */
+function clamp(x: number, y: number, el: HTMLElement) {
+  const { offsetWidth: w, offsetHeight: h } = el
+  const maxX = window.innerWidth - w - WIDGET_MARGIN
+  const maxY = window.innerHeight - h - WIDGET_MARGIN
+  return {
+    x: Math.max(WIDGET_MARGIN, Math.min(x, maxX)),
+    y: Math.max(WIDGET_MARGIN, Math.min(y, maxY)),
+  }
+}
+
 export function CrewActivityBar() {
   const { me, agents, presence } = useWorkspace()
   const activity = useAgentActivity()
   const [stopping, setStopping] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const isAdmin = me.role === 'admin'
+
+  // --- Drag state ---
+  const pillRef = useRef<HTMLDivElement>(null)
+  // Pixel position of the top-left corner; null = use CSS default (bottom-right).
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  // Drag origin: pointer coords and element position at drag start.
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null)
+
+  // Initialise position to bottom-right on first render so subsequent
+  // mouse-moves have a concrete starting point.
+  useEffect(() => {
+    if (pos !== null || !pillRef.current) return
+    const el = pillRef.current
+    setPos({
+      x: window.innerWidth - el.offsetWidth - WIDGET_MARGIN,
+      y: window.innerHeight - el.offsetHeight - WIDGET_MARGIN,
+    })
+  }, [pos])
+
+  // Re-clamp when the window is resized so the pill never escapes.
+  useEffect(() => {
+    const onResize = () => {
+      if (!pillRef.current) return
+      setPos((prev) =>
+        prev ? clamp(prev.x, prev.y, pillRef.current!) : prev
+      )
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const startDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!pillRef.current) return
+      const rect = pillRef.current.getBoundingClientRect()
+      drag.current = { px: clientX, py: clientY, ox: rect.left, oy: rect.top }
+    },
+    []
+  )
+
+  const moveDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!drag.current || !pillRef.current) return
+      const dx = clientX - drag.current.px
+      const dy = clientY - drag.current.py
+      setPos(clamp(drag.current.ox + dx, drag.current.oy + dy, pillRef.current))
+    },
+    []
+  )
+
+  const endDrag = useCallback(() => {
+    drag.current = null
+  }, [])
+
+  // Global listeners so the drag keeps working when the pointer moves fast.
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => moveDrag(e.clientX, e.clientY)
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches[0]) moveDrag(e.touches[0].clientX, e.touches[0].clientY)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('mouseup', endDrag)
+    window.addEventListener('touchend', endDrag)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('mouseup', endDrag)
+      window.removeEventListener('touchend', endDrag)
+    }
+  }, [moveDrag, endDrag])
 
   const runningAgents = useMemo(
     () =>
@@ -58,8 +144,28 @@ export function CrewActivityBar() {
   const namedRows = runningAgents.slice(0, NAMED_ROWS)
   const overflow = runningAgents.length - namedRows.length
 
+  // Use explicit x/y once the position is initialised; fall back to the CSS
+  // default so the pill isn't invisible during the first paint.
+  const style = pos
+    ? { top: pos.y, left: pos.x, right: 'auto', bottom: 'auto' }
+    : {}
+
   return (
-    <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-2xl border border-zinc-700/80 bg-zinc-950/95 px-4 py-2.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9)] backdrop-blur">
+    <div
+      ref={pillRef}
+      style={style}
+      onMouseDown={(e) => {
+        // Don't intercept clicks on interactive children (buttons).
+        if ((e.target as HTMLElement).closest('button')) return
+        e.preventDefault()
+        startDrag(e.clientX, e.clientY)
+      }}
+      onTouchStart={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return
+        startDrag(e.touches[0].clientX, e.touches[0].clientY)
+      }}
+      className="fixed bottom-5 right-5 z-50 max-w-sm cursor-grab rounded-2xl border border-zinc-700/80 bg-zinc-950/95 px-4 py-2.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9)] backdrop-blur active:cursor-grabbing"
+    >
       {notice ? (
         <span className="text-sm text-zinc-200">{notice}</span>
       ) : (
