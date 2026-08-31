@@ -573,6 +573,48 @@ export async function updateCommittedDoc(
   return { artifact }
 }
 
+/**
+ * A human edits the doc text directly — the in-place alternative to the
+ * comment → request-changes → agent-revision loop. Same versioning as agent
+ * revisions (new row, v+1, same title/status/tasks); authorship stays with
+ * the agent, the edit is the human exercising their final say.
+ */
+export async function humanEditDoc(
+  ctx: AppContext,
+  artifactId: string,
+  content: string
+): Promise<Artifact | null> {
+  const [current] = await ctx.db
+    .select()
+    .from(artifacts)
+    .where(eq(artifacts.id, artifactId))
+    .limit(1)
+  if (!current || current.status === 'discarded') return null
+
+  const siblings = await ctx.db
+    .select({ version: artifacts.version })
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.conversationRootId, current.conversationRootId),
+        eq(artifacts.title, current.title)
+      )
+    )
+  const now = Date.now()
+  const row: ArtifactRow = {
+    ...current,
+    id: nanoid(),
+    content,
+    version: siblings.reduce((max, r) => Math.max(max, r.version), 0) + 1,
+    createdAt: now,
+    updatedAt: now
+  }
+  await ctx.db.insert(artifacts).values(row)
+  const artifact = toArtifact(row)
+  ctx.hub.broadcast({ type: 'artifact_state', artifact })
+  return artifact
+}
+
 const ARCHIVE_LEAD_LIMIT = 240
 const ARCHIVE_TITLE_LIMIT = 80
 

@@ -6,6 +6,7 @@ import {
   commitPlan,
   discardPlan,
   getArtifact,
+  humanEditDoc,
   listAllArtifacts,
   listChannelArtifacts,
   listComments,
@@ -20,6 +21,10 @@ const commentSchema = z.object({
 
 const requestChangesSchema = z.object({
   feedback: z.string().min(1).max(4000)
+})
+
+const editSchema = z.object({
+  content: z.string().min(1).max(200_000)
 })
 
 export function registerArtifactRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -101,6 +106,20 @@ export function registerArtifactRoutes(app: FastifyInstance, ctx: AppContext): v
       const result = await requestChanges(ctx, artifactId, req.user!.id, parsed.data.feedback)
       if (!result) return reply.code(404).send(fail('no proposed artifact with that id'))
       return ok(result)
+    }
+  )
+
+  /** Human edits the doc text directly — creates the next version in place. */
+  app.post(
+    '/api/artifacts/:artifactId/edit',
+    { preHandler: memberGuard(ctx) },
+    async (req, reply) => {
+      const { artifactId } = req.params as { artifactId: string }
+      const parsed = editSchema.safeParse(req.body)
+      if (!parsed.success) return reply.code(400).send(fail(parsed.error.message))
+      const artifact = await humanEditDoc(ctx, artifactId, parsed.data.content)
+      if (!artifact) return reply.code(404).send(fail('artifact not found or discarded'))
+      return ok(artifact)
     }
   )
 

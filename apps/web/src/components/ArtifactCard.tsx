@@ -14,6 +14,24 @@ const MD_COMPONENTS: Components = {
 
 const QUOTE_PREVIEW = 120
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Find the selected (rendered) text inside the raw markdown source. Rendered
+ * text loses formatting characters, so fall back to a tolerant match that
+ * lets markdown punctuation appear between words.
+ */
+function locateSelection(raw: string, selected: string): [number, number] | null {
+  const direct = raw.indexOf(selected)
+  if (direct !== -1) return [direct, direct + selected.length]
+  const tokens = selected.split(/\s+/).filter(Boolean).map(escapeRegExp)
+  if (tokens.length === 0) return null
+  const match = new RegExp(tokens.join('[\\s*_`#>\\-|]+')).exec(raw)
+  return match ? [match.index, match.index + match[0].length] : null
+}
+
 function relativeTime(ts: number): string {
   const minutes = Math.floor((Date.now() - ts) / 60_000)
   if (minutes < 1) return 'just now'
@@ -57,16 +75,18 @@ interface DocModalProps {
 /** Self-contained doc review modal — usable from the feed and the Artifacts tab. */
 export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
   const { me, agents } = useWorkspace()
+  // Human edits create new versions in place — track the live doc locally.
+  const [doc, setDoc] = useState(artifact)
   const canReview = me.role !== 'guest'
-  const canAct = me.role !== 'guest' && artifact.status === 'proposed'
-  const agent = agents.find((a) => a.id === artifact.createdByAgentId)
+  const canAct = me.role !== 'guest' && doc.status === 'proposed'
+  const agent = agents.find((a) => a.id === doc.createdByAgentId)
   const agentLabel = agent ? `${agent.avatarEmoji} ${agent.name}` : undefined
   const [isActing, setIsActing] = useState(false)
 
   const onAct = async (action: 'commit' | 'discard') => {
     setIsActing(true)
     try {
-      await api.post(`/api/artifacts/${artifact.id}/${action}`)
+      await api.post(`/api/artifacts/${doc.id}/${action}`)
       onClose()
     } catch {
       // artifact_state never arrives on failure — modal stays open
@@ -75,12 +95,54 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
     }
   }
   const docRef = useRef<HTMLDivElement>(null)
+  const editRef = useRef<HTMLTextAreaElement>(null)
   const [comments, setComments] = useState<ArtifactComment[]>([])
   const [pendingQuote, setPendingQuote] = useState<string | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [isRevising, setIsRevising] = useState(false)
   const [feedbackDraft, setFeedbackDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editDraft, setEditDraft] = useState('')
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+  /** Enter edit mode; when entered from a selection, pre-select it in the source. */
+  const startEdit = (quote?: string | null) => {
+    setEditDraft(doc.content)
+    setIsEditing(true)
+    setPendingQuote(null)
+    requestAnimationFrame(() => {
+      const area = editRef.current
+      if (!area) return
+      area.focus()
+      const range = quote ? locateSelection(doc.content, quote) : null
+      if (range) {
+        area.setSelectionRange(range[0], range[1])
+        // Rough scroll: place the selection about a third down the viewport.
+        const before = doc.content.slice(0, range[0]).split('\n').length
+        const total = doc.content.split('\n').length
+        area.scrollTop = Math.max(0, (before / total) * area.scrollHeight - area.clientHeight / 3)
+      }
+    })
+  }
+
+  const saveEdit = async () => {
+    const content = editDraft.trim()
+    if (!content || content === doc.content) {
+      setIsEditing(false)
+      return
+    }
+    setIsSavingEdit(true)
+    try {
+      const next = await api.post<Artifact>(`/api/artifacts/${doc.id}/edit`, { content })
+      setDoc(next)
+      setIsEditing(false)
+    } catch {
+      // keep the draft — the user can retry or copy their text out
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
@@ -99,20 +161,26 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
     }
   }, [handleKey])
 
-  // Load existing comments; live-merge new ones.
+  // Load existing comments; live-merge new ones. Merging (not replacing)
+  // keeps earlier-version comments visible after an in-place edit bumps doc.id.
   useEffect(() => {
     api
-      .get<ArtifactComment[]>(`/api/artifacts/${artifact.id}/comments`)
-      .then(setComments)
+      .get<ArtifactComment[]>(`/api/artifacts/${doc.id}/comments`)
+      .then((loaded) =>
+        setComments((prev) => {
+          const seen = new Set(prev.map((c) => c.id))
+          return [...prev, ...loaded.filter((c) => !seen.has(c.id))]
+        })
+      )
       .catch(() => {})
     return wsClient.subscribe((event) => {
       if (event.type !== 'artifact_comment') return
-      if (event.comment.artifactId !== artifact.id) return
+      if (event.comment.artifactId !== doc.id) return
       setComments((prev) =>
         prev.some((c) => c.id === event.comment.id) ? prev : [...prev, event.comment]
       )
     })
-  }, [artifact.id])
+  }, [doc.id])
 
   // Select text in the doc → the comment composer opens anchored to it.
   const captureSelection = () => {
@@ -132,7 +200,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
     const quote = pendingQuote ?? undefined
     setPendingQuote(null)
     await api
-      .post(`/api/artifacts/${artifact.id}/comments`, { body, quote })
+      .post(`/api/artifacts/${doc.id}/comments`, { body, quote })
       .catch(() => {})
   }
 
@@ -141,7 +209,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
     if (!feedback) return
     setIsSending(true)
     try {
-      await api.post(`/api/artifacts/${artifact.id}/request-changes`, { feedback })
+      await api.post(`/api/artifacts/${doc.id}/request-changes`, { feedback })
       onClose()
     } catch {
       // stays open — user can retry
@@ -156,7 +224,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={artifact.title}
+      aria-label={doc.title}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -164,10 +232,19 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
       >
         {/* Title bar */}
         <div className="flex items-center gap-2 border-b border-zinc-800 px-5 py-3">
-          <span>{artifact.kind === 'change' ? '🧩' : '📄'}</span>
-          <h2 className="min-w-0 flex-1 truncate font-bold text-zinc-100">{artifact.title}</h2>
-          <span className="text-xs text-zinc-500">v{artifact.version}</span>
-          <StatusBadge status={artifact.status} />
+          <span>{doc.kind === 'change' ? '🧩' : '📄'}</span>
+          <h2 className="min-w-0 flex-1 truncate font-bold text-zinc-100">{doc.title}</h2>
+          <span className="text-xs text-zinc-500">v{doc.version}</span>
+          <StatusBadge status={doc.status} />
+          {canReview && !isEditing && (
+            <button
+              onClick={() => startEdit()}
+              className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              title="Edit the doc text directly"
+            >
+              ✏️ Edit
+            </button>
+          )}
           <button
             onClick={onClose}
             aria-label="Close"
@@ -178,10 +255,24 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
         </div>
 
         {/* Body */}
+        {isEditing ? (
+          <div className="flex flex-1 flex-col overflow-hidden px-6 py-4">
+            <p className="mb-2 text-[11px] text-zinc-600">
+              Editing the markdown source — saving creates v{doc.version + 1} in place.
+            </p>
+            <textarea
+              ref={editRef}
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              spellCheck={false}
+              className="min-h-[50vh] flex-1 resize-none rounded border border-zinc-800 bg-zinc-900/60 p-3 font-mono text-xs leading-relaxed text-zinc-200 focus:border-zinc-600 focus:outline-none"
+            />
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {canReview && (
             <p className="mb-2 text-[11px] text-zinc-600">
-              Tip: select any text in the doc to comment on it.
+              Tip: select any text in the doc to comment on it — or edit it in place.
             </p>
           )}
           <div
@@ -190,17 +281,17 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
             className="md-content text-sm leading-relaxed text-zinc-300"
           >
             <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>
-              {artifact.content}
+              {doc.content}
             </ReactMarkdown>
           </div>
 
-          {artifact.tasks.length > 0 && (
+          {doc.tasks.length > 0 && (
             <div className="mt-4 border-t border-zinc-800/60 pt-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Tasks on approval
               </p>
               <ul className="mt-1">
-                {artifact.tasks.map((task, i) => (
+                {doc.tasks.map((task, i) => (
                   <li key={i} className="flex items-start gap-2 py-0.5 text-sm text-zinc-400">
                     <span
                       className={
@@ -248,10 +339,11 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
             </div>
           )}
         </div>
+        )}
 
         {/* Comment composer — appears when text is selected (or write a
             general comment any time) */}
-        {canReview && (
+        {canReview && !isEditing && (
           <div className="border-t border-zinc-800 px-5 py-2">
             {pendingQuote && (
               <p className="mb-1 flex items-start gap-2 text-xs text-zinc-500">
@@ -260,6 +352,13 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
                   “{pendingQuote.slice(0, QUOTE_PREVIEW)}
                   {pendingQuote.length > QUOTE_PREVIEW ? '…' : ''}”
                 </span>
+                <button
+                  onClick={() => startEdit(pendingQuote)}
+                  className="whitespace-nowrap rounded border border-zinc-700 px-1.5 py-px text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                  title="Rewrite this text yourself"
+                >
+                  ✏️ Edit this text
+                </button>
                 <button
                   onClick={() => setPendingQuote(null)}
                   className="text-zinc-600 hover:text-zinc-300"
@@ -292,7 +391,24 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
 
         {/* Footer: reject / request changes / approve */}
         <div className="border-t border-zinc-800 px-5 py-3">
-          {isRevising ? (
+          {isEditing ? (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsEditing(false)}
+                disabled={isSavingEdit}
+                className="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void saveEdit()}
+                disabled={isSavingEdit || !editDraft.trim()}
+                className="rounded border border-emerald-700/60 bg-emerald-900/40 px-2.5 py-1 text-xs font-medium text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-40"
+              >
+                {isSavingEdit ? 'Saving…' : `✓ Save as v${doc.version + 1}`}
+              </button>
+            </div>
+          ) : isRevising ? (
             <div className="flex items-start gap-2">
               <textarea
                 value={feedbackDraft}
@@ -319,7 +435,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               {agentLabel && <span>{agentLabel}</span>}
               <span>
-                {artifact.tasks.length} task{artifact.tasks.length === 1 ? '' : 's'}
+                {doc.tasks.length} task{doc.tasks.length === 1 ? '' : 's'}
               </span>
               <span className="flex-1" />
               {canAct && (
@@ -342,7 +458,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
                     disabled={isActing}
                     className="rounded border border-emerald-700/60 bg-emerald-900/40 px-2.5 py-1 font-medium text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-40"
                   >
-                    {artifact.kind === 'change' ? '✓ Approve & commit' : '✓ Approve plan'}
+                    {doc.kind === 'change' ? '✓ Approve & commit' : '✓ Approve plan'}
                   </button>
                 </>
               )}
