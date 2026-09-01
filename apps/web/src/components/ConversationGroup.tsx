@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Message, RunStatus, SharedTask } from '@opencrew/shared'
 import { MessageItem } from './MessageItem'
 import { UnreadDot } from './UnreadDot'
@@ -164,6 +164,15 @@ interface ConversationGroupProps {
   defaultCollapsed?: boolean
   /** Shared task list for this conversation. */
   tasksList?: SharedTask[]
+  /** Dispatched task threads that belong to THIS conversation — rendered
+   *  nested as compact rows instead of scattering as channel siblings. */
+  subThreads?: SubThreadEntry[]
+}
+
+export interface SubThreadEntry {
+  group: MessageGroup
+  status: GroupStatus
+  tasksList?: SharedTask[]
 }
 
 export function ConversationGroup({
@@ -176,7 +185,8 @@ export function ConversationGroup({
   isUnread = false,
   onSeen,
   defaultCollapsed = false,
-  tasksList
+  tasksList,
+  subThreads
 }: ConversationGroupProps) {
   const { trigger, responses } = group
   const groupRef = useRef<HTMLDivElement>(null)
@@ -400,6 +410,110 @@ export function ConversationGroup({
           />
         ))}
       </div>
+
+      {/* Dispatched task threads, nested — the plan's fan-out stays inside
+          its conversation instead of flooding the channel with siblings. */}
+      {subThreads && subThreads.length > 0 && (
+        <div className="border-t border-zinc-800/40 px-3 py-2 sm:px-4">
+          <div className="mb-1.5 font-mono text-[11px] tracking-wide text-zinc-500">
+            ↳ {subThreads.length} task {subThreads.length === 1 ? 'thread' : 'threads'}
+          </div>
+          <div className="space-y-1">
+            {subThreads.map((entry) => (
+              <SubThreadRow
+                key={entry.group.trigger!.id}
+                entry={entry}
+                channelId={channelId}
+                onOpenRun={onOpenRun}
+                targetThreadId={targetThreadId}
+                onToggleDone={onToggleDone}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SubThreadRow — a dispatched task thread, compact until you open it
+// ---------------------------------------------------------------------------
+
+/** Strip the kickoff scaffolding for the compact row: 📌 and the origin note. */
+function subThreadTitle(content: string): string {
+  return content
+    .replace(/📌\s*/g, '')
+    .replace(/_\(priority:[^)]*\)_\s*$/, '')
+    .trim()
+}
+
+interface SubThreadRowProps {
+  entry: SubThreadEntry
+  channelId: string
+  onOpenRun: (runId: string) => void
+  targetThreadId?: string
+  onToggleDone?: (rootId: string, done: boolean) => void
+}
+
+function SubThreadRow({
+  entry,
+  channelId,
+  onOpenRun,
+  targetThreadId,
+  onToggleDone
+}: SubThreadRowProps) {
+  const trigger = entry.group.trigger!
+  // Deep links into the sub-thread must open it — it has no other surface.
+  const containsTarget =
+    !!targetThreadId &&
+    (trigger.id === targetThreadId ||
+      entry.group.responses.some((m) => m.id === targetThreadId))
+  const [open, setOpen] = useState(containsTarget)
+
+  const replyCount = entry.group.responses.length + (trigger.replyCount ?? 0)
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2 rounded-md border border-zinc-800/60 bg-zinc-950/40 px-2.5 py-1.5 text-left text-xs transition hover:border-zinc-700 hover:bg-zinc-900/40"
+      >
+        <span className="select-none text-zinc-600">▸</span>
+        <span className="min-w-0 flex-1 truncate text-zinc-300">
+          {subThreadTitle(trigger.content)}
+        </span>
+        {replyCount > 0 && (
+          <span
+            className="shrink-0 font-mono text-[11px] text-zinc-500"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+          </span>
+        )}
+        <span className="shrink-0">{renderPill(entry.status)}</span>
+      </button>
+    )
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(false)}
+        className="mb-1 flex items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-300"
+      >
+        <span className="select-none">▾</span> collapse task thread
+      </button>
+      {/* Full conversation card, nested one level — the task's whole log. */}
+      <ConversationGroup
+        group={entry.group}
+        channelId={channelId}
+        onOpenRun={onOpenRun}
+        targetThreadId={targetThreadId}
+        status={entry.status}
+        onToggleDone={onToggleDone}
+        tasksList={entry.tasksList}
+      />
     </div>
   )
 }

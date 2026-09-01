@@ -239,11 +239,18 @@ export async function startTask(
   // The kickoff posts under the initiating human's identity because only
   // human-authored mentions trigger runs directly — the origin note keeps
   // the provenance honest ("did I kick this?" must never be ambiguous).
+  //
+  // refThreadId (WITHOUT refChannelId) is the SUB-THREAD parent link: it
+  // points at the conversation the task was dispatched from, so the feed
+  // nests this action thread under its plan instead of scattering siblings
+  // across the channel. Citations (cite_thread) always set BOTH ref fields —
+  // the missing channel id is what distinguishes the two.
   const message = await postMessage(ctx, {
     channelId: task.channelId,
     authorType: 'human',
     authorId: initiatorUserId,
-    content: `${mention}📌 ${task.content} _(priority: ${task.priority}${ORIGIN_NOTE[origin]})_`
+    content: `${mention}📌 ${task.content} _(priority: ${task.priority}${ORIGIN_NOTE[origin]})_`,
+    refThreadId: oldRootId
   })
   await ctx.db
     .update(tasks)

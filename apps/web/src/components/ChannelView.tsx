@@ -270,8 +270,32 @@ export function ChannelView({
     }, 2000)
   }, [targetThreadId, loading, onThreadFocused])
 
-  const groups = groupIntoConversations(messages)
+  const allGroups = groupIntoConversations(messages)
   const workStatuses = useWorkStatuses()
+
+  // Sub-thread nesting: dispatched task kickoffs carry refThreadId (with NO
+  // refChannelId — citations set both) pointing at the conversation that
+  // spawned them. Those groups nest under their parent's card instead of
+  // scattering as siblings. A parent outside the loaded page falls back to
+  // top-level so the thread never vanishes.
+  const { groups, subThreadsByParent } = useMemo(() => {
+    const rootIds = new Set(
+      allGroups.map((g) => g.trigger?.id).filter(Boolean) as string[]
+    )
+    const subThreadsByParent = new Map<string, MessageGroup[]>()
+    const groups: MessageGroup[] = []
+    for (const g of allGroups) {
+      const parentId =
+        g.trigger?.refThreadId && !g.trigger.refChannelId ? g.trigger.refThreadId : null
+      if (parentId && parentId !== g.trigger!.id && rootIds.has(parentId)) {
+        subThreadsByParent.set(parentId, [...(subThreadsByParent.get(parentId) ?? []), g])
+      } else {
+        groups.push(g)
+      }
+    }
+    return { groups, subThreadsByParent }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages])
   const conversationTasks = useConversationTasks(channel.id)
   const channelArtifacts = useChannelArtifacts(channel.id)
   // Regroup by producing run so doc cards render under the announcing reply.
@@ -512,6 +536,21 @@ export function ChannelView({
               tasksList={
                 entry.group.trigger
                   ? (conversationTasks.get(entry.group.trigger.id) ?? [])
+                  : undefined
+              }
+              subThreads={
+                entry.group.trigger
+                  ? subThreadsByParent.get(entry.group.trigger.id)?.map((sub) => ({
+                      group: sub,
+                      status: mergeStatus(
+                        deriveGroupStatus(sub.responses),
+                        sub.trigger ? workStatuses.get(sub.trigger.id) : undefined,
+                        sub.trigger?.manualStatus === 'done'
+                      ),
+                      tasksList: sub.trigger
+                        ? (conversationTasks.get(sub.trigger.id) ?? [])
+                        : undefined
+                    }))
                   : undefined
               }
             />
