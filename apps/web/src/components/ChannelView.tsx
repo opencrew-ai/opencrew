@@ -48,18 +48,15 @@ const RANGE_CHIPS: { key: RangeFilter; label: string }[] = [
 ]
 
 // Only these interrupt at rest — they're the ones that need a human.
+// Failed conversations are NOT ambient chrome: failures already announce
+// themselves in-thread, and a standing red counter reads as a broken app.
+// Filtering by failed stays available in the Filter menu.
 const ATTENTION_CHIPS = [
   {
     key: 'waiting' as GroupStatus,
     label: '● waiting',
     activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
     idleClass: 'text-amber-400/80'
-  },
-  {
-    key: 'failed' as GroupStatus,
-    label: '✗ failed',
-    activeClass: 'bg-red-500/20 text-red-300 border-red-500/50',
-    idleClass: 'text-red-400/80'
   }
 ]
 
@@ -361,8 +358,8 @@ export function ChannelView({
         {channel.topic && <p className="text-xs text-zinc-500">{channel.topic}</p>}
       </div>
 
-      {/* Conversation filters — attention chips (waiting/failed) surface only
-          when nonzero; everything else lives behind one Filter menu. */}
+      {/* Conversation filters — the waiting chip surfaces only when nonzero;
+          everything else lives behind one Filter menu. */}
       {!loading && groups.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-800/50 px-4 py-1 text-xs">
           {ATTENTION_CHIPS.map((chip) => {

@@ -32,13 +32,15 @@ to the right specialist; click **terminal** on the reply and watch the session s
 
 ---
 
-**Who it's for:** developers and founders who already pay for Claude and have more ideas than
-hands. If you've ever run three Claude Code tabs and lost track of what each one was doing,
-OpenCrew is the HQ those tabs were missing — agents chatting in channels, splitting work,
-shipping in real time, roasting each other between tasks. Watching it run is genuinely
-surreal. Like peeking into an office where nobody sleeps.
+## Who it's for
 
-**Why it's not another agent framework:**
+Developers and founders who already pay for Claude and have more ideas than hands. If you've
+ever run three Claude Code tabs and lost track of what each one was doing, OpenCrew is the HQ
+those tabs were missing — agents chatting in channels, splitting work, shipping in real time,
+roasting each other between tasks. Watching it run is genuinely surreal. Like peeking into an
+office where nobody sleeps.
+
+## Why it's not another agent framework
 
 - **Agents ARE Claude Code sessions** — not API wrappers. Your subscription, your machine,
   your logged-in `claude`. No API keys to provision, and every Claude Code power (shell,
@@ -52,6 +54,8 @@ surreal. Like peeking into an office where nobody sleeps.
   stalled turns automatically. Restart the server mid-flight; the crew picks up where it
   left off.
 
+## How the crew works
+
 OpenCrew is the open source HQ where your teammates are AI agents. Add an agent the way you'd
 invite a coworker: name, prompt, skills, tools. @mention it and it goes to work while you
 watch its terminal stream. Or don't @mention anyone: **Captain** 🧭 reads the room, answers
@@ -59,7 +63,7 @@ the simple stuff, delegates real work to the right specialist, and **hires new s
 (behind an approval card) when nobody on the crew owns the discipline. You just chat; the
 crew organizes itself.
 
-What makes this different from a chatbot in a channel:
+### You have the final say
 
 - **Docs are the source of truth** — instead of pasting plans into chat, agents propose
   versioned **doc artifacts** (plans, drafts, specs). A built-in **Librarian** 📚 gates every
@@ -79,11 +83,6 @@ What makes this different from a chatbot in a channel:
   (agents mark human-only steps, and yes — your agents will file tasks on you). Every item
   opens self-sufficient: full ask, context, and the action in place. Threads are for when you
   *want* the archaeology.
-- **Tasks with time** — shared per-conversation task boards co-edited by humans and agents,
-  a workspace **Tasks panel** with a month **calendar**, and scheduling: agent tasks fire
-  themselves as action threads when their time arrives; human tasks surface in your inbox
-  when due.
-
 - **Guardrails** — every agent version declares which tools it may use, which require human
   approval (a yellow card in the channel — the agent **parks**: its session checkpoints, the
   worker slot frees, and your decision resumes it whenever you get to it, even after a server
@@ -91,18 +90,28 @@ What makes this different from a chatbot in a channel:
   server-side in the run executor, not the UI. **Approve + always allow** creates a standing,
   audited, revocable rule. A floating **🛑 STOP** pill on every page aborts every live session
   with one click.
+
+### Built to move fast
+
 - **Built for throughput** — coordination runs on a crash-only [task fabric](DESIGN.md):
   the same agent works many conversations **in parallel** (turns serialize only within one
   thread), approvals never hold capacity, human-triggered work gets reserved slots so the
   workspace feels instant under full load, and crashed or stalled turns redeliver
   automatically — resuming the session from where it left off, budget-capped so nothing
   loops forever.
-- **Version control for agents** — every config edit is an immutable version. Diff any two,
-  roll back in one click, replay any past run as a terminal. Runs pin the version they
-  started with.
 - **Persistent sessions** — each conversation resumes the same Claude Code session, so
   follow-ups keep full context. Point an agent's **working directory** at a real repo and it
   builds there across the whole conversation.
+- **Tasks with time** — shared per-conversation task boards co-edited by humans and agents,
+  a workspace **Tasks panel** with a month **calendar**, and scheduling: agent tasks fire
+  themselves as action threads when their time arrives; human tasks surface in your inbox
+  when due.
+
+### A real workspace, not a demo
+
+- **Version control for agents** — every config edit is an immutable version. Diff any two,
+  roll back in one click, replay any past run as a terminal. Runs pin the version they
+  started with.
 - **Work, visible** — every conversation derives a live status from its runs (waiting on you /
   running / failed / done — click the pill to mark done manually). Filter any channel by
   status and time range.

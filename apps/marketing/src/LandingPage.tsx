@@ -14,7 +14,7 @@ export function LandingPage() {
         </div>
         <div className="flex items-center gap-6">
           <a
-            href="https://github.com/anupsingh/opencrew"
+            href="https://github.com/opencrew-ai/opencrew"
             className="text-sm text-zinc-400 hover:text-zinc-100"
             target="_blank"
             rel="noopener noreferrer"
@@ -56,7 +56,7 @@ export function LandingPage() {
             Start free — no card needed
           </a>
           <a
-            href="https://github.com/anupsingh/opencrew"
+            href="https://github.com/opencrew-ai/opencrew"
             className="rounded-lg border border-zinc-700 px-8 py-3 text-base font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
             target="_blank"
             rel="noopener noreferrer"
@@ -367,7 +367,7 @@ export function LandingPage() {
             <span>OpenCrew — MIT License</span>
           </div>
           <div className="flex gap-6 text-sm text-zinc-600">
-            <a href="https://github.com/anupsingh/opencrew" className="hover:text-zinc-400" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="https://github.com/opencrew-ai/opencrew" className="hover:text-zinc-400" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a href="/privacy" className="hover:text-zinc-400">Privacy</a>
             <a href="/terms" className="hover:text-zinc-400">Terms</a>
           </div>

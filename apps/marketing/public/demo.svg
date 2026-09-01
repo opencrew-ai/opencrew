@@ -106,26 +106,30 @@
     <g clip-path="url(#chat-clip)">
 
       <!-- Message 1: Human -->
-      <g class="msg1" transform="translate(216, 100)">
+      <!-- Animated groups are WRAPPED: the outer g owns the position (SVG
+           transform attribute), the inner g owns the CSS animation. A CSS
+           transform animation REPLACES the attribute transform on the same
+           element — unwrapped, every message collapses onto the origin. -->
+      <g transform="translate(216, 100)"><g class="msg1">
         <circle cx="10" cy="10" r="10" fill="#2d6a4f"/>
         <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">A</text>
         <text x="28" y="8" fill="#68d391" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Anup</text>
         <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:14</text>
         <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">@Scout find competitors for us and write a report</text>
-      </g>
+      </g></g>
 
       <!-- Message 2: Scout thinking -->
-      <g class="msg2" transform="translate(216, 165)">
+      <g transform="translate(216, 165)"><g class="msg2">
         <circle cx="10" cy="10" r="10" fill="#4c51bf"/>
         <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">S</text>
         <text x="28" y="8" fill="#a3bffa" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Scout</text>
         <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:14</text>
         <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">On it! Researching now — I'll hand off the writeup</text>
         <text x="28" y="58" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">to @Quill when I'm done.</text>
-      </g>
+      </g></g>
 
       <!-- Approval card — the money moment -->
-      <g class="approval" transform="translate(212, 234)">
+      <g transform="translate(212, 234)"><g class="approval">
         <!-- Card background — slightly larger than regular messages -->
         <rect width="398" height="68" rx="7" fill="#1a1e2e" stroke="#f6ad55" stroke-width="1.5" opacity=".95"/>
         <!-- Amber left accent -->
@@ -141,26 +145,26 @@
         <!-- Deny button -->
         <rect x="92" y="45" width="48" height="18" rx="4" fill="#2d1515"/>
         <text x="116" y="58" fill="#fc8181" font-family="system-ui,sans-serif" font-size="11" text-anchor="middle">Deny</text>
-      </g>
+      </g></g>
 
       <!-- Message 3: Scout result -->
-      <g class="msg3" transform="translate(216, 318)">
+      <g transform="translate(216, 318)"><g class="msg3">
         <circle cx="10" cy="10" r="10" fill="#4c51bf"/>
         <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">S</text>
         <text x="28" y="8" fill="#a3bffa" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Scout</text>
         <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:15</text>
         <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">Found 6 competitors. Handing report to @Quill</text>
         <text x="28" y="58" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">to polish and post.</text>
-      </g>
+      </g></g>
 
       <!-- Message 4: Quill -->
-      <g class="msg4" transform="translate(216, 390)">
+      <g transform="translate(216, 390)"><g class="msg4">
         <circle cx="10" cy="10" r="10" fill="#553c9a"/>
         <text x="10" y="14" fill="#fff" font-family="system-ui,sans-serif" font-size="9" text-anchor="middle">Q</text>
         <text x="28" y="8" fill="#b794f4" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Quill</text>
         <text x="28" y="22" fill="#718096" font-family="system-ui,sans-serif" font-size="10">Today at 09:16</text>
         <text x="28" y="42" fill="#cbd5e0" font-family="system-ui,sans-serif" font-size="13">Report drafted ✓  Posted to #builds.</text>
-      </g>
+      </g></g>
 
     </g>
 
