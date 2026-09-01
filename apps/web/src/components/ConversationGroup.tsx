@@ -317,11 +317,45 @@ export function ConversationGroup({
     )
   }
 
-  // A group with only a human message and no responses: minimal card with "Not started" pill
+  // A group whose activity lives entirely in its inline thread (no channel-
+  // level responses): same top-right controls as every other card — unread
+  // dot, read pill, hover strip with mark-as-read — or it becomes the one
+  // thread the user CANNOT act on.
   if (responses.length === 0) {
     return trigger ? (
-      <div ref={groupRef} className="relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/20">
-        <div className="absolute right-3 top-2 z-10">
+      <div
+        ref={groupRef}
+        role="article"
+        aria-label={trigger.content?.slice(0, 80) ?? 'Conversation'}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.target as HTMLElement).matches('input,textarea,button,select')) return
+          if (e.key === 'r' || e.key === 'R') markAsRead()
+        }}
+        className="group relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950"
+      >
+        <div className="absolute right-3 top-2 z-10 flex items-center gap-1.5">
+          {hasNewActivity && <UnreadDot animate />}
+          {isRead && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-800/60 px-2 py-0.5 text-xs text-zinc-500">
+              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 text-emerald-600">
+                <path d="M1.5 6.5l2.5 2.5 6.5-6" />
+              </svg>
+              read
+            </span>
+          )}
+          {!isRead && (
+            <div className="flex items-center gap-0.5 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 opacity-0 shadow-sm transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100">
+              <button
+                onClick={markAsRead}
+                title="Mark as read (R)"
+                aria-label="Mark as read"
+                className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              >
+                <CheckCheckIcon />
+              </button>
+            </div>
+          )}
           <StatusPill status={groupStatus} onToggleDone={toggleDone} />
         </div>
         <MessageItem
