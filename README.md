@@ -52,11 +52,18 @@ What makes this different from a chatbot in a channel:
   when due.
 
 - **Guardrails** — every agent version declares which tools it may use, which require human
-  approval (a yellow card in the channel — the agent's session literally pauses and waits),
-  which channels it may post to, and a max runs/hour rate limit. All enforced server-side in
-  the run executor, not the UI. **Approve + always allow** creates a standing, audited,
-  revocable rule. A floating **🛑 STOP** pill on every page aborts every live session with one
-  click.
+  approval (a yellow card in the channel — the agent **parks**: its session checkpoints, the
+  worker slot frees, and your decision resumes it whenever you get to it, even after a server
+  restart), which channels it may post to, and a max runs/hour rate limit. All enforced
+  server-side in the run executor, not the UI. **Approve + always allow** creates a standing,
+  audited, revocable rule. A floating **🛑 STOP** pill on every page aborts every live session
+  with one click.
+- **Built for throughput** — coordination runs on a crash-only [task fabric](DESIGN.md):
+  the same agent works many conversations **in parallel** (turns serialize only within one
+  thread), approvals never hold capacity, human-triggered work gets reserved slots so the
+  workspace feels instant under full load, and crashed or stalled turns redeliver
+  automatically — resuming the session from where it left off, budget-capped so nothing
+  loops forever.
 - **Version control for agents** — every config edit is an immutable version. Diff any two,
   roll back in one click, replay any past run as a terminal. Runs pin the version they
   started with.
@@ -144,18 +151,22 @@ to watch the session stream live.
 
 ```
 opencrew/
+├── DESIGN.md             # The coordination layer's design doc (the task fabric)
 ├── apps/
 │   ├── web/              # React 18 + Vite + Tailwind CSS v4 frontend
+│   ├── marketing/        # opencrew.run marketing site (static build, CI-checked)
 │   └── server/           # Fastify API + WebSocket server
 │       └── src/
 │           ├── auth/         # Session and password handling
 │           ├── db/           # Drizzle schema (Postgres/PGlite), seed
+│           ├── fabric/       # The task fabric: store + runtime (scheduler, leases, reaper)
 │           ├── routes/       # REST and WebSocket routes
-│           ├── runs/         # Agent run execution, queue, guardrails, audit
+│           ├── runs/         # Turn executor, admission (mentions/watchers), guardrails, audit
 │           ├── services/     # Agents, channels, messages, presence, cloudlink
 │           └── tools/        # MCP tools registered for agents
 ├── packages/
 │   └── shared/           # Shared TypeScript types (used by web and server)
+├── docs/                 # Style guide, assets (archive/ holds completed working specs)
 ├── data/
 │   ├── opencrew.pgdata   # Embedded Postgres (PGlite) — auto-created on first boot
 │   └── workspaces/       # Per-agent working directories
@@ -171,6 +182,7 @@ apps/web        React + Vite + Tailwind (dark, Slack-style, live terminal panels
    │  REST + WebSocket (/api, /api/ws)
 apps/server     Fastify + Postgres (PGlite embedded, or DATABASE_URL) — auth,
    │            channels, agents, guardrails, presence, reactions
+   │  task fabric: DB-backed leases + lanes + parked approvals (see DESIGN.md)
    │  resumes one persistent session per (agent, conversation)
 Claude Code     @anthropic-ai/claude-agent-sdk → query({ resume }) per turn
    │  PreToolUse hook = approval gate choke point (fires on EVERY tool call)
@@ -178,19 +190,30 @@ Claude Code     @anthropic-ai/claude-agent-sdk → query({ resume }) per turn
       list_agents, create_agent, and yours)
 ```
 
-- **Message → run** — an @mention (or, for watchers like Captain, any untargeted human message)
-  enqueues a `run` (in-process queue, concurrency 4; runs for the same agent execute in order).
-  The first turn builds context from the last 30 channel messages; follow-up turns **resume the
-  same Claude Code session** and receive only what's new. Sessions run with the agent's pinned
-  versioned system prompt, model, and tool allowlist, in its workspace directory
-  (`data/workspaces/<agent-id>`) or its configured working directory.
+- **Message → task → turn** — an @mention (or, for watchers like Captain, any untargeted
+  human message) is admitted as a **fabric task** (see [DESIGN.md](DESIGN.md)). A
+  level-triggered scheduler leases ready tasks up to capacity (default 8 concurrent turns,
+  `OPENCREW_CONCURRENCY`), serializing only physics: one live turn per (agent, conversation),
+  and exclusive devices (a Chrome profile, a configured repo). The same agent works other
+  conversations in parallel. Human-triggered work runs in a reserved **interactive lane** so
+  a big background grind never freezes the chat. The database is the only coordination state
+  — leases expire, attempts redeliver (budget-capped), and restart recovery is just the
+  reaper's first pass. Crash-only by construction.
+- **Turns** — the first turn builds context from the last 30 channel messages; follow-up
+  turns **resume the same Claude Code session** and receive only what's new — including
+  redelivered attempts, which continue from where the failed attempt left off. Sessions run
+  with the agent's pinned versioned system prompt, model, and tool allowlist, in its
+  workspace directory (`data/workspaces/<agent-id>`) or its configured working directory.
 - **Guardrails** — non-gated tools are pre-approved. Every tool call passes through a
   `PreToolUse` hook (this matters: it fires even for calls Claude Code would auto-allow, like
-  sandboxable read-only Bash), which denies tools outside the version's allowlist and blocks
-  gated ones until an admin resolves the approval card — or a standing auto-approve rule
-  resolves it instantly. The approvals DB row is re-verified before the tool executes.
-  `canPostInChannels` is enforced at the single message-creation choke point; `maxRunsPerHour`
-  is enforced at enqueue.
+  sandboxable read-only Bash), which denies tools outside the version's allowlist. A gated
+  call **parks** the task: the approval card is posted, the session checkpoints, and the
+  worker slot frees — pending approvals survive restarts and cost nothing while they wait.
+  Approving resumes the turn with a **one-shot grant** for exactly the proposed call
+  (different input → a fresh approval); denying resumes it with the denial as context, so the
+  agent adapts instead of dying. Standing auto-approve rules resolve instantly, still
+  audited. `canPostInChannels` is enforced at the single message-creation choke point;
+  `maxRunsPerHour` is enforced at admission.
 - **Audit** — every LLM turn, tool call, tool result, post, and approval is a `run_steps` row,
   streamed over WebSocket into the terminal drawer. There are no silent actions.
 - **Artifacts & review** — `propose_plan` / `propose_change` create versioned artifacts with a
@@ -222,6 +245,7 @@ generates `SESSION_SECRET` automatically on first boot — you don't need to set
 | `DATABASE_URL` | `data/opencrew.pgdata` | Postgres URL for a real cluster, or a path for embedded PGlite (zero setup) |
 | `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent working files |
 | `OPENCREW_MAX_MENTION_DEPTH` | `4` | Default agent→agent chain depth — overridable live in **⚙ Workspace settings** |
+| `OPENCREW_CONCURRENCY` | `8` | Max concurrently executing agent turns (2 slots stay reserved for human-triggered work) |
 | `OPENCREW_WEB_PORT` | `5173` | Port the web app serves on (what LAN URLs and tunnels point at) |
 | `OPENCREW_RELAY_URL` | `https://relay.opencrew.run` | Cloud Link relay (self-hostable — see `relay` docs) |
 | `OPENCREW_TUNNEL_TOKEN` | *(unset)* | Cloudflare **named** tunnel token — stable remote URL on your own domain |
@@ -258,13 +282,12 @@ is a front door, not a migration.
 ```bash
 pnpm dev      # Start web (:5173) and server (:3001) in parallel
 pnpm build    # Type-check and build all packages
-pnpm test     # Run all tests (guardrail invariants + version-diff tests via Vitest)
+pnpm test     # Run all tests (fabric kernel, guardrail invariants, task DAG, diffs — Vitest)
 pnpm seed     # Re-seed the database — delete data/ first for a clean slate
 ```
 
 The database is embedded Postgres (PGlite) at `data/opencrew.pgdata` — no server to install.
 Point `DATABASE_URL` at a real Postgres cluster when you outgrow it; the schema is identical.
-Migrating from an older SQLite install? `npx tsx apps/server/scripts/migrate-sqlite-to-pg.ts`.
 
 ---
 
@@ -303,8 +326,13 @@ present but identity-locked to the configured reviewers.
 
 ## Known limitations
 
-- A server restart fails any in-flight runs (approval wait state lives in-process). Persistent
-  sessions survive — the next message resumes the conversation.
+- Side effects are **at-least-once**: a turn interrupted mid-tool and redelivered may repeat
+  an action the audit log already shows (an effects ledger for exactly-once is on the
+  [DESIGN.md](DESIGN.md) roadmap). Restarts themselves are safe — interrupted turns redeliver
+  and resume their sessions; pending approvals survive.
+- Two agents (or two conversations of one agent) pointed at the **same configured working
+  directory** take turns — the repo is treated as an exclusive device until per-attempt git
+  worktrees land. Scratch workspaces don't serialize.
 - Messages sent while an agent is mid-turn queue until that turn ends — no mid-turn steering yet.
 - DMs, file uploads, push notifications, and SSO are out of scope for now.
 - `Bash` runs with your local user in the agent's workspace directory — keep it behind an

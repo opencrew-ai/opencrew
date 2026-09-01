@@ -40,8 +40,6 @@ export const env = {
   databaseUrl:
     process.env.DATABASE_URL ??
     resolve(process.cwd(), '../../data/opencrew.pgdata'),
-  /** Deprecated: legacy SQLite path kept for the migration script only. */
-  dbPath: process.env.OPENCREW_DB ?? resolve(process.cwd(), '../../data/opencrew.sqlite'),
   /**
    * Identifies this workspace in a shared Postgres cluster. Used as the
    * workspace_slug column value — each workspace's rows are tagged with this.

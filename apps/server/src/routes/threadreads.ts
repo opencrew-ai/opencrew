@@ -1,26 +1,9 @@
 import type { FastifyInstance } from 'fastify'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { AppContext } from '../context'
 import type { DB } from '../db'
 import { messages, threadReads } from '../db/schema'
 import { authGuard, fail, ok } from './helpers'
-
-/**
- * Read timestamps for a user across a set of thread roots: rootId → readAt.
- * Roots with no row are absent from the map (never marked read).
- */
-export async function threadReadsFor(
-  db: DB,
-  userId: string,
-  rootIds: string[]
-): Promise<Map<string, number>> {
-  if (rootIds.length === 0) return new Map()
-  const rows = await db
-    .select({ threadRootId: threadReads.threadRootId, readAt: threadReads.readAt })
-    .from(threadReads)
-    .where(and(eq(threadReads.userId, userId), inArray(threadReads.threadRootId, rootIds)))
-  return new Map(rows.map((r) => [r.threadRootId, r.readAt]))
-}
 
 /** Resolve a thread root and confirm it lives in the given channel. */
 async function findRoot(db: DB, channelId: string, rootId: string) {
