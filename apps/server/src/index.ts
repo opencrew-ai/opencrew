@@ -22,7 +22,9 @@ import { registerArtifactRoutes } from './routes/artifacts'
 import { registerAttentionRoutes } from './routes/attention'
 import { ensureBuiltinReviewers } from './services/artifacts'
 import { startTaskScheduler } from './services/scheduler'
+import { startRunWatchdog } from './runs/watchdog'
 import { registerReactionRoutes } from './routes/reactions'
+import { registerThreadReadRoutes } from './routes/threadreads'
 import { registerStatsRoutes } from './routes/stats'
 import { registerThreadShareRoutes } from './routes/threadshare'
 import { registerCrewsRoutes } from './routes/crews'
@@ -57,7 +59,7 @@ async function assertPortFree(port: number): Promise<void> {
 async function main(): Promise<void> {
   await assertPortFree(env.port)
   const { db } = await createDb(env.databaseUrl)
-  await failInterruptedRuns(db)
+  const requeuedRuns = await failInterruptedRuns(db)
   const seeded = await seedIfEmpty(db)
 
   const hub = new Hub()
@@ -74,6 +76,11 @@ async function main(): Promise<void> {
     (runId) => executeRun(ctx, runId),
     (runId) => getRunAgentId(db, runId)
   )
+  // Work interrupted by the restart resumes — sessions pick up where they left off.
+  for (const runId of requeuedRuns) queue.enqueue(runId)
+  if (requeuedRuns.length > 0) {
+    console.log(`⟳ Resuming ${requeuedRuns.length} run(s) interrupted by the restart.`)
+  }
 
   const app = Fastify({ logger: { level: 'warn' } })
   await app.register(fastifyCookie, { secret: env.sessionSecret })
@@ -125,6 +132,7 @@ async function main(): Promise<void> {
   // Reconnect to opencrew.run if this instance is cloud-linked.
   await ensureBuiltinReviewers(ctx)
   startTaskScheduler(ctx)
+  startRunWatchdog(ctx)
   startCloudLink(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })

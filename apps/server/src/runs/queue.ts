@@ -1,4 +1,5 @@
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
+import { nanoid } from 'nanoid'
 import type { DB } from '../db'
 import { approvals, runs } from '../db/schema'
 
@@ -76,20 +77,76 @@ export class RunQueue {
   }
 }
 
+const RESTART_REQUEUED_ERROR = 'server restarted mid-run — requeued'
+
 /**
  * Crash recovery: approval waits live in process memory (a blocked Claude
- * Code session), so anything mid-flight when the process died is failed and
- * its pending approvals are auto-denied.
+ * Code session), so anything mid-flight when the process died can't simply
+ * continue. But the WORK shouldn't die with the process — each interrupted
+ * run is marked failed and a fresh run is queued for the same trigger; the
+ * persistent per-(agent, conversation) session resumes with full context.
+ * One retry only: a run that gets interrupted twice is likely what's killing
+ * the server, so it fails permanently instead of looping.
+ *
+ * Returns the requeued run ids — the caller enqueues them once the queue is
+ * configured.
  */
-export async function failInterruptedRuns(db: DB): Promise<void> {
-  await db
-    .update(runs)
-    .set({ status: 'failed', error: 'server restarted mid-run', finishedAt: Date.now() })
+export async function failInterruptedRuns(db: DB): Promise<string[]> {
+  const interrupted = await db
+    .select()
+    .from(runs)
     .where(inArray(runs.status, ['queued', 'running', 'awaiting_approval']))
   await db
     .update(approvals)
     .set({ status: 'denied', resolvedBy: 'system:restart', resolvedAt: Date.now() })
     .where(eq(approvals.status, 'pending'))
+
+  const requeued: string[] = []
+  for (const run of interrupted) {
+    // A prior requeued failure for the same trigger+agent means THIS run was
+    // already the retry — give up rather than restart-loop.
+    const [prior] = await db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.triggerMessageId, run.triggerMessageId),
+          eq(runs.agentId, run.agentId),
+          eq(runs.error, RESTART_REQUEUED_ERROR)
+        )
+      )
+      .limit(1)
+    if (prior) {
+      await db
+        .update(runs)
+        .set({
+          status: 'failed',
+          error: 'server restarted mid-run twice — giving up',
+          finishedAt: Date.now()
+        })
+        .where(eq(runs.id, run.id))
+      continue
+    }
+
+    await db
+      .update(runs)
+      .set({ status: 'failed', error: RESTART_REQUEUED_ERROR, finishedAt: Date.now() })
+      .where(eq(runs.id, run.id))
+    const newId = nanoid()
+    await db.insert(runs).values({
+      id: newId,
+      agentId: run.agentId,
+      agentVersionId: run.agentVersionId,
+      triggerMessageId: run.triggerMessageId,
+      triggerType: run.triggerType,
+      status: 'queued',
+      depth: run.depth,
+      restricted: run.restricted,
+      createdAt: Date.now()
+    })
+    requeued.push(newId)
+  }
+  return requeued
 }
 
 export async function getRunAgentId(db: DB, runId: string): Promise<string | null> {
