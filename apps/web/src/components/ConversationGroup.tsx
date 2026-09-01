@@ -234,6 +234,19 @@ export function ConversationGroup({
     !!targetThreadId &&
     (trigger?.id === targetThreadId || responses.some((m) => m.id === targetThreadId))
 
+  // Completed threads fold themselves: when status transitions to done LIVE
+  // (the crew finished while the user watched), collapse to the ✓ Done
+  // summary card. Expanding afterwards sticks — the transition fires once —
+  // and deep-link targets never snap shut.
+  const prevStatusRef = useRef(groupStatus)
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = groupStatus
+    if (prev !== 'done' && prev !== groupStatus && groupStatus === 'done' && !containsTarget) {
+      collapse()
+    }
+  }, [groupStatus, containsTarget, collapse])
+
   // Collapsed card: trigger only (no thread UI), plus a row to expand.
   const hiddenTotal = responses.length + (trigger?.replyCount ?? 0)
   if (isCardCollapsed && !containsTarget && trigger && hiddenTotal > 0) {

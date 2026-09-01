@@ -532,7 +532,7 @@ export function ChannelView({
               onToggleDone={(rootId, done) => void toggleDone(rootId, done)}
               isUnread={isUnread}
               onSeen={() => markGroupSeen(groupId)}
-              defaultCollapsed={entry.status === 'done' && i < visible.length - 1}
+              defaultCollapsed={entry.status === 'done'}
               tasksList={
                 entry.group.trigger
                   ? (conversationTasks.get(entry.group.trigger.id) ?? [])
