@@ -202,11 +202,22 @@ export async function deleteTask(ctx: AppContext, taskId: string): Promise<boole
  * front desk picks it up), then re-homes the task to that new conversation.
  * Used by the ▶ button and by the scheduler when a task's time arrives.
  */
+/** Who pulled the trigger — rendered in the kickoff so provenance is honest. */
+export type StartTaskOrigin = 'manual' | 'auto' | 'scheduled'
+
+const ORIGIN_NOTE: Record<StartTaskOrigin, string> = {
+  // The human clicked ▶ themselves — nothing to explain.
+  manual: '',
+  auto: ' · auto-dispatched: its blockers completed',
+  scheduled: ' · scheduled start'
+}
+
 export async function startTask(
   ctx: AppContext,
   taskId: string,
   initiatorUserId: string,
-  agentId?: string
+  agentId?: string,
+  origin: StartTaskOrigin = 'manual'
 ): Promise<{ channelId: string; rootId: string } | null> {
   const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1)
   if (!task || task.status !== 'pending') return null
@@ -225,11 +236,14 @@ export async function startTask(
   }
 
   const oldRootId = task.conversationRootId
+  // The kickoff posts under the initiating human's identity because only
+  // human-authored mentions trigger runs directly — the origin note keeps
+  // the provenance honest ("did I kick this?" must never be ambiguous).
   const message = await postMessage(ctx, {
     channelId: task.channelId,
     authorType: 'human',
     authorId: initiatorUserId,
-    content: `${mention}📌 ${task.content} _(priority: ${task.priority})_`
+    content: `${mention}📌 ${task.content} _(priority: ${task.priority}${ORIGIN_NOTE[origin]})_`
   })
   await ctx.db
     .update(tasks)
@@ -266,7 +280,7 @@ export async function dispatchUnblockedTasks(
     }
     const initiator =
       task.createdByType === 'human' ? task.createdById : await workspaceAdminId(ctx.db)
-    if (initiator) await startTask(ctx, task.id, initiator)
+    if (initiator) await startTask(ctx, task.id, initiator, undefined, 'auto')
   }
   if (humanUnblocked) ctx.hub.broadcast({ type: 'attention_changed' })
 }

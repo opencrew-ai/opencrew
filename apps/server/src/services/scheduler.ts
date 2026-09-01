@@ -41,7 +41,7 @@ export function startTaskScheduler(ctx: AppContext): void {
           if (task.assigneeType === 'agent') {
             // Initiator: the human who created it, else the workspace admin.
             const initiator = task.createdByType === 'human' ? task.createdById : admin?.id
-            if (initiator) await startTask(ctx, task.id, initiator)
+            if (initiator) await startTask(ctx, task.id, initiator, undefined, 'scheduled')
           } else if ((task.scheduledFor ?? 0) > lastSweepAt) {
             humanBecameDue = true
           }
