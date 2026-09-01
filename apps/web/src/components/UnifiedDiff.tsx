@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactElement } from 'react'
+import { useState, type ComponentProps, type ReactElement } from 'react'
 
 /**
  * UnifiedDiff — renders a raw `git diff` as a real diff view: one card per
@@ -84,20 +84,24 @@ function parseDiff(text: string): DiffFile[] {
 }
 
 const LINE_CLASS: Record<LineKind, string> = {
-  add: 'bg-emerald-950/45 text-emerald-200',
-  del: 'bg-red-950/40 text-red-300',
+  add: 'bg-emerald-500/10 text-emerald-100',
+  del: 'bg-red-500/10 text-red-200',
   ctx: 'text-zinc-500',
   hunk: 'bg-zinc-900/80 text-zinc-500',
   meta: 'text-zinc-600'
 }
 
-const MARKER: Record<LineKind, string> = {
-  add: '+',
-  del: '-',
-  ctx: ' ',
-  hunk: '',
-  meta: ''
+const MARKER: Record<LineKind, { char: string; className: string }> = {
+  add: { char: '+', className: 'text-emerald-400' },
+  del: { char: '-', className: 'text-red-400' },
+  ctx: { char: ' ', className: '' },
+  hunk: { char: '', className: '' },
+  meta: { char: '', className: '' }
 }
+
+// Big files preview-collapse so a 1,000-line diff doesn't wall the feed.
+const COLLAPSE_OVER = 50
+const PREVIEW_LINES = 24
 
 export function UnifiedDiff({ text }: { text: string }) {
   const files = parseDiff(text)
@@ -105,58 +109,87 @@ export function UnifiedDiff({ text }: { text: string }) {
   return (
     <div className="not-prose my-2 space-y-3">
       {files.map((file, fi) => (
-        <div key={fi} className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
-          <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-1.5 font-mono text-xs">
-            <span className="min-w-0 flex-1 truncate font-medium text-zinc-200">
-              {file.path || 'diff'}
-            </span>
-            {file.adds > 0 && (
-              <span className="text-emerald-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                +{file.adds}
-              </span>
-            )}
-            {file.dels > 0 && (
-              <span className="text-red-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                −{file.dels}
-              </span>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse font-mono text-xs leading-5">
-              <tbody>
-                {file.lines.map((line, li) =>
-                  line.kind === 'hunk' || line.kind === 'meta' ? (
-                    <tr key={li} className={LINE_CLASS[line.kind]}>
-                      <td colSpan={3} className="select-none px-3 py-0.5 text-[11px]">
-                        {line.text}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={li} className={LINE_CLASS[line.kind]}>
-                      <td
-                        className="w-10 select-none border-r border-zinc-800/60 pr-2 text-right align-top text-[10px] text-zinc-600"
-                        style={{ fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        {line.oldNo ?? ''}
-                      </td>
-                      <td
-                        className="w-10 select-none border-r border-zinc-800/60 pr-2 text-right align-top text-[10px] text-zinc-600"
-                        style={{ fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        {line.newNo ?? ''}
-                      </td>
-                      <td className="whitespace-pre-wrap break-all px-2 align-top">
-                        <span className="mr-1 select-none opacity-60">{MARKER[line.kind]}</span>
-                        {line.text || ' '}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DiffFileCard key={fi} file={file} />
       ))}
+    </div>
+  )
+}
+
+function DiffFileCard({ file }: { file: DiffFile }) {
+  const collapsible = file.lines.length > COLLAPSE_OVER
+  const [expanded, setExpanded] = useState(!collapsible)
+  const visible = expanded ? file.lines : file.lines.slice(0, PREVIEW_LINES)
+  const hidden = file.lines.length - visible.length
+
+  return (
+    <div className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
+      <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-1.5 font-mono text-xs">
+        <span className="min-w-0 flex-1 truncate font-medium text-zinc-200">
+          {file.path || 'diff'}
+        </span>
+        {file.adds > 0 && (
+          <span className="text-emerald-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            +{file.adds}
+          </span>
+        )}
+        {file.dels > 0 && (
+          <span className="text-red-400" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            −{file.dels}
+          </span>
+        )}
+        {collapsible && expanded && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="text-zinc-500 transition hover:text-zinc-300"
+          >
+            collapse
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse font-mono text-xs leading-5">
+          <tbody>
+            {visible.map((line, li) =>
+              line.kind === 'hunk' || line.kind === 'meta' ? (
+                <tr key={li} className={LINE_CLASS[line.kind]}>
+                  <td colSpan={3} className="select-none px-3 py-0.5 text-[11px]">
+                    {line.text}
+                  </td>
+                </tr>
+              ) : (
+                <tr key={li} className={LINE_CLASS[line.kind]}>
+                  <td
+                    className="w-10 select-none border-r border-zinc-800/60 pr-2 text-right align-top text-[10px] text-zinc-600"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {line.oldNo ?? ''}
+                  </td>
+                  <td
+                    className="w-10 select-none border-r border-zinc-800/60 pr-2 text-right align-top text-[10px] text-zinc-600"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {line.newNo ?? ''}
+                  </td>
+                  <td className="whitespace-pre-wrap break-all px-2 align-top">
+                    <span className={`mr-1 select-none ${MARKER[line.kind].className}`}>
+                      {MARKER[line.kind].char}
+                    </span>
+                    {line.text || ' '}
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!expanded && hidden > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="block w-full border-t border-zinc-800 bg-zinc-900/40 px-3 py-1.5 text-center font-mono text-xs text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+        >
+          ▾ show {hidden.toLocaleString()} more lines
+        </button>
+      )}
     </div>
   )
 }
