@@ -1,12 +1,14 @@
 import Fastify from 'fastify'
 import fastifyCookie from '@fastify/cookie'
 import fastifyWebsocket from '@fastify/websocket'
+import { sql } from 'drizzle-orm'
 import { env } from './env'
 import { createDb } from './db'
 import { seedIfEmpty, SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD } from './db/seed'
 import { Hub } from './hub'
-import { RunQueue, failInterruptedRuns, getRunAgentId } from './runs/queue'
-import { executeRun } from './runs/executor'
+import { FabricRuntime } from './fabric/runtime'
+import { executeTurn } from './runs/executor'
+import { fabricHooksFor } from './runs/glue'
 import type { AppContext } from './context'
 import { registerAuthRoutes } from './routes/auth'
 import { registerChannelRoutes } from './routes/channels'
@@ -22,7 +24,6 @@ import { registerArtifactRoutes } from './routes/artifacts'
 import { registerAttentionRoutes } from './routes/attention'
 import { ensureBuiltinReviewers } from './services/artifacts'
 import { startTaskScheduler } from './services/scheduler'
-import { startRunWatchdog } from './runs/watchdog'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerThreadReadRoutes } from './routes/threadreads'
 import { registerStatsRoutes } from './routes/stats'
@@ -59,28 +60,27 @@ async function assertPortFree(port: number): Promise<void> {
 async function main(): Promise<void> {
   await assertPortFree(env.port)
   const { db } = await createDb(env.databaseUrl)
-  const requeuedRuns = await failInterruptedRuns(db)
   const seeded = await seedIfEmpty(db)
 
+  // Pre-fabric installs may have non-terminal runs with no fabric task —
+  // nothing will ever execute those; close them out honestly. One-time
+  // upgrade reconcile; crash recovery itself is the fabric reaper.
+  await db.execute(sql`
+    UPDATE runs SET status = 'failed', error = 'server upgraded — re-mention the agent',
+      finished_at = ${Date.now()}
+    WHERE status IN ('queued', 'running', 'awaiting_approval')
+      AND id NOT IN (SELECT id FROM fabric_tasks)
+  `)
+
   const hub = new Hub()
-  const queue = new RunQueue()
-  const ctx: AppContext = {
-    db,
-    hub,
-    queue,
-    approvalWaiters: new Map(),
-    activeRuns: new Map(),
-    agentLocks: new Map()
-  }
-  queue.configure(
-    (runId) => executeRun(ctx, runId),
-    (runId) => getRunAgentId(db, runId)
-  )
-  // Work interrupted by the restart resumes — sessions pick up where they left off.
-  for (const runId of requeuedRuns) queue.enqueue(runId)
-  if (requeuedRuns.length > 0) {
-    console.log(`⟳ Resuming ${requeuedRuns.length} run(s) interrupted by the restart.`)
-  }
+  const fabric = new FabricRuntime(db, {
+    capacity: env.concurrency,
+    interactiveReserve: Math.min(2, env.concurrency - 1),
+    workerId: `local-${process.pid}`
+  })
+  const ctx: AppContext = { db, hub, fabric }
+  fabric.registerExecutor('turn', (task, handle) => executeTurn(ctx, task, handle))
+  fabric.setHooks(fabricHooksFor(ctx))
 
   const app = Fastify({ logger: { level: 'warn' } })
   await app.register(fastifyCookie, { secret: env.sessionSecret })
@@ -133,7 +133,9 @@ async function main(): Promise<void> {
   // Reconnect to opencrew.run if this instance is cloud-linked.
   await ensureBuiltinReviewers(ctx)
   startTaskScheduler(ctx)
-  startRunWatchdog(ctx)
+  // The fabric's first resync reaps any leases a dead process left behind —
+  // interrupted work redelivers and sessions resume where they left off.
+  fabric.start()
   startCloudLink(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })

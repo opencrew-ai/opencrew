@@ -54,6 +54,65 @@ export async function findAutoApproveRule(
 }
 
 /**
+ * Key-order-insensitive JSON so a grant matches the resumed model's re-issued
+ * call even when the SDK serializes the input object's keys differently.
+ */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`)
+    return `{${entries.join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+/**
+ * One-shot grant lookup for a resumed attempt: an APPROVED, unconsumed
+ * approval on this run whose tool AND exact input match the call being made.
+ * A call with different input gets no grant — it goes through a fresh
+ * approval cycle instead of silently widening the consent.
+ */
+export async function findConsumableGrant(
+  db: DB,
+  runId: string,
+  toolName: string,
+  input: Record<string, unknown>
+): Promise<{ id: string } | null> {
+  const rows = await db
+    .select()
+    .from(approvals)
+    .where(
+      and(
+        eq(approvals.runId, runId),
+        eq(approvals.toolName, toolName),
+        eq(approvals.status, 'approved')
+      )
+    )
+  const wanted = canonicalJson(input)
+  for (const row of rows) {
+    if (row.consumedAt !== null) continue
+    try {
+      if (canonicalJson(JSON.parse(row.toolInput)) === wanted) return { id: row.id }
+    } catch {
+      // Unparseable stored input can never match.
+    }
+  }
+  return null
+}
+
+/** Stamp a grant used — each approval lets exactly one call through. */
+export async function consumeGrant(db: DB, approvalId: string): Promise<void> {
+  await db
+    .update(approvals)
+    .set({ consumedAt: Date.now() })
+    .where(eq(approvals.id, approvalId))
+}
+
+/**
  * Re-verification after an approval resolves: a gated tool may only proceed
  * when an APPROVED approvals row exists for this run + tool. Throws otherwise
  * — an in-memory "approved" signal alone is never trusted.

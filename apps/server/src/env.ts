@@ -56,6 +56,12 @@ export const env = {
    * limits are the second line of defense). Raise for chattier crews.
    */
   maxMentionDepth: Number(process.env.OPENCREW_MAX_MENTION_DEPTH ?? 4),
+  /**
+   * Max concurrently executing agent turns. Turns are network-bound, so
+   * width is cheap — raise this for throughput. A small slice is reserved
+   * for human-triggered work so the workspace stays responsive at full load.
+   */
+  concurrency: Number(process.env.OPENCREW_CONCURRENCY ?? 8),
   /** Port the web app serves on — what LAN URLs and tunnels point at. */
   webPort: Number(process.env.OPENCREW_WEB_PORT ?? 5173),
   /**

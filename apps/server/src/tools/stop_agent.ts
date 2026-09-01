@@ -2,6 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { registerOpenCrewTool } from './registry'
 import { agents, approvals, runs } from '../db/schema'
+import { cancelPendingFabricTask } from '../fabric/store'
 import { getAgent } from '../services/agents'
 import { resolveApproval } from '../services/approvals'
 import { postSystemMessage } from '../services/messages'
@@ -37,13 +38,16 @@ registerOpenCrewTool({
 
     const stoppedBy = `agent:${ctx.agentId}`
 
-    // 1. Queued runs: mark cancelled — the scheduler skips any run that is no
-    // longer 'queued' when its turn comes, so no queue surgery is needed.
+    // 1. Queued runs (fabric: ready or parked tasks): cancel the task first
+    // so the scheduler can never claim it, then mark the run row.
     const queued = await ctx.app.db
       .select()
       .from(runs)
-      .where(and(eq(runs.agentId, target.id), eq(runs.status, 'queued')))
+      .where(
+        and(eq(runs.agentId, target.id), inArray(runs.status, ['queued', 'awaiting_approval']))
+      )
     for (const run of queued) {
+      await cancelPendingFabricTask(ctx.app.db, run.id)
       await ctx.app.db
         .update(runs)
         .set({ status: 'cancelled', error: `stopped by ${stoppedBy}`, finishedAt: Date.now() })
@@ -80,22 +84,18 @@ registerOpenCrewTool({
       }
     }
 
-    // 3. Live sessions: pre-mark cancelled, then abort the controller.
+    // 3. Live sessions: pre-mark cancelled, then abort — the executor sees
+    // the cancelled run row and settles the task as cancelled (no retries).
     let aborted = 0
-    for (const [runId, controller] of ctx.app.activeRuns) {
+    for (const runId of ctx.app.fabric.activeTaskIds()) {
       const [run] = await ctx.app.db.select().from(runs).where(eq(runs.id, runId)).limit(1)
-      if (
-        run &&
-        run.agentId === target.id &&
-        ['running', 'awaiting_approval'].includes(run.status)
-      ) {
+      if (run && run.agentId === target.id && run.status === 'running') {
         await ctx.app.db
           .update(runs)
           .set({ status: 'cancelled', error: `stopped by ${stoppedBy}`, finishedAt: Date.now() })
           .where(eq(runs.id, runId))
         ctx.app.hub.broadcast({ type: 'run_status', runId, agentId: target.id, status: 'cancelled' })
-        controller.abort()
-        aborted += 1
+        if (ctx.app.fabric.abortTask(runId, `stopped by ${stoppedBy}`)) aborted += 1
       }
     }
     // The aborted sessions never reach their own cleanup — clear the live

@@ -243,6 +243,28 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at BIGINT NOT NULL,
   PRIMARY KEY (message_id, emoji, user_id)
 );
+CREATE TABLE IF NOT EXISTS fabric_tasks (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  kind TEXT NOT NULL,
+  lane TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  devices TEXT NOT NULL DEFAULT '[]',
+  payload TEXT NOT NULL,
+  state TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  not_before BIGINT,
+  lease_owner TEXT,
+  lease_beat_at BIGINT,
+  lease_expires_at BIGINT,
+  pause TEXT,
+  version INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fabric_tasks_state ON fabric_tasks (state, lane, created_at);
+CREATE INDEX IF NOT EXISTS idx_fabric_tasks_session ON fabric_tasks (session_key);
 CREATE TABLE IF NOT EXISTS thread_reads (
   workspace_slug TEXT NOT NULL DEFAULT 'default',
   user_id TEXT NOT NULL,
@@ -271,6 +293,7 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_artifact_id TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee_type TEXT NOT NULL DEFAULT 'agent';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduled_for BIGINT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_by TEXT;
+ALTER TABLE approvals ADD COLUMN IF NOT EXISTS consumed_at BIGINT;
 `
 
 // ---------------------------------------------------------------------------

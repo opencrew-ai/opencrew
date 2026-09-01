@@ -4,21 +4,29 @@ import { createDb, type DB } from '../db'
 import { agents, channels, users } from '../db/schema'
 import { createVersion } from '../services/agents'
 import type { AppContext } from '../context'
-import { RunQueue } from '../runs/queue'
+import { FabricRuntime } from '../fabric/runtime'
 import type { SocketLike } from '../hub'
 import { Hub } from '../hub'
 
 export interface TestCtx extends AppContext {
   broadcasts: ServerEvent[]
+  /** Fabric task ids created by admission — tests assert on these instead
+   *  of executing real Claude Code sessions. */
   enqueued: string[]
 }
 
 class CapturingHub extends Hub {
-  constructor(private sink: ServerEvent[]) {
+  constructor(
+    private sink: ServerEvent[],
+    private enqueued: string[]
+  ) {
     super()
   }
   override broadcast(event: ServerEvent): void {
     this.sink.push(event)
+    if (event.type === 'run_status' && event.status === 'queued') {
+      this.enqueued.push(event.runId)
+    }
     super.broadcast(event)
   }
   override add(socket: SocketLike, userId: string): void {
@@ -26,25 +34,21 @@ class CapturingHub extends Hub {
   }
 }
 
+/**
+ * Test context: real DB + real fabric runtime, but the runtime is never
+ * started — tasks stay 'ready' in the store where tests can assert on them.
+ */
 export async function makeTestCtx(): Promise<TestCtx> {
   const { db } = await createDb(':memory:')
   const broadcasts: ServerEvent[] = []
   const enqueued: string[] = []
-  const queue = new RunQueue()
-  // Capture instead of executing — tests drive the executor pieces directly.
-  queue.configure(async (runId) => {
-    enqueued.push(runId)
-  }, async () => null)
-  return {
-    db,
-    hub: new CapturingHub(broadcasts),
-    queue,
-    approvalWaiters: new Map(),
-    activeRuns: new Map(),
-    agentLocks: new Map(),
-    broadcasts,
-    enqueued
-  }
+  const hub = new CapturingHub(broadcasts, enqueued)
+  const fabric = new FabricRuntime(db, {
+    capacity: 4,
+    interactiveReserve: 1,
+    workerId: 'test-worker'
+  })
+  return { db, hub, fabric, broadcasts, enqueued }
 }
 
 export async function seedUser(db: DB): Promise<string> {

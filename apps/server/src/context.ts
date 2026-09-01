@@ -1,24 +1,15 @@
 import type { DB } from './db'
 import type { Hub } from './hub'
-import type { RunQueue } from './runs/queue'
+import type { FabricRuntime } from './fabric/runtime'
 
-export type ApprovalDecision = 'approved' | 'denied'
-
+/**
+ * App context — deliberately thin. The task fabric (see /DESIGN.md) keeps
+ * ALL coordination state in the database; the runtime here is the in-process
+ * worker pool + control loops, not a state store. Nothing in memory is ever
+ * required for correctness — that's what makes the server crash-only.
+ */
 export interface AppContext {
   db: DB
   hub: Hub
-  queue: RunQueue
-  /**
-   * In-memory waiters for pending approvals: a run's Claude Code session
-   * blocks inside canUseTool until an admin resolves the approval, which
-   * calls the registered resolver. Lost on restart (runs are failed at boot).
-   */
-  approvalWaiters: Map<string, (decision: ApprovalDecision) => void>
-  /** AbortControllers for in-flight runs, keyed by runId. */
-  activeRuns: Map<string, AbortController>
-  /**
-   * Per-agent execution chains for agents with the Browser tool: a Chrome
-   * profile supports one instance at a time, so browser runs serialize.
-   */
-  agentLocks: Map<string, Promise<void>>
+  fabric: FabricRuntime
 }

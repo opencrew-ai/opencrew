@@ -3,9 +3,11 @@ import { nanoid } from 'nanoid'
 import { extractMentions, type Message, type RunTriggerType } from '@opencrew/shared'
 import type { AppContext } from '../context'
 import { agents, runs, users } from '../db/schema'
+import { createFabricTask } from '../fabric/store'
 import { getAgentWithVersion, toAgent } from '../services/agents'
 import { postSystemMessage } from '../services/messages'
 import { getMaxAgentFanout, getMaxMentionDepth } from '../services/settings'
+import { BROWSER_TOOL } from '../tools'
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -210,6 +212,43 @@ export async function enqueueRun(
     restricted,
     createdAt: Date.now()
   })
+
+  // Admission → fabric (see /DESIGN.md). The conversation root is computed
+  // once here so every attempt — and the session key — agrees on it.
+  const conversationRoot =
+    triggerMessage.threadRootId ??
+    (triggerMessage.authorType === 'human'
+      ? triggerMessage.id
+      : (triggerMessage.conversationRootId ?? triggerMessage.id))
+
+  // Exclusive devices: a Chrome profile runs one instance; a CONFIGURED
+  // working dir is a real repo two sessions must not edit concurrently.
+  // Fallback scratch workspaces are not locked.
+  const caps = agent.currentVersion.capabilities
+  const devices: string[] = []
+  if (agent.currentVersion.tools.includes(BROWSER_TOOL)) {
+    devices.push(`browser:${caps.useSharedBrowserProfile ? '_shared' : agentId}`)
+  }
+  const workingDir = caps.workingDir?.trim()
+  if (workingDir && workingDir.startsWith('/')) devices.push(`dir:${workingDir}`)
+
+  await createFabricTask(ctx.db, {
+    id: runId,
+    kind: 'turn',
+    // Interactive = a human is watching this exchange right now; the lane's
+    // reserved capacity keeps the workspace responsive under full load.
+    lane: triggerMessage.authorType === 'human' ? 'interactive' : 'background',
+    // Serialization domain: one live attempt per (agent, conversation) —
+    // the same agent works OTHER conversations in parallel.
+    sessionKey: `${agentId}:${triggerMessage.channelId}:${conversationRoot ?? 'main'}`,
+    devices,
+    payload: {
+      agentId,
+      channelId: triggerMessage.channelId,
+      threadRootId: conversationRoot,
+      triggerType
+    }
+  })
   ctx.hub.broadcast({ type: 'run_status', runId, agentId, status: 'queued' })
-  ctx.queue.enqueue(runId)
+  ctx.fabric.wake()
 }

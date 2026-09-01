@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ImageBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources'
 import {
   createSdkMcpServer,
   query,
@@ -13,7 +12,9 @@ import {
 import { and, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { AgentVersion, Channel, RunStatus, RunTriggerType } from '@opencrew/shared'
-import type { AppContext, ApprovalDecision } from '../context'
+import type { AppContext } from '../context'
+import type { AttemptHandle, AttemptOutcome } from '../fabric/runtime'
+import type { FabricTask } from '../fabric/store'
 import {
   agentSessions,
   approvals,
@@ -26,9 +27,9 @@ import {
   createMessage,
   enrichMessage,
   postSystemMessage,
-  resolveConversationRoot,
   updateMessageContent
 } from '../services/messages'
+import { denyPendingApprovalsForRun } from '../services/approvals'
 import { enqueueMentionRuns } from './enqueue'
 import { recordStep } from './audit'
 import {
@@ -38,8 +39,10 @@ import {
 } from './context'
 import {
   assertToolInvocationAllowed,
+  consumeGrant,
   evaluateToolUse,
-  findAutoApproveRule
+  findAutoApproveRule,
+  findConsumableGrant
 } from './guardrails'
 import {
   ALWAYS_AVAILABLE_TOOLS,
@@ -92,6 +95,22 @@ interface ReplyState {
   text: string
 }
 
+/** Approval decision carried back into the resumed attempt via the task payload. */
+interface ResumeGrant {
+  approvalId: string
+  decision: 'approved' | 'denied'
+  toolName: string
+}
+
+/**
+ * Per-attempt state shared between the session loop and the tool gate.
+ * `park` set means a gated call needs a human: the attempt ends and the
+ * fabric task waits in needs_human at zero capacity cost.
+ */
+interface AttemptState {
+  park: { approvalId: string } | null
+}
+
 async function setRunStatus(
   ctx: AppContext,
   runEnv: Pick<RunEnv, 'runId' | 'agentId'> & Partial<Pick<RunEnv, 'channel' | 'threadRootId'>>,
@@ -122,9 +141,25 @@ async function setRunStatus(
   broadcastPresence(ctx)
 }
 
-export async function executeRun(ctx: AppContext, runId: string): Promise<void> {
+/**
+ * Execute one ATTEMPT of a 'turn' fabric task. The task id is the run id.
+ * Returns the attempt outcome; the fabric runtime owns the task transition
+ * (done / parked / redelivered / dead-lettered) — this function owns the run
+ * row, the reply, and the conversation-facing notices.
+ */
+export async function executeTurn(
+  ctx: AppContext,
+  task: FabricTask,
+  handle: AttemptHandle
+): Promise<AttemptOutcome> {
+  const runId = task.id
   const [run] = await ctx.db.select().from(runs).where(eq(runs.id, runId)).limit(1)
-  if (!run || run.status !== 'queued') return
+  if (!run) return { outcome: 'fatal', error: 'run row missing for turn task' }
+  // A run cancelled while the task sat ready (stop_agent, stop-all) must not
+  // execute; a terminal run means the task row is stale — close it out.
+  if (['done', 'failed', 'cancelled'].includes(run.status)) {
+    return { outcome: 'cancelled' }
+  }
 
   const agent = await getAgent(ctx.db, run.agentId)
   let version = await getVersion(ctx.db, run.agentVersionId)
@@ -166,18 +201,15 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
       error: 'missing agent, version, or trigger message',
       finishedAt: Date.now()
     })
-    return
+    return { outcome: 'fatal', error: 'missing agent, version, or trigger message' }
   }
 
   // Captain-orchestration model: ALL run output — the reply, approval
   // prompts, failure notices — lands in the thread rooted at the
-  // conversation's human message. The channel stays a clean feed of asks;
-  // the work (including agent→agent delegation) happens in the thread.
+  // conversation's human message. Admission computed the root at enqueue
+  // time (task payload), so every attempt agrees on it.
   const conversationRoot =
-    trigger.threadRootId ??
-    (trigger.authorType === 'human'
-      ? trigger.id
-      : ((await resolveConversationRoot(ctx.db, trigger)) ?? trigger.id))
+    (task.payload.threadRootId as string | null) ?? trigger.threadRootId ?? trigger.id
 
   const runEnv: RunEnv = {
     runId,
@@ -189,54 +221,59 @@ export async function executeRun(ctx: AppContext, runId: string): Promise<void> 
     depth: run.depth,
     triggerType: run.triggerType
   }
+  const attemptState: AttemptState = { park: null }
+  const resume = (task.payload.resume as ResumeGrant | undefined) ?? null
 
-  const runGuarded = async (): Promise<void> => {
-    const abort = new AbortController()
-    ctx.activeRuns.set(runId, abort)
-    const timeout = setTimeout(() => abort.abort(), RUN_TIMEOUT_MS)
-    try {
-      await runSession(ctx, runEnv, trigger.id, abort)
-    } catch (err) {
-      const [current] = await ctx.db
-        .select()
-        .from(runs)
-        .where(eq(runs.id, runId))
-        .limit(1)
-      // A cancelled run (denied approval) already has its terminal status.
-      if (current && ['running', 'awaiting_approval', 'queued'].includes(current.status)) {
-        await failRun(ctx, runEnv, err instanceof Error ? err.message : String(err))
-      }
-    } finally {
-      clearTimeout(timeout)
-      ctx.activeRuns.delete(runId)
+  await setRunStatus(ctx, runEnv, 'running', { startedAt: run.startedAt ?? Date.now() })
+
+  const timeout = setTimeout(() => {
+    handle.abortReason ??= 'turn timed out (30m)'
+    handle.abort.abort()
+  }, RUN_TIMEOUT_MS)
+  const reply: ReplyState = { messageId: null, text: '' }
+  try {
+    await runSession(ctx, runEnv, trigger.id, handle, attemptState, resume, reply)
+    if (attemptState.park) {
+      return { outcome: 'parked', pause: { approvalId: attemptState.park.approvalId } }
     }
-  }
-
-  // Every agent's runs execute strictly in order: resumed sessions and
-  // Chrome profiles both break under concurrent access, and ordered turns
-  // are what a conversation means anyway. Different agents still run in
-  // parallel.
-  const prev = ctx.agentLocks.get(runEnv.agentId) ?? Promise.resolve()
-  const current = prev.then(runGuarded) // runGuarded never rejects
-  ctx.agentLocks.set(runEnv.agentId, current)
-  await current
-  if (ctx.agentLocks.get(runEnv.agentId) === current) {
-    ctx.agentLocks.delete(runEnv.agentId)
+    return { outcome: 'done' }
+  } catch (err) {
+    // The park abort races the stream error — parking wins, it isn't a failure.
+    if (attemptState.park) {
+      return { outcome: 'parked', pause: { approvalId: attemptState.park.approvalId } }
+    }
+    if (reply.messageId) {
+      await updateMessageContent(ctx, reply.messageId, reply.text)
+    }
+    const [current] = await ctx.db
+      .select()
+      .from(runs)
+      .where(eq(runs.id, runId))
+      .limit(1)
+    // stop_agent / stop-all pre-mark the run cancelled before aborting.
+    if (current?.status === 'cancelled') return { outcome: 'cancelled' }
+    const error = handle.abortReason ?? (err instanceof Error ? err.message : String(err))
+    return { outcome: 'error', error }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
 /**
- * One run = one TURN of a persistent Claude Code session. The session for
- * (agent, channel, thread) is resumed if it exists — the agent keeps its
- * full working context across turns, like a teammate you keep talking to.
+ * One attempt = one TURN of a persistent Claude Code session. The session
+ * for (agent, channel, thread) is resumed if it exists — the agent keeps its
+ * full working context across turns AND across redeliveries: a re-attempt
+ * continues from what the previous attempt already did, not from scratch.
  */
 async function runSession(
   ctx: AppContext,
   runEnv: RunEnv,
   triggerMessageId: string,
-  abort: AbortController
+  handle: AttemptHandle,
+  attemptState: AttemptState,
+  resume: ResumeGrant | null,
+  reply: ReplyState
 ): Promise<void> {
-  await setRunStatus(ctx, runEnv, 'running', { startedAt: Date.now() })
   const threadKey = runEnv.threadRootId ?? 'main'
   const [existing] = await ctx.db
     .select()
@@ -251,11 +288,15 @@ async function runSession(
     .limit(1)
 
   try {
-    await runSessionAttempt(ctx, runEnv, triggerMessageId, abort, existing ?? null)
+    await runSessionAttempt(
+      ctx, runEnv, triggerMessageId, handle, attemptState, resume, reply, existing ?? null
+    )
   } catch (err) {
     // A stale/corrupt session must not strand the conversation — drop it and
-    // run the turn fresh once.
-    if (existing) {
+    // run the turn fresh once. Never on abort/park: those are not the
+    // session's fault, and the session cache is the resume point.
+    const canRetryFresh = existing && !attemptState.park && !handle.abort.signal.aborted
+    if (canRetryFresh) {
       await ctx.db
         .delete(agentSessions)
         .where(
@@ -269,7 +310,9 @@ async function runSession(
         phase: 'session_resume_failed',
         error: err instanceof Error ? err.message : String(err)
       })
-      await runSessionAttempt(ctx, runEnv, triggerMessageId, abort, null)
+      await runSessionAttempt(
+        ctx, runEnv, triggerMessageId, handle, attemptState, resume, reply, null
+      )
     } else {
       throw err
     }
@@ -280,7 +323,10 @@ async function runSessionAttempt(
   ctx: AppContext,
   runEnv: RunEnv,
   triggerMessageId: string,
-  abort: AbortController,
+  handle: AttemptHandle,
+  attemptState: AttemptState,
+  resume: ResumeGrant | null,
+  reply: ReplyState,
   session: { sessionId: string; updatedAt: number } | null
 ): Promise<void> {
   const promptBuiltAt = Date.now()
@@ -318,7 +364,22 @@ async function runSessionAttempt(
     ? await buildDocsPromptSection(ctx.db, runEnv.threadRootId)
     : ''
   let instruction: string
-  if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
+  if (resume) {
+    // The grant matches EXACT input. A resumed session remembers its own
+    // call; a cold-started one (session cache lost) needs the input restated.
+    const approvedInput = resume.decision === 'approved'
+      ? await grantInputPreview(ctx, resume.approvalId)
+      : ''
+    instruction =
+      resume.decision === 'approved'
+        ? `Earlier this turn you requested approval to use \`${resume.toolName}\` and were ` +
+          `paused. The admin APPROVED it — a one-time grant is active for exactly the call ` +
+          `you proposed.${approvedInput} Make that call again now with identical input, ` +
+          `then continue the task and write your reply.`
+        : `Earlier this turn you requested approval to use \`${resume.toolName}\` and were ` +
+          `paused. The admin DENIED it. Do not attempt that call again — adjust your ` +
+          `approach or wrap up with what you have, then write your reply.`
+  } else if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
     const ownedKinds = await reviewKindsForAgent(ctx.db, runEnv.agentId)
     const inReview = await listDocsInReview(ctx.db, runEnv.threadRootId, ownedKinds)
     const docList = inReview
@@ -342,9 +403,6 @@ async function runSessionAttempt(
       `then write your reply message.`
   }
   const prompt = `${intro}\n\n${transcript}${taskSection}${docsSection}\n\n${instruction}`
-
-  const reply: ReplyState = { messageId: null, text: '' }
-  let cancelled = false
 
   const toolCtx: ToolRunContext = {
     app: ctx,
@@ -370,7 +428,7 @@ async function runSessionAttempt(
       systemPrompt,
       cwd,
       maxTurns: MAX_TURNS,
-      abortController: abort,
+      abortController: handle.abort,
       // Continue the persistent conversation session when one exists.
       ...(session ? { resume: session.sessionId } : {}),
       // GUARDRAIL: never load the host user's ~/.claude or project settings —
@@ -400,13 +458,17 @@ async function runSessionAttempt(
                 const decision = await gateToolUse(
                   ctx,
                   runEnv,
+                  attemptState,
+                  handle,
                   hookInput.tool_name,
                   hookInput.tool_input
                 )
-                if (decision === 'denied_by_admin') {
-                  cancelled = true
-                  await cancelRun(ctx, runEnv, reply)
-                  return permissionHookOutput('deny', 'Denied by admin. Stop working.')
+                if (decision === 'park') {
+                  return permissionHookOutput(
+                    'deny',
+                    'Approval requested from the admin — this turn is paused; ' +
+                      'you will be resumed with the decision.'
+                  )
                 }
                 if (decision === 'forbidden') {
                   return permissionHookOutput(
@@ -422,11 +484,13 @@ async function runSessionAttempt(
       },
       // Fallback choke point if a permission prompt ever reaches this far.
       canUseTool: async (sdkName, input): Promise<PermissionResult> => {
-        const decision = await gateToolUse(ctx, runEnv, sdkName, input)
-        if (decision === 'denied_by_admin') {
-          cancelled = true
-          await cancelRun(ctx, runEnv, reply)
-          return { behavior: 'deny', message: 'Denied by admin. Stop working.', interrupt: true }
+        const decision = await gateToolUse(ctx, runEnv, attemptState, handle, sdkName, input)
+        if (decision === 'park') {
+          return {
+            behavior: 'deny',
+            message: 'Approval requested from the admin — this turn is paused.',
+            interrupt: true
+          }
         }
         if (decision === 'forbidden') {
           return {
@@ -441,34 +505,50 @@ async function runSessionAttempt(
 
   let resultError: string | null = null
   let capturedSessionId: string | null = null
-  for await (const msg of stream) {
-    capturedSessionId ??= msg.session_id ?? null
-    if (msg.type === 'assistant') {
-      await handleAssistantMessage(ctx, runEnv, reply, msg)
-    } else if (msg.type === 'user') {
-      await handleUserMessage(ctx, runEnv, msg)
-    } else if (msg.type === 'result') {
-      await recordStep(ctx, runEnv.runId, 'llm_call', {
-        phase: 'result',
-        subtype: msg.subtype,
-        numTurns: msg.num_turns,
-        durationMs: msg.duration_ms,
-        costUsd: msg.total_cost_usd,
-        usage: msg.usage
-      })
-      if (msg.subtype !== 'success') resultError = msg.subtype
+  try {
+    for await (const msg of stream) {
+      capturedSessionId ??= msg.session_id ?? null
+      handle.beat()
+      if (msg.type === 'assistant') {
+        await handleAssistantMessage(ctx, runEnv, handle, reply, msg)
+      } else if (msg.type === 'user') {
+        await handleUserMessage(ctx, runEnv, handle, msg)
+      } else if (msg.type === 'result') {
+        await recordStep(ctx, runEnv.runId, 'llm_call', {
+          phase: 'result',
+          subtype: msg.subtype,
+          numTurns: msg.num_turns,
+          durationMs: msg.duration_ms,
+          costUsd: msg.total_cost_usd,
+          usage: msg.usage
+        })
+        if (msg.subtype !== 'success') resultError = msg.subtype
+      }
+    }
+  } finally {
+    // The session is the resume point for parked and redelivered attempts —
+    // persist it even when the stream ended by abort.
+    if (capturedSessionId) {
+      await saveSession(ctx, runEnv, capturedSessionId, promptBuiltAt)
     }
   }
 
-  if (capturedSessionId) {
-    await saveSession(ctx, runEnv, capturedSessionId, promptBuiltAt)
-  }
-  if (cancelled) return
-  if (resultError) {
-    await failRun(ctx, runEnv, `session ended with ${resultError}`, reply)
-    return
-  }
+  if (attemptState.park) return
+  if (resultError) throw new Error(`session ended with ${resultError}`)
   await finalizeRun(ctx, runEnv, reply)
+}
+
+const GRANT_PREVIEW_LIMIT = 2000
+
+/** The approved call's input, restated for cold-started resumes. */
+async function grantInputPreview(ctx: AppContext, approvalId: string): Promise<string> {
+  const [row] = await ctx.db
+    .select({ toolInput: approvals.toolInput })
+    .from(approvals)
+    .where(eq(approvals.id, approvalId))
+    .limit(1)
+  if (!row || row.toolInput.length > GRANT_PREVIEW_LIMIT) return ''
+  return ` The approved input was: ${row.toolInput}.`
 }
 
 /** Remember the session so the NEXT turn in this conversation resumes it. */
@@ -590,7 +670,7 @@ function disallowedToolsFor(version: AgentVersion): string[] {
   ]
 }
 
-type GateOutcome = 'allowed' | 'forbidden' | 'denied_by_admin'
+type GateOutcome = 'allowed' | 'forbidden' | 'park'
 
 function permissionHookOutput(decision: 'allow' | 'deny', reason: string) {
   return {
@@ -602,9 +682,17 @@ function permissionHookOutput(decision: 'allow' | 'deny', reason: string) {
   }
 }
 
+/**
+ * The tool gate — PreToolUse fires for EVERY call, so this is the one true
+ * choke point. Gated calls PARK the attempt instead of blocking it: the
+ * approval is recorded, the turn is aborted, the slot frees, and the human's
+ * decision later unparks the task with a one-shot grant.
+ */
 async function gateToolUse(
   ctx: AppContext,
   runEnv: RunEnv,
+  attemptState: AttemptState,
+  handle: AttemptHandle,
   sdkName: string,
   input: Record<string, unknown>
 ): Promise<GateOutcome> {
@@ -612,6 +700,17 @@ async function gateToolUse(
   const verdict = evaluateToolUse(runEnv.version, name)
   if (verdict === 'deny') return 'forbidden'
   if (verdict === 'allow') return 'allowed'
+
+  // Already parking — deny any further gated calls without new paperwork.
+  if (attemptState.park) return 'park'
+
+  // One-shot grant from the resumed attempt's approval: consume and pass.
+  const grant = await findConsumableGrant(ctx.db, runEnv.runId, name, input)
+  if (grant) {
+    await consumeGrant(ctx.db, grant.id)
+    await assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, grant.id)
+    return 'allowed'
+  }
 
   // Standing auto-approve rule: skip the human click, keep the full audit.
   const rule = await findAutoApproveRule(ctx.db, runEnv.agentId, name)
@@ -625,6 +724,7 @@ async function gateToolUse(
       status: 'approved',
       resolvedBy: `rule:${rule.createdBy}`,
       resolvedAt: Date.now(),
+      consumedAt: Date.now(),
       createdAt: Date.now()
     })
     await recordStep(ctx, runEnv.runId, 'approval_requested', {
@@ -644,6 +744,7 @@ async function gateToolUse(
     return 'allowed'
   }
 
+  // Park: record the ask, free the capacity, wait on the human in the store.
   const approvalId = nanoid()
   await ctx.db.insert(approvals).values({
     id: approvalId,
@@ -658,26 +759,21 @@ async function gateToolUse(
   await postSystemMessage(
     ctx,
     runEnv.channel.id,
-    `🟡 **${runEnv.agentName}** wants to use \`${name}\` — waiting for an admin.`,
+    `🟡 **${runEnv.agentName}** wants to use \`${name}\` — waiting for an admin. ` +
+      `The agent is paused (not holding a worker slot) until you decide.`,
     { threadRootId: runEnv.threadRootId, approvalId, runId: runEnv.runId }
   )
-
-  const decision = await new Promise<ApprovalDecision>((resolve) => {
-    ctx.approvalWaiters.set(approvalId, resolve)
-  })
-  ctx.approvalWaiters.delete(approvalId)
-
-  if (decision === 'approved') {
-    await assertToolInvocationAllowed(ctx.db, runEnv.version, runEnv.runId, name, approvalId)
-    await setRunStatus(ctx, runEnv, 'running')
-    return 'allowed'
-  }
-  return 'denied_by_admin'
+  attemptState.park = { approvalId }
+  handle.abortReason ??= 'parked for approval'
+  // Deliver the deny to the SDK first, then end the attempt.
+  setTimeout(() => handle.abort.abort(), 0)
+  return 'park'
 }
 
 async function handleAssistantMessage(
   ctx: AppContext,
   runEnv: RunEnv,
+  handle: AttemptHandle,
   reply: ReplyState,
   msg: SDKAssistantMessage
 ): Promise<void> {
@@ -687,6 +783,7 @@ async function handleAssistantMessage(
       text += block.text
     } else if (block.type === 'tool_use') {
       const tool = fromSdkToolName(block.name)
+      handle.toolStarted()
       await recordStep(ctx, runEnv.runId, 'tool_call', {
         tool,
         input: block.input,
@@ -740,12 +837,14 @@ async function publishActivity(
 async function handleUserMessage(
   ctx: AppContext,
   runEnv: RunEnv,
+  handle: AttemptHandle,
   msg: SDKUserMessage
 ): Promise<void> {
   const content = msg.message.content
   if (!Array.isArray(content)) return
   for (const block of content) {
     if (block.type !== 'tool_result') continue
+    handle.toolFinished()
     const raw =
       typeof block.content === 'string'
         ? block.content
@@ -837,80 +936,8 @@ async function finalizeRun(
   if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
     await flipRemainingReviewDocs(ctx, runEnv.threadRootId)
   }
-  await denyOrphanedApprovals(ctx, runEnv.runId)
+  await denyPendingApprovalsForRun(ctx, runEnv.runId, 'system:run-ended')
   await setRunStatus(ctx, runEnv, 'done', { finishedAt: Date.now() })
-}
-
-/**
- * Approvals must not outlive their run: a run that ends (done, cancelled,
- * failed) with tool calls still waiting leaves zombie "waiting for an admin"
- * cards that approve into a dead session. Deny them with a system attribution
- * so every card shows a truthful terminal state.
- */
-async function denyOrphanedApprovals(ctx: AppContext, runId: string): Promise<void> {
-  const { resolveApproval } = await import('../services/approvals')
-  const pending = await ctx.db
-    .select()
-    .from(approvals)
-    .where(and(eq(approvals.runId, runId), eq(approvals.status, 'pending')))
-  for (const approval of pending) {
-    try {
-      await resolveApproval(ctx, approval.id, 'denied', 'system:run-ended')
-    } catch {
-      // resolved in a race — fine
-    }
-  }
-}
-
-async function cancelRun(
-  ctx: AppContext,
-  runEnv: RunEnv,
-  reply: ReplyState
-): Promise<void> {
-  if (reply.messageId) {
-    await updateMessageContent(
-      ctx,
-      reply.messageId,
-      `${reply.text}\n\n_(run cancelled — tool use was denied)_`
-    )
-  }
-  await denyOrphanedApprovals(ctx, runEnv.runId)
-  await setRunStatus(ctx, runEnv, 'cancelled', {
-    error: 'tool use denied by admin',
-    finishedAt: Date.now()
-  })
-  await postSystemMessage(
-    ctx,
-    runEnv.channel.id,
-    `🛑 **${runEnv.agentName}**'s run was cancelled — tool use was denied.`,
-    { threadRootId: runEnv.threadRootId, runId: runEnv.runId }
-  )
-}
-
-async function failRun(
-  ctx: AppContext,
-  runEnv: RunEnv,
-  error: string,
-  reply?: ReplyState
-): Promise<void> {
-  if (reply?.messageId) {
-    await updateMessageContent(ctx, reply.messageId, reply.text)
-  }
-  if (runEnv.triggerType === 'review' && runEnv.threadRootId) {
-    await flipRemainingReviewDocs(ctx, runEnv.threadRootId)
-  }
-  await denyOrphanedApprovals(ctx, runEnv.runId)
-  await setRunStatus(ctx, runEnv, 'failed', { error, finishedAt: Date.now() })
-  try {
-    await postSystemMessage(
-      ctx,
-      runEnv.channel.id,
-      `❌ **${runEnv.agentName}** run failed: ${error}`,
-      { threadRootId: runEnv.threadRootId, runId: runEnv.runId }
-    )
-  } catch {
-    // Posting the failure notice must never crash the worker loop.
-  }
 }
 
 function buildMcpServer(toolCtx: ToolRunContext) {

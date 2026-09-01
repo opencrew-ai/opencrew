@@ -4,7 +4,7 @@ import { agents, users } from '../db/schema'
 
 export async function computePresence(ctx: AppContext): Promise<PresenceEntry[]> {
   const online = new Set(ctx.hub.onlineUserIds())
-  const runningAgents = ctx.queue.activeAgentIds()
+  const runningAgents = ctx.fabric.activeAgentIds()
 
   const [humanRows, agentRows] = await Promise.all([
     ctx.db.select({ id: users.id }).from(users),

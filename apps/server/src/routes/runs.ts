@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import { asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { AppContext } from '../context'
 import { approvalRules, approvals, runs, runSteps } from '../db/schema'
+import { cancelPendingFabricTask, listFabricTasks } from '../fabric/store'
 import { resolveApproval, toApproval } from '../services/approvals'
 import { broadcastPresence } from '../services/presence'
 import { adminGuard, authGuard, fail, ok } from './helpers'
@@ -67,26 +67,31 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   })
 
   app.post('/api/runs/stop-all', { preHandler: adminGuard(ctx) }, async (req) => {
-    // 1. Queued: drop from scheduler, mark cancelled.
-    ctx.queue.drainPending()
-    const queued = await ctx.db
-      .select()
-      .from(runs)
-      .where(inArray(runs.status, ['queued']))
-    for (const run of queued) {
-      await ctx.db
-        .update(runs)
-        .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
-        .where(eq(runs.id, run.id))
-      ctx.hub.broadcast({
-        type: 'run_status',
-        runId: run.id,
-        agentId: run.agentId,
-        status: 'cancelled'
-      })
+    // 1. Ready + parked fabric tasks: cancel BEFORE touching approvals so a
+    // denial can never unpark work the admin is trying to stop.
+    const pending = await listFabricTasks(ctx.db, ['ready', 'needs_human'])
+    let cancelledQueued = 0
+    for (const task of pending) {
+      if (task.kind !== 'turn') continue
+      if (!(await cancelPendingFabricTask(ctx.db, task.id))) continue
+      const [run] = await ctx.db.select().from(runs).where(eq(runs.id, task.id)).limit(1)
+      if (run) {
+        await ctx.db
+          .update(runs)
+          .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
+          .where(eq(runs.id, task.id))
+        ctx.hub.broadcast({
+          type: 'run_status',
+          runId: task.id,
+          agentId: run.agentId,
+          status: 'cancelled'
+        })
+      }
+      cancelledQueued++
     }
 
-    // 2. Pending approvals: deny — resolving wakes blocked sessions.
+    // 2. Pending approvals: deny for honest cards (their tasks are already
+    // cancelled, so nothing resumes).
     const pendingApprovals = await ctx.db
       .select()
       .from(approvals)
@@ -99,11 +104,12 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       }
     }
 
-    // 3. Live sessions: pre-mark cancelled, then abort.
+    // 3. Live sessions: pre-mark cancelled, then abort — the executor sees
+    // the cancelled run row and settles the task without retries.
     let aborted = 0
-    for (const [runId, controller] of ctx.activeRuns) {
+    for (const runId of ctx.fabric.activeTaskIds()) {
       const [run] = await ctx.db.select().from(runs).where(eq(runs.id, runId)).limit(1)
-      if (run && ['running', 'awaiting_approval'].includes(run.status)) {
+      if (run && run.status === 'running') {
         await ctx.db
           .update(runs)
           .set({ status: 'cancelled', error: 'stopped by admin', finishedAt: Date.now() })
@@ -114,14 +120,13 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
           agentId: run.agentId,
           status: 'cancelled'
         })
-        controller.abort()
-        aborted++
+        if (ctx.fabric.abortTask(runId, 'stopped by admin')) aborted++
       }
     }
     broadcastPresence(ctx)
 
     return ok({
-      cancelledQueued: queued.length,
+      cancelledQueued,
       deniedApprovals: pendingApprovals.length,
       abortedRuns: aborted
     })

@@ -178,6 +178,9 @@ export const approvals = pgTable('approvals', {
   status: text('status', { enum: ['pending', 'approved', 'denied'] }).notNull(),
   resolvedBy: text('resolved_by'),
   resolvedAt: bigint('resolved_at', { mode: 'number' }),
+  /** One-shot grant consumption: an approved row lets exactly one matching
+   *  tool call through on the resumed attempt, then is stamped here. */
+  consumedAt: bigint('consumed_at', { mode: 'number' }),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
 })
 
@@ -382,6 +385,44 @@ export const runReplays = pgTable('run_replays', {
   token: text('token').notNull(),
   url: text('url').notNull(),
   publishedBy: text('published_by').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
+/**
+ * THE TASK FABRIC (see /DESIGN.md) — the coordination kernel's one table.
+ * A row is a schedulable unit of work; phase 1 kind is 'turn' (one turn of an
+ * agent's Claude Code session, id === runs.id). Spec fields are written once;
+ * state fields are mutated only by the fabric store under version checks.
+ */
+export const fabricTasks = pgTable('fabric_tasks', {
+  id: text('id').primaryKey(),
+  ...ws,
+  kind: text('kind', { enum: ['turn'] }).notNull(),
+  /** interactive = trigger chain roots at a live human message. */
+  lane: text('lane', { enum: ['interactive', 'background'] }).notNull(),
+  /** Serialization domain: agentId:channelId:threadKey — one lease at a time. */
+  sessionKey: text('session_key').notNull(),
+  /** JSON string[] of exclusive resources (browser profile, configured repo). */
+  devices: text('devices').notNull().default('[]'),
+  /** JSON, kind-specific (trigger info, resume grant). */
+  payload: text('payload').notNull(),
+  state: text('state', {
+    enum: ['ready', 'leased', 'needs_human', 'done', 'failed', 'cancelled']
+  }).notNull(),
+  /** Claims so far. attempts >= maxAttempts on failure → dead-letter. */
+  attempts: integer('attempts').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  notBefore: bigint('not_before', { mode: 'number' }),
+  leaseOwner: text('lease_owner'),
+  /** Last observed session activity — the stall detector's signal. */
+  leaseBeatAt: bigint('lease_beat_at', { mode: 'number' }),
+  /** Process-liveness deadline; expiry means the worker died. */
+  leaseExpiresAt: bigint('lease_expires_at', { mode: 'number' }),
+  /** JSON gate info while needs_human ({ approvalId }). */
+  pause: text('pause'),
+  /** Optimistic concurrency counter. */
+  version: integer('version').notNull().default(0),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 })
