@@ -135,6 +135,7 @@ export async function claimNextTask(db: DB, opts: ClaimOptions): Promise<FabricT
         state: 'leased',
         attempts: row.attempts + 1,
         leaseOwner: opts.workerId,
+        claimedAt: now,
         leaseBeatAt: now,
         leaseExpiresAt: now + opts.leaseMs,
         version: row.version + 1,
@@ -344,6 +345,15 @@ export async function reapExpiredLeases(
 }
 
 /**
+ * An attempt that ran healthily this long before its worker died was not the
+ * problem — the RESTART was. Its consumed attempt is refunded, so deliberate
+ * restarts (dev-watch reloads, deploys) never spend a task's retry budget.
+ * A task that kills its worker faster than this gets NO refund — that's the
+ * crash-loop guard the budget exists for.
+ */
+const RESTART_REFUND_AFTER_MS = 20_000
+
+/**
  * Boot-time recovery for SINGLE mode: only one server process can exist (the
  * port and the embedded PGlite store are both exclusive), so a lease held by
  * any OTHER worker id belongs to a dead process — reap it immediately instead
@@ -354,17 +364,24 @@ export async function reapExpiredLeases(
  * coexist. Once remote workers join, boot recovery must fall back to plain
  * lease expiry (reapExpiredLeases) — a foreign lease may be a live peer.
  */
-export async function reapForeignLeases(db: DB, ownerId: string): Promise<ReapedTask[]> {
+export async function reapForeignLeases(
+  db: DB,
+  ownerId: string,
+  now = Date.now()
+): Promise<ReapedTask[]> {
   const foreign = await db
     .select()
     .from(fabricTasks)
     .where(and(eq(fabricTasks.state, 'leased'), ne(fabricTasks.leaseOwner, ownerId)))
   const reaped: ReapedTask[] = []
   for (const row of foreign) {
-    const dead = row.attempts >= row.maxAttempts
+    const survivedMs = now - (row.claimedAt ?? now)
+    const refund = survivedMs >= RESTART_REFUND_AFTER_MS
+    const attempts = refund ? Math.max(0, row.attempts - 1) : row.attempts
+    const dead = !refund && attempts >= row.maxAttempts
     const updated = await db
       .update(fabricTasks)
-      .set(dead ? terminalPatch('failed') : readyPatch())
+      .set(dead ? terminalPatch('failed') : { ...readyPatch(), attempts })
       .where(
         and(
           eq(fabricTasks.id, row.id),
@@ -374,7 +391,10 @@ export async function reapForeignLeases(db: DB, ownerId: string): Promise<Reaped
       )
       .returning()
     if (updated.length > 0) {
-      reaped.push({ task: toTask(row), disposition: dead ? 'dead' : 'retry' })
+      reaped.push({
+        task: toTask({ ...row, attempts }),
+        disposition: dead ? 'dead' : 'retry'
+      })
     }
   }
   return reaped

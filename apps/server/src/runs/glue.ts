@@ -46,13 +46,18 @@ export function fabricHooksFor(ctx: AppContext): FabricHooks {
       broadcastPresence(ctx)
       if (p.channelId) {
         const agent = await getAgent(ctx.db, run.agentId)
-        await postSystemMessage(
-          ctx,
-          p.channelId,
-          `⏱ **${agent?.name ?? 'An agent'}**'s attempt was interrupted (${reason}) — ` +
-            `retrying (attempt ${nextAttempt}/${task.maxAttempts}), resuming from its last state.`,
-          { threadRootId: p.threadRootId ?? null, runId: task.id }
-        )
+        // A refunded restart redelivery is routine, not a strike — no attempt
+        // counter to read as the task being in trouble.
+        const notice =
+          reason === 'server restarted'
+            ? `⏱ **${agent?.name ?? 'An agent'}** was interrupted by a server restart — ` +
+              `resuming from its last state (retry budget untouched).`
+            : `⏱ **${agent?.name ?? 'An agent'}**'s attempt was interrupted (${reason}) — ` +
+              `retrying (attempt ${nextAttempt}/${task.maxAttempts}), resuming from its last state.`
+        await postSystemMessage(ctx, p.channelId, notice, {
+          threadRootId: p.threadRootId ?? null,
+          runId: task.id
+        })
       }
       ctx.fabric.wake()
     },

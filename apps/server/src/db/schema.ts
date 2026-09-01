@@ -415,6 +415,8 @@ export const fabricTasks = pgTable('fabric_tasks', {
   maxAttempts: integer('max_attempts').notNull().default(3),
   notBefore: bigint('not_before', { mode: 'number' }),
   leaseOwner: text('lease_owner'),
+  /** When the current lease was claimed — restart-refund decisions key on it. */
+  claimedAt: bigint('claimed_at', { mode: 'number' }),
   /** Last observed session activity — the stall detector's signal. */
   leaseBeatAt: bigint('lease_beat_at', { mode: 'number' }),
   /** Process-liveness deadline; expiry means the worker died. */

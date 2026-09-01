@@ -256,6 +256,7 @@ CREATE TABLE IF NOT EXISTS fabric_tasks (
   max_attempts INTEGER NOT NULL DEFAULT 3,
   not_before BIGINT,
   lease_owner TEXT,
+  claimed_at BIGINT,
   lease_beat_at BIGINT,
   lease_expires_at BIGINT,
   pause TEXT,
@@ -294,6 +295,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee_type TEXT NOT NULL DEFAULT '
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduled_for BIGINT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_by TEXT;
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS consumed_at BIGINT;
+ALTER TABLE fabric_tasks ADD COLUMN IF NOT EXISTS claimed_at BIGINT;
 `
 
 // ---------------------------------------------------------------------------

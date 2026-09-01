@@ -175,6 +175,34 @@ describe('fabric failure handling', () => {
     expect((await getFabricTask(db, mine))!.state).toBe('leased')
   })
 
+  test('restart refund: a healthy attempt costs nothing; an instant death still burns budget', async () => {
+    const db = await makeDb()
+    const { reapForeignLeases } = await import('../fabric/store')
+    const { fabricTasks } = await import('../db/schema')
+    const { eq: eqOp } = await import('drizzle-orm')
+
+    // Attempt ran 30s before the restart → the attempt is refunded.
+    const healthy = await seedTask(db)
+    await claimNextTask(db, { ...CLAIM, workerId: 'old-pid' })
+    await db
+      .update(fabricTasks)
+      .set({ claimedAt: Date.now() - 30_000 })
+      .where(eqOp(fabricTasks.id, healthy))
+    const [refunded] = await reapForeignLeases(db, 'new-pid')
+    expect(refunded!.disposition).toBe('retry')
+    expect((await getFabricTask(db, healthy))!.attempts).toBe(0)
+
+    // Attempt died within seconds of claim → attempt counted (crash-loop guard):
+    // deliberate restarts can never dead-letter healthy work, but a task that
+    // kills its worker on arrival still marches toward the budget.
+    const db2 = await makeDb()
+    const poison = await seedTask(db2, { maxAttempts: 1 })
+    await claimNextTask(db2, { ...CLAIM, workerId: 'old-pid-2' })
+    const reaped = await reapForeignLeases(db2, 'new-pid')
+    expect(reaped[0]!.disposition).toBe('dead')
+    expect((await getFabricTask(db2, poison))!.state).toBe('failed')
+  })
+
   test('failAttempt on a task no longer leased is a safe no-op', async () => {
     const db = await makeDb()
     const id = await seedTask(db)
