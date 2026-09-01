@@ -364,6 +364,29 @@ async function discardStaleSiblings(ctx: AppContext, row: ArtifactRow): Promise<
   }
 }
 
+/**
+ * Boot reconcile: retire any proposal a newer version has superseded. The
+ * write paths keep this invariant going forward; the sweep heals rows from
+ * before the invariant existed (and any edge that slips past it).
+ */
+export async function retireSupersededProposals(ctx: AppContext): Promise<number> {
+  const actionable = await ctx.db
+    .select()
+    .from(artifacts)
+    .where(inArray(artifacts.status, ['review', 'proposed']))
+  let retired = 0
+  for (const row of actionable) {
+    if (await supersededByNewer(ctx.db, row)) {
+      await ctx.db
+        .update(artifacts)
+        .set({ status: 'discarded', updatedAt: Date.now() })
+        .where(eq(artifacts.id, row.id))
+      retired++
+    }
+  }
+  return retired
+}
+
 export async function listDocsInReview(
   db: DB,
   conversationRootId: string,

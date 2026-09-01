@@ -22,7 +22,7 @@ import { registerSearchRoutes } from './routes/search'
 import { registerWorkRoutes } from './routes/work'
 import { registerArtifactRoutes } from './routes/artifacts'
 import { registerAttentionRoutes } from './routes/attention'
-import { ensureBuiltinReviewers } from './services/artifacts'
+import { ensureBuiltinReviewers, retireSupersededProposals } from './services/artifacts'
 import { startTaskScheduler } from './services/scheduler'
 import { registerReactionRoutes } from './routes/reactions'
 import { registerThreadReadRoutes } from './routes/threadreads'
@@ -144,6 +144,7 @@ async function main(): Promise<void> {
 
   // Reconnect to opencrew.run if this instance is cloud-linked.
   await ensureBuiltinReviewers(ctx)
+  await retireSupersededProposals(ctx)
   startTaskScheduler(ctx)
   // The fabric's first resync reaps any leases a dead process left behind —
   // interrupted work redelivers and sessions resume where they left off.
