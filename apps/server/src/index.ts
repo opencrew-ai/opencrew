@@ -101,6 +101,7 @@ async function main(): Promise<void> {
   registerReactionRoutes(app, ctx)
   registerStatsRoutes(app, ctx)
   registerThreadShareRoutes(app, ctx)
+  registerThreadReadRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
