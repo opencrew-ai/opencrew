@@ -95,7 +95,12 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
         <span className={`font-mono tabular-nums ${allDone ? 'text-emerald-500' : 'text-zinc-500'}`}>
           {done}/{total} done
         </span>
-        <span className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800">
+        {/* Fixed-width rail — a full-bleed bar on a wide screen reads as a
+            divider, not a meter. Scale hints size: more tasks, longer rail. */}
+        <span
+          className="h-1 overflow-hidden rounded-full bg-zinc-800"
+          style={{ width: `${Math.min(160, 40 + total * 12)}px` }}
+        >
           <span
             className={`block h-full rounded-full transition-all ${
               allDone ? 'bg-emerald-600' : 'bg-emerald-600/70'
@@ -103,7 +108,7 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
             style={{ width: `${(done / total) * 100}%` }}
           />
         </span>
-        <span>{isOpen ? '▾' : '▸'}</span>
+        <span className="ml-auto">{isOpen ? '▾' : '▸'}</span>
       </button>
 
       {isOpen && (
