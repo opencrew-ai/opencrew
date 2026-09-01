@@ -116,10 +116,12 @@ export function UnifiedDiff({ text }: { text: string }) {
 }
 
 function DiffFileCard({ file }: { file: DiffFile }) {
-  const collapsible = file.lines.length > COLLAPSE_OVER
+  // --- / +++ / index rows are noise; the header bar already names the file.
+  const lines = file.lines.filter((line) => line.kind !== 'meta')
+  const collapsible = lines.length > COLLAPSE_OVER
   const [expanded, setExpanded] = useState(!collapsible)
-  const visible = expanded ? file.lines : file.lines.slice(0, PREVIEW_LINES)
-  const hidden = file.lines.length - visible.length
+  const visible = expanded ? lines : lines.slice(0, PREVIEW_LINES)
+  const hidden = lines.length - visible.length
 
   return (
     <div className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
@@ -146,41 +148,43 @@ function DiffFileCard({ file }: { file: DiffFile }) {
           </button>
         )}
       </div>
+      {/* Plain grid, deliberately NOT a <table> — prose/markdown stylesheets
+          style tables (row borders, cell padding) and wreck the diff. Lines
+          never wrap; long code scrolls horizontally like every diff viewer. */}
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse font-mono text-xs leading-5">
-          <tbody>
-            {visible.map((line, li) =>
-              line.kind === 'hunk' || line.kind === 'meta' ? (
-                <tr key={li} className={LINE_CLASS[line.kind]}>
-                  <td colSpan={3} className="select-none px-3 py-0.5 text-[11px]">
-                    {line.text}
-                  </td>
-                </tr>
-              ) : (
-                <tr key={li} className={LINE_CLASS[line.kind]}>
-                  <td
-                    className="w-10 select-none border-r border-zinc-800/60 pr-2 text-right align-top text-[10px] text-zinc-600"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {line.oldNo ?? ''}
-                  </td>
-                  <td
-                    className="w-10 select-none border-r border-zinc-800/60 pr-2 text-right align-top text-[10px] text-zinc-600"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {line.newNo ?? ''}
-                  </td>
-                  <td className="whitespace-pre-wrap break-all px-2 align-top">
-                    <span className={`mr-1 select-none ${MARKER[line.kind].className}`}>
-                      {MARKER[line.kind].char}
-                    </span>
-                    {line.text || ' '}
-                  </td>
-                </tr>
-              )
-            )}
-          </tbody>
-        </table>
+        <div className="w-max min-w-full font-mono text-xs leading-5">
+          {visible.map((line, li) =>
+            line.kind === 'hunk' ? (
+              <div
+                key={li}
+                className={`select-none px-3 py-0.5 text-[11px] ${LINE_CLASS.hunk}`}
+              >
+                {line.text}
+              </div>
+            ) : (
+              <div key={li} className={`flex ${LINE_CLASS[line.kind]}`}>
+                <span
+                  className="w-10 shrink-0 select-none pr-2 text-right text-[10px] leading-5 text-zinc-600"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {line.oldNo ?? ''}
+                </span>
+                <span
+                  className="w-10 shrink-0 select-none border-r border-zinc-800/60 pr-2 text-right text-[10px] leading-5 text-zinc-600"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {line.newNo ?? ''}
+                </span>
+                <span
+                  className={`w-6 shrink-0 select-none text-center ${MARKER[line.kind].className}`}
+                >
+                  {MARKER[line.kind].char}
+                </span>
+                <span className="whitespace-pre pr-4">{line.text || ' '}</span>
+              </div>
+            )
+          )}
+        </div>
       </div>
       {!expanded && hidden > 0 && (
         <button
