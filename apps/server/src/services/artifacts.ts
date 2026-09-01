@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, lt, ne } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Artifact, ArtifactComment, PlanTaskDraft } from '@opencrew/shared'
 import { artifactComments, artifacts, messages, users } from '../db/schema'
@@ -254,7 +254,9 @@ export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Pro
     )
   const now = Date.now()
   for (const row of prior) {
-    if (row.status === 'proposed') {
+    // 'review' priors too: an old version parked with a reviewer must not
+    // resurface later as a stale duplicate next to the new proposal.
+    if (row.status === 'proposed' || row.status === 'review') {
       await ctx.db
         .update(artifacts)
         .set({ status: 'discarded', updatedAt: now })
@@ -316,6 +318,52 @@ async function dispatchDocReview(
 }
 
 /** Docs currently in review for a conversation, with their author names. */
+/** True when a newer, non-discarded version of the same doc exists. */
+async function supersededByNewer(db: DB, row: ArtifactRow): Promise<boolean> {
+  const newer = await db
+    .select({ id: artifacts.id })
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.conversationRootId, row.conversationRootId),
+        eq(artifacts.title, row.title),
+        gt(artifacts.version, row.version),
+        ne(artifacts.status, 'discarded')
+      )
+    )
+    .limit(1)
+  return newer.length > 0
+}
+
+/**
+ * Committing one version retires any OLDER sibling still awaiting action —
+ * exactly one version of a doc may ever sit in the Needs-You inbox.
+ */
+async function discardStaleSiblings(ctx: AppContext, row: ArtifactRow): Promise<void> {
+  const stale = await ctx.db
+    .select()
+    .from(artifacts)
+    .where(
+      and(
+        eq(artifacts.conversationRootId, row.conversationRootId),
+        eq(artifacts.title, row.title),
+        lt(artifacts.version, row.version),
+        inArray(artifacts.status, ['review', 'proposed'])
+      )
+    )
+  const now = Date.now()
+  for (const sibling of stale) {
+    await ctx.db
+      .update(artifacts)
+      .set({ status: 'discarded', updatedAt: now })
+      .where(eq(artifacts.id, sibling.id))
+    ctx.hub.broadcast({
+      type: 'artifact_state',
+      artifact: { ...toArtifact(sibling), status: 'discarded', updatedAt: now }
+    })
+  }
+}
+
 export async function listDocsInReview(
   db: DB,
   conversationRootId: string,
@@ -365,11 +413,15 @@ export async function applyReviewVerdict(
   const row = rows.find((r) => input.kinds.includes(r.kind))
   if (!row) return null
   const now = Date.now()
-  const status = input.verdict === 'clear' ? ('proposed' as const) : ('discarded' as const)
+  // A slow "clear" verdict on a version the author has already re-proposed
+  // must not resurrect a stale duplicate into the human's inbox.
+  const superseded = input.verdict === 'clear' && (await supersededByNewer(ctx.db, row))
+  const status =
+    input.verdict === 'clear' && !superseded ? ('proposed' as const) : ('discarded' as const)
   await ctx.db.update(artifacts).set({ status, updatedAt: now }).where(eq(artifacts.id, row.id))
   const artifact: Artifact = { ...toArtifact(row), status, updatedAt: now }
   ctx.hub.broadcast({ type: 'artifact_state', artifact })
-  if (input.verdict === 'clear') {
+  if (input.verdict === 'clear' && !superseded) {
     // refArtifactId anchors the doc card to this notice — the card must be
     // reachable even when the proposing run failed to post its reply.
     await postSystemMessage(
@@ -395,20 +447,24 @@ export async function flipRemainingReviewDocs(
     )
   const now = Date.now()
   for (const row of rows) {
+    // Superseded versions retire quietly instead of joining the inbox.
+    const status = (await supersededByNewer(ctx.db, row)) ? 'discarded' : 'proposed'
     await ctx.db
       .update(artifacts)
-      .set({ status: 'proposed', updatedAt: now })
+      .set({ status, updatedAt: now })
       .where(eq(artifacts.id, row.id))
     ctx.hub.broadcast({
       type: 'artifact_state',
-      artifact: { ...toArtifact(row), status: 'proposed', updatedAt: now }
+      artifact: { ...toArtifact(row), status, updatedAt: now }
     })
-    await postSystemMessage(
-      ctx,
-      row.channelId,
-      `📄 **${row.title}** (v${row.version}) is ready for your review.`,
-      { threadRootId: row.conversationRootId, refArtifactId: row.id }
-    )
+    if (status === 'proposed') {
+      await postSystemMessage(
+        ctx,
+        row.channelId,
+        `📄 **${row.title}** (v${row.version}) is ready for your review.`,
+        { threadRootId: row.conversationRootId, refArtifactId: row.id }
+      )
+    }
   }
   return rows.length
 }
@@ -430,6 +486,7 @@ export async function commitPlan(
     .update(artifacts)
     .set({ status: 'committed', committedBy: userId, updatedAt: now })
     .where(eq(artifacts.id, artifactId))
+  await discardStaleSiblings(ctx, row)
 
   // Materialize the drafts in order, wiring dependsOn (1-based indexes of
   // EARLIER drafts — later/self references are ignored, so the resulting
