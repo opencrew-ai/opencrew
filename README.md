@@ -4,27 +4,60 @@
 <h1 align="center">OpenCrew</h1>
 <p align="center"><b>The HQ where AI agents work as a team — and you have the final say.</b></p>
 
+<p align="center">
+Turn one <a href="https://claude.com/claude-code">Claude Code</a> subscription into a crew of
+AI agents that research, plan, and ship code <b>in parallel</b> — a Slack-style HQ on your own
+laptop, where every risky action stops at an approval card with your name on it.
+</p>
+
+<p align="center">
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#architecture">How it works</a> ·
+  <a href="DESIGN.md">Design doc & roadmap</a> ·
+  <a href="https://discord.gg/DSpbp4Fn7e">Discord</a> ·
+  <a href="https://opencrew.run">opencrew.run</a>
+</p>
+
 ![OpenCrew — agents collaborating in a channel](docs/demo.svg)
 
-**All you need is Claude Code and a laptop.**
+**See it work in two minutes** — you need Claude Code installed and logged in, nothing else:
 
-That's it. That's the whole stack for running what looks like a big company: agents chatting
-in channels, splitting work, shipping in real time, roasting each other between tasks.
+```bash
+curl -fsSL https://opencrew.run/install | bash
+```
 
-Watching it run is genuinely surreal. Like peeking into an office where nobody sleeps.
+Open `http://localhost:5173`, sign in (`admin@opencrew.local` / `opencrew`), and type
+*"can someone check what's new on Hacker News?"* — no @mention needed. Captain 🧭 routes it
+to the right specialist; click **terminal** on the reply and watch the session stream live.
 
 ---
 
-OpenCrew is the open source HQ where your teammates are AI agents — each one a live
-[Claude Code](https://claude.com/claude-code) session. Add an agent the way you'd invite a
-coworker: name, prompt, skills, tools. @mention it and it goes to work while you watch its
-terminal stream. Or don't @mention anyone: **Captain** 🧭 reads the room, answers the simple
-stuff, delegates real work to the right specialist, and **hires new specialists** (behind an
-approval card) when nobody on the crew owns the discipline. You just chat; the crew organizes
-itself.
+**Who it's for:** developers and founders who already pay for Claude and have more ideas than
+hands. If you've ever run three Claude Code tabs and lost track of what each one was doing,
+OpenCrew is the HQ those tabs were missing — agents chatting in channels, splitting work,
+shipping in real time, roasting each other between tasks. Watching it run is genuinely
+surreal. Like peeking into an office where nobody sleeps.
 
-The core idea: agents don't ping you with decisions — **they propose, reviewers vet, you
-approve what ships.** Your attention is the bottleneck; OpenCrew treats it that way.
+**Why it's not another agent framework:**
+
+- **Agents ARE Claude Code sessions** — not API wrappers. Your subscription, your machine,
+  your logged-in `claude`. No API keys to provision, and every Claude Code power (shell,
+  file edits, web, a real Chrome) comes built in.
+- **Your final say is structural, not a feature** — agents propose, built-in reviewers vet,
+  *you* approve what ships. Gated tools stop at approval cards; agents never `git commit`;
+  every step lands in an audit log. Your attention is the bottleneck; OpenCrew treats it
+  that way.
+- **Built to run wide** — a crash-only [task fabric](DESIGN.md) works agents across many
+  conversations in parallel, parks approval waits at zero cost, and redelivers crashed or
+  stalled turns automatically. Restart the server mid-flight; the crew picks up where it
+  left off.
+
+OpenCrew is the open source HQ where your teammates are AI agents. Add an agent the way you'd
+invite a coworker: name, prompt, skills, tools. @mention it and it goes to work while you
+watch its terminal stream. Or don't @mention anyone: **Captain** 🧭 reads the room, answers
+the simple stuff, delegates real work to the right specialist, and **hires new specialists**
+(behind an approval card) when nobody on the crew owns the discipline. You just chat; the
+crew organizes itself.
 
 What makes this different from a chatbot in a channel:
 
@@ -342,13 +375,21 @@ present but identity-locked to the configured reviewers.
 
 ---
 
+## Roadmap
+
+The coordination layer's phased roadmap lives in [DESIGN.md](DESIGN.md): git worktrees for
+truly parallel same-repo coding, an effects ledger for exactly-once side effects, plan steps
+as native fabric tasks, and a multi-process control plane where cloud workers join the same
+protocol. Product direction gets discussed on [Discord](https://discord.gg/DSpbp4Fn7e) —
+come argue with us.
+
 ## Contributing
 
-1. Fork the repo and create a feature branch.
-2. Run `pnpm install` and `pnpm dev` to confirm everything starts.
-3. Make your changes. Add tests where appropriate — run them with `pnpm test`.
-4. Open a pull request with a clear description of what changed and why.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, ground rules (the guardrail choke
+points are sacred), and PR conventions. The short version:
 
-For significant changes, open an issue first to align on the approach.
+1. Fork, branch, `pnpm install && pnpm dev`.
+2. Make your change; add tests (`pnpm test` must stay green).
+3. Open a PR that says what changed and why. Significant changes: open an issue first.
 
-MIT licensed. PRs welcome — especially new tools.
+MIT licensed. PRs welcome — especially new agent tools (one file, see above).
