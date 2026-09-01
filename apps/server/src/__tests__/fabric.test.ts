@@ -159,6 +159,22 @@ describe('fabric failure handling', () => {
     expect((await getFabricTask(db, id))!.state).toBe('leased')
   })
 
+  test('boot reap: another worker\'s leases reclaim instantly, own leases survive', async () => {
+    const db = await makeDb()
+    const foreign = await seedTask(db)
+    const mine = await seedTask(db)
+    await claimNextTask(db, { ...CLAIM, workerId: 'old-pid' })
+    await claimNextTask(db, { ...CLAIM, workerId: 'new-pid' })
+
+    const { reapForeignLeases } = await import('../fabric/store')
+    const reaped = await reapForeignLeases(db, 'new-pid')
+    expect(reaped.map((r) => r.task.id)).toEqual([foreign])
+    expect(reaped[0]!.disposition).toBe('retry')
+    // No waiting out the lease TTL — the foreign lease is ready right now.
+    expect((await getFabricTask(db, foreign))!.state).toBe('ready')
+    expect((await getFabricTask(db, mine))!.state).toBe('leased')
+  })
+
   test('failAttempt on a task no longer leased is a safe no-op', async () => {
     const db = await makeDb()
     const id = await seedTask(db)

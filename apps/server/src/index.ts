@@ -40,21 +40,33 @@ import './tools'
  * Refuse to start when another server owns the port — BEFORE opening the
  * database. PGlite is single-process: a doomed second instance that opens
  * the data dir and then dies on EADDRINUSE can corrupt it.
+ *
+ * Polls for up to 10s before giving up: on a dev-watch restart the previous
+ * process is often still draining (open sockets, live agent sessions) for a
+ * moment after the new one boots — waiting briefly is the difference between
+ * a clean handover and an EADDRINUSE crash-loop.
  */
 async function assertPortFree(port: number): Promise<void> {
   const net = await import('node:net')
-  await new Promise<void>((resolvePort, rejectPort) => {
-    const probe = net
-      .createServer()
-      .once('error', (err) => rejectPort(err))
-      .once('listening', () => probe.close(() => resolvePort()))
-    probe.listen(port, '127.0.0.1')
-  }).catch(() => {
-    console.error(
-      `⚓ OpenCrew server already running on port ${env.port} — this instance is exiting.`
-    )
-    process.exit(0)
-  })
+  const probe = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      const server = net
+        .createServer()
+        .once('error', () => resolve(false))
+        .once('listening', () => server.close(() => resolve(true)))
+      server.listen(port, '127.0.0.1')
+    })
+
+  const deadline = Date.now() + 10_000
+  while (!(await probe())) {
+    if (Date.now() > deadline) {
+      console.error(
+        `⚓ OpenCrew server already running on port ${port} — this instance is exiting.`
+      )
+      process.exit(0)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
 }
 
 async function main(): Promise<void> {

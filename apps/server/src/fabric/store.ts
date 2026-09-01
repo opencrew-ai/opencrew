@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { DB } from '../db'
 import { fabricTasks } from '../db/schema'
 
@@ -324,6 +324,43 @@ export async function reapExpiredLeases(
   const reaped: ReapedTask[] = []
   for (const row of expired) {
     if (skipIds.has(row.id)) continue
+    const dead = row.attempts >= row.maxAttempts
+    const updated = await db
+      .update(fabricTasks)
+      .set(dead ? terminalPatch('failed') : readyPatch())
+      .where(
+        and(
+          eq(fabricTasks.id, row.id),
+          eq(fabricTasks.state, 'leased'),
+          eq(fabricTasks.version, row.version)
+        )
+      )
+      .returning()
+    if (updated.length > 0) {
+      reaped.push({ task: toTask(row), disposition: dead ? 'dead' : 'retry' })
+    }
+  }
+  return reaped
+}
+
+/**
+ * Boot-time recovery for SINGLE mode: only one server process can exist (the
+ * port and the embedded PGlite store are both exclusive), so a lease held by
+ * any OTHER worker id belongs to a dead process — reap it immediately instead
+ * of waiting out the lease TTL. After a dev-watch restart, interrupted
+ * attempts resume in seconds, not a minute.
+ *
+ * NOTE for the multi-worker future: this shortcut assumes worker ids never
+ * coexist. Once remote workers join, boot recovery must fall back to plain
+ * lease expiry (reapExpiredLeases) — a foreign lease may be a live peer.
+ */
+export async function reapForeignLeases(db: DB, ownerId: string): Promise<ReapedTask[]> {
+  const foreign = await db
+    .select()
+    .from(fabricTasks)
+    .where(and(eq(fabricTasks.state, 'leased'), ne(fabricTasks.leaseOwner, ownerId)))
+  const reaped: ReapedTask[] = []
+  for (const row of foreign) {
     const dead = row.attempts >= row.maxAttempts
     const updated = await db
       .update(fabricTasks)

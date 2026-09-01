@@ -7,6 +7,7 @@ import {
   failLeasedFabricTask,
   parkFabricTask,
   reapExpiredLeases,
+  reapForeignLeases,
   renewLease,
   type FabricTask
 } from './store'
@@ -101,7 +102,18 @@ export class FabricRuntime {
       })
     }, RESYNC_MS)
     this.resync.unref()
-    this.wake()
+    // Instant boot recovery: leases from a previous process are dead — see
+    // reapForeignLeases. Work interrupted by a restart resumes right away.
+    void (async () => {
+      const reaped = await reapForeignLeases(this.db, this.config.workerId)
+      for (const { task, disposition } of reaped) {
+        if (disposition === 'retry') {
+          await this.hooks.onRedelivered?.(task, 'server restarted', task.attempts + 1)
+        } else {
+          await this.hooks.onDead?.(task, 'server restarted')
+        }
+      }
+    })().catch(() => {}).finally(() => this.wake())
   }
 
   async stop(): Promise<void> {
