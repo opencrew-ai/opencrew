@@ -20,6 +20,7 @@ import remarkGfm from 'remark-gfm'
 import type { Artifact } from '@opencrew/shared'
 import { ArtifactsByIdContext } from '../lib/useChannelArtifacts'
 import { DocIcon, TasksIcon } from './Icons'
+import { diffAwarePre } from './UnifiedDiff'
 
 const MD_PLUGINS = [remarkGfm]
 
@@ -176,7 +177,9 @@ export function DocDrawer({ artifact, triggerRef, onClose }: DocDrawerProps) {
         {/* Scrollable doc body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <div className="md-content text-sm leading-relaxed text-zinc-300">
-            <ReactMarkdown remarkPlugins={MD_PLUGINS}>{artifact.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={MD_PLUGINS} components={{ pre: diffAwarePre }}>
+              {artifact.content}
+            </ReactMarkdown>
           </div>
         </div>
       </div>

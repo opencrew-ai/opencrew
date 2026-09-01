@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { useWorkspace } from '../lib/workspace'
 import { DiffIcon, DocIcon } from './Icons'
+import { diffAwarePre } from './UnifiedDiff'
 
 function KindIcon({ kind, className }: { kind: Artifact['kind']; className?: string }) {
   return kind === 'change' ? (
@@ -18,7 +19,9 @@ function KindIcon({ kind, className }: { kind: Artifact['kind']; className?: str
 
 const MD_PLUGINS = [remarkGfm]
 const MD_COMPONENTS: Components = {
-  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />
+  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  // ```diff fences (change proposals) render as a real diff view.
+  pre: diffAwarePre
 }
 
 const QUOTE_PREVIEW = 120

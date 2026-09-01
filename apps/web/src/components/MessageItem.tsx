@@ -12,6 +12,7 @@ import { ThreadRefCard } from './ThreadRefCard'
 import { ShareThreadButton } from './ShareThreadButton'
 import { useArtifactById, useArtifactsForRun } from '../lib/useChannelArtifacts'
 import { ImageLightbox } from './ImageLightbox'
+import { diffAwarePre } from './UnifiedDiff'
 import { DocLinkChip } from './DocDrawer'
 import { CodeFileChip, looksLikeFilePath } from './CodeFileDrawer'
 
@@ -33,6 +34,9 @@ function buildMdComponents(agentId?: string): Components {
   return {
     // Links must never navigate the app away — always open in a new tab.
     a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+
+    // ```diff fences (pasted diffs, change excerpts) render as a diff view.
+    pre: diffAwarePre,
 
     // Bold text matching a known artifact title → clickable DocLinkChip.
     strong: ({ children }) => {
