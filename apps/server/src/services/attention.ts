@@ -5,6 +5,7 @@ import {
   agents,
   approvals,
   artifacts,
+  attentionDismissals,
   attentionRequests,
   messages,
   runs,
@@ -12,6 +13,43 @@ import {
 } from '../db/schema'
 import type { DB } from '../db'
 import type { AppContext } from '../context'
+
+/**
+ * Per-user "not now": hide an item from MY inbox without deciding it. The
+ * underlying doc/request/approval keeps its honest state and clears for real
+ * through its own flow; restore brings everything back.
+ */
+export async function dismissAttentionItem(
+  ctx: AppContext,
+  userId: string,
+  kind: string,
+  refId: string
+): Promise<void> {
+  await ctx.db
+    .insert(attentionDismissals)
+    .values({ userId, kind, refId, dismissedAt: Date.now() })
+    .onConflictDoNothing()
+  ctx.hub.broadcast({ type: 'attention_changed' })
+}
+
+/** Dismiss every item currently in the user's inbox. Returns the count. */
+export async function clearAttention(ctx: AppContext, userId: string): Promise<number> {
+  const items = await listAttention(ctx.db, userId)
+  for (const item of items) {
+    await ctx.db
+      .insert(attentionDismissals)
+      .values({ userId, kind: item.kind, refId: item.refId, dismissedAt: Date.now() })
+      .onConflictDoNothing()
+  }
+  ctx.hub.broadcast({ type: 'attention_changed' })
+  return items.length
+}
+
+/** Undo: drop all of the user's dismissals — hidden items come back. */
+export async function restoreAttention(ctx: AppContext, userId: string): Promise<void> {
+  await ctx.db.delete(attentionDismissals).where(eq(attentionDismissals.userId, userId))
+  ctx.hub.broadcast({ type: 'attention_changed' })
+}
 
 
 export async function createAttentionRequest(
@@ -65,7 +103,15 @@ export async function resolveAttentionRequest(
  * Everything currently waiting on a human, unified and newest-first:
  * explicit agent requests, docs awaiting review, pending tool approvals.
  */
-export async function listAttention(db: DB): Promise<AttentionItem[]> {
+export async function listAttention(db: DB, forUserId?: string): Promise<AttentionItem[]> {
+  const dismissed = new Set<string>()
+  if (forUserId) {
+    const rows = await db
+      .select({ kind: attentionDismissals.kind, refId: attentionDismissals.refId })
+      .from(attentionDismissals)
+      .where(eq(attentionDismissals.userId, forUserId))
+    for (const row of rows) dismissed.add(`${row.kind}:${row.refId}`)
+  }
   const agentRows = await db
     .select({ id: agents.id, name: agents.name, emoji: agents.avatarEmoji })
     .from(agents)
@@ -191,7 +237,8 @@ export async function listAttention(db: DB): Promise<AttentionItem[]> {
     task: 2
   }
   const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
-  return items.sort((a, b) => {
+  const visible = items.filter((item) => !dismissed.has(`${item.kind}:${item.refId}`))
+  return visible.sort((a, b) => {
     const kind = KIND_RANK[a.kind] - KIND_RANK[b.kind]
     if (kind !== 0) return kind
     const priority =

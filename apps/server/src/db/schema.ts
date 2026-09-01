@@ -432,6 +432,25 @@ export const fabricTasks = pgTable('fabric_tasks', {
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 })
 
+/**
+ * Per-user "not now" on Needs-You items, keyed by the item's (kind, refId).
+ * A dismissal only HIDES the item for that user — the underlying doc/request
+ * stays honest and re-clears through its real flow. Restore deletes rows.
+ */
+export const attentionDismissals = pgTable(
+  'attention_dismissals',
+  {
+    ...ws,
+    userId: text('user_id').notNull(),
+    kind: text('kind').notNull(),
+    refId: text('ref_id').notNull(),
+    dismissedAt: bigint('dismissed_at', { mode: 'number' }).notNull()
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.kind, t.refId] })
+  })
+)
+
 export const attentionRequests = pgTable('attention_requests', {
   id: text('id').primaryKey(),
   ...ws,

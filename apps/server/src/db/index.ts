@@ -243,6 +243,14 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at BIGINT NOT NULL,
   PRIMARY KEY (message_id, emoji, user_id)
 );
+CREATE TABLE IF NOT EXISTS attention_dismissals (
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  ref_id TEXT NOT NULL,
+  dismissed_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, kind, ref_id)
+);
 CREATE TABLE IF NOT EXISTS fabric_tasks (
   id TEXT PRIMARY KEY,
   workspace_slug TEXT NOT NULL DEFAULT 'default',

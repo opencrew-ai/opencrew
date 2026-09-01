@@ -66,6 +66,27 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const todayStats = useTodayStats()
   const liveChannels = useLiveChannels()
   const [activeAttention, setActiveAttention] = useState<AttentionItem | null>(null)
+  // Transient undo affordance after dismissing/clearing inbox items.
+  const [showUndoClear, setShowUndoClear] = useState(false)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const offerUndo = () => {
+    setShowUndoClear(true)
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    undoTimerRef.current = setTimeout(() => setShowUndoClear(false), 8000)
+  }
+  const dismissItem = (item: AttentionItem) => {
+    void api
+      .post('/api/attention/dismiss', { kind: item.kind, refId: item.refId })
+      .then(offerUndo)
+      .catch(() => {})
+  }
+  const clearAll = () => {
+    void api.post('/api/attention/clear', {}).then(offerUndo).catch(() => {})
+  }
+  const undoClear = () => {
+    setShowUndoClear(false)
+    void api.post('/api/attention/restore', {}).catch(() => {})
+  }
   const [inviteUrl, setInviteUrl] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
 
@@ -207,13 +228,35 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           >
             <span>Needs you</span>
             {attention.length > 0 && (
-              <span className="rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-300">
-                {attention.length}
+              <span className="flex items-center gap-1.5">
+                <button
+                  onClick={clearAll}
+                  title="Clear all — hides these for you; each item still resolves through its own flow"
+                  className="text-[10px] font-normal normal-case tracking-normal text-zinc-500 transition hover:text-zinc-300"
+                >
+                  clear
+                </button>
+                <span className="rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-300">
+                  {attention.length}
+                </span>
               </span>
             )}
           </div>
+          {showUndoClear && (
+            <button
+              onClick={undoClear}
+              className="mt-1 flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[11px] text-zinc-500 transition hover:text-zinc-300"
+            >
+              <span className="text-emerald-600">✓</span> cleared ·{' '}
+              <span className="underline underline-offset-2">undo</span>
+            </button>
+          )}
           {attention.length === 0 ? (
-            <p className="mt-1 px-2 text-xs text-zinc-600">All clear — nothing waiting on you.</p>
+            !showUndoClear && (
+              <p className="mt-1 px-2 text-xs text-zinc-600">
+                All clear — nothing waiting on you.
+              </p>
+            )
           ) : (
             <div className="mt-1">
               {attention.slice(0, 8).map((item) => {
@@ -228,25 +271,40 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
                 return (
                   // Click = the item opens as a self-sufficient modal (full
                   // ask + context + action). The thread is inside the modal,
-                  // for when more context is genuinely needed.
-                  <button
+                  // for when more context is genuinely needed. Hover ✕ =
+                  // "not now" — hides it for you without deciding it.
+                  <div
                     key={`${item.kind}-${item.refId}`}
-                    onClick={() => setActiveAttention(item)}
-                    className="flex w-full items-start gap-1.5 rounded px-2 py-1 text-left hover:bg-zinc-800/60"
+                    className="group/need relative flex w-full items-start gap-1.5 rounded px-2 py-1 hover:bg-zinc-800/60"
                   >
-                    <span className="mt-px text-xs">{icon}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs text-zinc-200">
-                        {item.priority === 'high' && <span className="mr-1 text-red-400">‼</span>}
-                        {item.title}
-                      </span>
-                      {item.agentName && (
-                        <span className="block truncate text-[10px] text-zinc-500">
-                          {item.agentEmoji} {item.agentName}
+                    <button
+                      onClick={() => setActiveAttention(item)}
+                      className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
+                    >
+                      <span className="mt-px text-xs">{icon}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs text-zinc-200">
+                          {item.priority === 'high' && (
+                            <span className="mr-1 text-red-400">‼</span>
+                          )}
+                          {item.title}
                         </span>
-                      )}
-                    </span>
-                  </button>
+                        {item.agentName && (
+                          <span className="block truncate text-[10px] text-zinc-500">
+                            {item.agentEmoji} {item.agentName}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => dismissItem(item)}
+                      title="Dismiss — not now (hides it for you)"
+                      aria-label={`Dismiss: ${item.title}`}
+                      className="invisible mt-px shrink-0 rounded px-1 text-xs text-zinc-600 transition hover:text-zinc-300 group-hover/need:visible"
+                    >
+                      ×
+                    </button>
+                  </div>
                 )
               })}
               {attention.length > 8 && (
