@@ -278,17 +278,38 @@ export async function dispatchUnblockedTasks(
       humanUnblocked = true
       continue
     }
-    const initiator =
-      task.createdByType === 'human' ? task.createdById : await workspaceAdminId(ctx.db)
-    if (initiator) await startTask(ctx, task.id, initiator, undefined, 'auto')
+    await startTask(ctx, task.id, await autopilotUserId(ctx.db), undefined, 'auto')
   }
   if (humanUnblocked) ctx.hub.broadcast({ type: 'attention_changed' })
 }
 
-async function workspaceAdminId(db: DB): Promise<string | null> {
+const AUTOPILOT_EMAIL = 'autopilot@opencrew.local'
+
+/**
+ * The workspace's automation identity. Auto-dispatched and scheduled task
+ * kickoffs post under it, so the feed never attributes an automatic action
+ * to a person ("did I kick this?"). It must be a human-TYPE user because
+ * only human-authored mentions trigger runs — but its password hash is a
+ * sentinel no scheme matches, so nobody can ever log in as it.
+ */
+export async function autopilotUserId(db: DB): Promise<string> {
   const { users } = await import('../db/schema')
-  const [admin] = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin')).limit(1)
-  return admin?.id ?? null
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, AUTOPILOT_EMAIL))
+    .limit(1)
+  if (existing) return existing.id
+  const id = nanoid()
+  await db.insert(users).values({
+    id,
+    name: 'Autopilot',
+    email: AUTOPILOT_EMAIL,
+    passwordHash: 'disabled$system-identity',
+    role: 'admin',
+    createdAt: Date.now()
+  })
+  return id
 }
 
 export type ShortIdLookup =

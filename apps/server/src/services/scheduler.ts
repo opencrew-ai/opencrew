@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, lte } from 'drizzle-orm'
-import { tasks, users } from '../db/schema'
+import { tasks } from '../db/schema'
 import type { AppContext } from '../context'
-import { startTask } from './tasks'
+import { autopilotUserId, startTask } from './tasks'
 
 const SWEEP_INTERVAL_MS = 30_000
 
@@ -31,17 +31,11 @@ export function startTaskScheduler(ctx: AppContext): void {
           )
         )
       if (due.length > 0) {
-        const [admin] = await ctx.db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.role, 'admin'))
-          .limit(1)
         let humanBecameDue = false
         for (const task of due) {
           if (task.assigneeType === 'agent') {
-            // Initiator: the human who created it, else the workspace admin.
-            const initiator = task.createdByType === 'human' ? task.createdById : admin?.id
-            if (initiator) await startTask(ctx, task.id, initiator, undefined, 'scheduled')
+            // Scheduled kickoffs post as Autopilot — never as a person.
+            await startTask(ctx, task.id, await autopilotUserId(ctx.db), undefined, 'scheduled')
           } else if ((task.scheduledFor ?? 0) > lastSweepAt) {
             humanBecameDue = true
           }
