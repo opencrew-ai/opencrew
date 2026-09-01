@@ -218,6 +218,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   source_agent_id TEXT,
   assignee_type TEXT NOT NULL DEFAULT 'agent',
   scheduled_for BIGINT,
+  blocked_by TEXT,
   position INTEGER NOT NULL,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL
@@ -269,6 +270,7 @@ ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS source_dir TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS ref_artifact_id TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee_type TEXT NOT NULL DEFAULT 'agent';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduled_for BIGINT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_by TEXT;
 `
 
 // ---------------------------------------------------------------------------

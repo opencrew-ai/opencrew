@@ -113,6 +113,11 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
               const agent = task.sourceAgentId
                 ? agents.find((a) => a.id === task.sourceAgentId)
                 : undefined
+              const openIds = new Set(
+                items.filter((t) => t.status !== 'completed').map((t) => t.id)
+              )
+              const isBlocked =
+                task.status === 'pending' && !!task.blockedBy?.some((id) => openIds.has(id))
               return (
                 <li key={task.id} className="group/task flex items-start gap-2 py-0.5 text-xs">
                   {/* Status toggle */}
@@ -181,12 +186,20 @@ export function TaskChecklist({ rootId, items }: TaskChecklistProps) {
                         {agent.avatarEmoji}
                       </span>
                     )}
+                    {isBlocked && (
+                      <span
+                        className="ml-1.5 rounded bg-zinc-800 px-1 py-px font-mono text-[9px] text-zinc-500"
+                        title="Starts automatically when its earlier tasks complete"
+                      >
+                        blocked
+                      </span>
+                    )}
                   </span>
 
                   {/* Hover actions */}
                   {canEdit && (
                     <span className="invisible flex shrink-0 gap-1.5 group-hover/task:visible">
-                      {task.status === 'pending' && (
+                      {task.status === 'pending' && !isBlocked && (
                         <button
                           onClick={() => void start(task.id)}
                           title="Start as its own thread — the crew picks it up"

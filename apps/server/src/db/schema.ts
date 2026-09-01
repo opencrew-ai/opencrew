@@ -289,6 +289,8 @@ export const tasks = pgTable('tasks', {
   /** Unix ms. Agent tasks auto-dispatch at this time; human tasks become
    *  due in the Needs-You inbox. Null = unscheduled. */
   scheduledFor: bigint('scheduled_for', { mode: 'number' }),
+  /** JSON string[] of task ids that must complete before this one starts. */
+  blockedBy: text('blocked_by'),
   position: integer('position').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()

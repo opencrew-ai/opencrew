@@ -275,6 +275,12 @@ export function TasksPage() {
                       task.scheduledFor &&
                       task.scheduledFor < Date.now() &&
                       task.status === 'pending'
+                    const openIds = new Set(
+                      tasks.filter((t) => t.status !== 'completed').map((t) => t.id)
+                    )
+                    const isBlocked =
+                      task.status === 'pending' &&
+                      !!task.blockedBy?.some((id) => openIds.has(id))
                     return (
                       <div
                         key={task.id}
@@ -299,6 +305,14 @@ export function TasksPage() {
                         {task.status === 'in_progress' && (
                           <span className="animate-pulse text-xs text-emerald-400">▸ running</span>
                         )}
+                        {isBlocked && (
+                          <span
+                            className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500"
+                            title="Starts automatically when its blockers complete"
+                          >
+                            blocked
+                          </span>
+                        )}
                         {task.scheduledFor ? (
                           <span
                             className={`font-mono text-[11px] tabular-nums group-hover/row:hidden ${
@@ -310,7 +324,7 @@ export function TasksPage() {
                           </span>
                         ) : null}
                         <span className="hidden items-center gap-2 group-hover/row:flex">
-                          {task.status === 'pending' && (
+                          {task.status === 'pending' && !isBlocked && (
                             <button
                               onClick={() => void askAgent(task)}
                               title="Ask an agent to do this now — starts its own thread"

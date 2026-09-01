@@ -40,19 +40,24 @@ describe('restart recovery', () => {
     expect(fresh!.agentId).toBe('agent-1')
   })
 
-  test('a second interruption gives up instead of looping', async () => {
+  test('the delivery budget allows two redeliveries, then gives up', async () => {
     const ctx = await makeTestCtx()
     await insertRunningRun(ctx.db)
 
     const first = await failInterruptedRuns(ctx.db)
     expect(first).toHaveLength(1)
 
-    // The requeued run starts running, then the server dies again.
+    // Redelivery #2 is still within budget.
     await ctx.db.update(runs).set({ status: 'running' }).where(eq(runs.id, first[0]!))
     const second = await failInterruptedRuns(ctx.db)
-    expect(second).toHaveLength(0)
+    expect(second).toHaveLength(1)
 
-    const [givenUp] = await ctx.db.select().from(runs).where(eq(runs.id, first[0]!))
+    // Third interruption exhausts the budget — permanent failure.
+    await ctx.db.update(runs).set({ status: 'running' }).where(eq(runs.id, second[0]!))
+    const third = await failInterruptedRuns(ctx.db)
+    expect(third).toHaveLength(0)
+
+    const [givenUp] = await ctx.db.select().from(runs).where(eq(runs.id, second[0]!))
     expect(givenUp!.status).toBe('failed')
     expect(givenUp!.error).toContain('giving up')
   })

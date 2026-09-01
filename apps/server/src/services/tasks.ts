@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, inArray, like } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type {
   AgentTaskItem,
@@ -15,6 +15,16 @@ type TaskRow = typeof tasks.$inferSelect
 
 const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 }
 
+function parseBlockedBy(json: string | null): string[] | undefined {
+  if (!json) return undefined
+  try {
+    const parsed = JSON.parse(json) as string[]
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function toSharedTask(row: TaskRow): SharedTask {
   return {
     id: row.id,
@@ -29,9 +39,24 @@ function toSharedTask(row: TaskRow): SharedTask {
     sourceAgentId: row.sourceAgentId ?? undefined,
     assigneeType: row.assigneeType,
     scheduledFor: row.scheduledFor ?? undefined,
+    blockedBy: parseBlockedBy(row.blockedBy),
     position: row.position,
     updatedAt: row.updatedAt
   }
+}
+
+/**
+ * A task is blocked while any of its blockers is an OPEN task. Blockers that
+ * were deleted or completed no longer block; unknown ids are ignored.
+ */
+export async function isTaskBlocked(db: DB, row: TaskRow): Promise<boolean> {
+  const blockers = parseBlockedBy(row.blockedBy)
+  if (!blockers) return false
+  const open = await db
+    .select({ id: tasks.id, status: tasks.status })
+    .from(tasks)
+    .where(inArray(tasks.id, blockers))
+  return open.some((t) => t.status !== 'completed')
 }
 
 function sortTasks(items: SharedTask[]): SharedTask[] {
@@ -94,6 +119,8 @@ export interface CreateTaskInput {
   activeForm?: string
   assigneeType?: 'agent' | 'human'
   scheduledFor?: number
+  /** Task ids that must complete before this one may start. */
+  blockedBy?: string[]
 }
 
 export async function createTask(ctx: AppContext, input: CreateTaskInput): Promise<SharedTask> {
@@ -112,6 +139,7 @@ export async function createTask(ctx: AppContext, input: CreateTaskInput): Promi
     sourceAgentId: input.sourceAgentId ?? null,
     assigneeType: input.assigneeType ?? 'agent',
     scheduledFor: input.scheduledFor ?? null,
+    blockedBy: input.blockedBy && input.blockedBy.length > 0 ? JSON.stringify(input.blockedBy) : null,
     position: await nextPosition(ctx.db, input.conversationRootId),
     createdAt: now,
     updatedAt: now
@@ -141,6 +169,7 @@ export async function updateTask(
     .set({ ...patch, updatedAt: Date.now() })
     .where(eq(tasks.id, taskId))
   await broadcastTaskState(ctx, row.conversationRootId, row.channelId)
+  if (patch.status === 'completed') await dispatchUnblockedTasks(ctx, taskId)
   return {
     ...toSharedTask(row),
     ...patch,
@@ -160,6 +189,8 @@ export async function deleteTask(ctx: AppContext, taskId: string): Promise<boole
   if (!row) return false
   await ctx.db.delete(tasks).where(eq(tasks.id, taskId))
   await broadcastTaskState(ctx, row.conversationRootId, row.channelId)
+  // A deleted blocker unblocks its dependents just like a completed one.
+  await dispatchUnblockedTasks(ctx, taskId)
   return true
 }
 
@@ -177,6 +208,8 @@ export async function startTask(
 ): Promise<{ channelId: string; rootId: string } | null> {
   const [task] = await ctx.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1)
   if (!task || task.status !== 'pending') return null
+  // DAG guard: a blocked task cannot start — its blockers dispatch it later.
+  if (await isTaskBlocked(ctx.db, task)) return null
 
   const targetAgentId = agentId ?? task.sourceAgentId ?? undefined
   let mention = ''
@@ -206,6 +239,43 @@ export async function startTask(
 }
 
 /**
+ * DAG dispatch: when a task completes (or a blocker disappears), any task it
+ * was blocking whose blockers are now ALL resolved starts automatically —
+ * an approved plan executes itself stage by stage. Human-assigned tasks are
+ * never auto-started; unblocking surfaces them in Needs-You instead.
+ */
+export async function dispatchUnblockedTasks(
+  ctx: AppContext,
+  resolvedTaskId: string
+): Promise<void> {
+  const dependents = await ctx.db
+    .select()
+    .from(tasks)
+    .where(like(tasks.blockedBy, `%"${resolvedTaskId}"%`))
+  let humanUnblocked = false
+  for (const task of dependents) {
+    if (task.status !== 'pending') continue
+    if (await isTaskBlocked(ctx.db, task)) continue
+    // Scheduled-for-later tasks keep their schedule; the sweep fires them.
+    if (task.scheduledFor && task.scheduledFor > Date.now()) continue
+    if (task.assigneeType === 'human') {
+      humanUnblocked = true
+      continue
+    }
+    const initiator =
+      task.createdByType === 'human' ? task.createdById : await workspaceAdminId(ctx.db)
+    if (initiator) await startTask(ctx, task.id, initiator)
+  }
+  if (humanUnblocked) ctx.hub.broadcast({ type: 'attention_changed' })
+}
+
+async function workspaceAdminId(db: DB): Promise<string | null> {
+  const { users } = await import('../db/schema')
+  const [admin] = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin')).limit(1)
+  return admin?.id ?? null
+}
+
+/**
  * Merge an agent's TodoWrite snapshot into the SHARED list. Items are
  * matched by exact (trimmed) content — the agent is instructed to echo item
  * text verbatim — so human-created items the agent picked up get their
@@ -228,6 +298,7 @@ export async function reconcileTodoSnapshot(
   const byContent = new Map(existing.map((row) => [row.content.trim(), row]))
   const now = Date.now()
   let position = existing.reduce((max, r) => Math.max(max, r.position), 0)
+  const newlyCompleted: string[] = []
 
   for (const item of input.items) {
     const match = byContent.get(item.content.trim())
@@ -238,6 +309,9 @@ export async function reconcileTodoSnapshot(
         match.activeForm !== activeForm ||
         match.sourceAgentId !== input.agentId
       ) {
+        if (item.status === 'completed' && match.status !== 'completed') {
+          newlyCompleted.push(match.id)
+        }
         await ctx.db
           .update(tasks)
           .set({
@@ -270,6 +344,9 @@ export async function reconcileTodoSnapshot(
     }
   }
   await broadcastTaskState(ctx, input.conversationRootId, input.channelId)
+  for (const taskId of newlyCompleted) {
+    await dispatchUnblockedTasks(ctx, taskId)
+  }
 }
 
 /**
@@ -282,12 +359,16 @@ export async function buildTaskPromptSection(
 ): Promise<string> {
   const items = await listConversationTasks(db, conversationRootId)
   if (items.length === 0) return ''
+  const openIds = new Set(items.filter((t) => t.status !== 'completed').map((t) => t.id))
   const lines = items.map((t) => {
     const box = t.status === 'completed' ? '[x]' : t.status === 'in_progress' ? '[~]' : '[ ]'
     const author = t.createdByType === 'human' ? ' (added by a human)' : ''
     const assignee =
       t.assigneeType === 'human' ? ' [ASSIGNED TO A HUMAN — do not work this item]' : ''
-    return `${box} (${t.priority}) ${t.content}${author}${assignee}`
+    const blocked = t.blockedBy?.some((id) => openIds.has(id))
+      ? ' [BLOCKED — waits on earlier tasks, do not start]'
+      : ''
+    return `${box} (${t.priority}) ${t.content}${author}${assignee}${blocked}`
   })
   return (
     `\n\nShared task list for this conversation (humans and agents co-edit it):\n` +

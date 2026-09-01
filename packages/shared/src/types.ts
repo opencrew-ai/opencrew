@@ -222,6 +222,8 @@ export interface SharedTask {
   assigneeType: 'agent' | 'human'
   /** Unix ms — agent tasks auto-dispatch then; human tasks become due then. */
   scheduledFor?: number
+  /** Task ids that must complete before this one can start (DAG edge). */
+  blockedBy?: string[]
   position: number
   updatedAt: number
 }
@@ -263,6 +265,12 @@ export interface PlanTaskDraft {
   assignee?: 'agent' | 'human'
   /** ISO datetime — when this step should happen (agent steps auto-fire). */
   scheduledFor?: string
+  /**
+   * 1-based indexes of EARLIER tasks in this plan that must complete first.
+   * Earlier-only by rule, so dependency cycles are impossible by construction.
+   * Unblocked agent tasks auto-dispatch when their last blocker completes.
+   */
+  dependsOn?: number[]
 }
 
 /**

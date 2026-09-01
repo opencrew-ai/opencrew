@@ -4,6 +4,7 @@ import { messages, runs, runSteps } from '../db/schema'
 import { getAgent } from '../services/agents'
 import { postSystemMessage } from '../services/messages'
 import { broadcastPresence } from '../services/presence'
+import { requeueRun } from './queue'
 
 /**
  * Run watchdog — answers "is that agent stuck or working?" so a human never
@@ -65,14 +66,10 @@ async function sweep(ctx: AppContext): Promise<void> {
 
     if (silence >= STALL_KILL_MS) {
       const agent = await getAgent(ctx.db, run.agentId)
-      await ctx.db
-        .update(runs)
-        .set({
-          status: 'failed',
-          error: `watchdog: no activity for ${minutes}m`,
-          finishedAt: now
-        })
-        .where(eq(runs.id, run.id))
+      // Visibility timeout expired: kill this delivery and redeliver — the
+      // resumed session continues from its last state. Budget-capped so a
+      // poisoned run can't cycle forever.
+      const redelivery = await requeueRun(ctx.db, run, `watchdog: no activity for ${minutes}m`)
       ctx.hub.broadcast({ type: 'run_status', runId: run.id, agentId: run.agentId, status: 'failed' })
       ctx.hub.broadcast({
         type: 'agent_activity',
@@ -85,12 +82,23 @@ async function sweep(ctx: AppContext): Promise<void> {
       ctx.activeRuns.get(run.id)?.abort()
       flagged.delete(run.id)
       broadcastPresence(ctx)
-      if (channelId) {
+      if (redelivery) {
+        ctx.queue.enqueue(redelivery.runId)
+        if (channelId) {
+          await postSystemMessage(
+            ctx,
+            channelId,
+            `⏱ **${agent?.name ?? 'An agent'}** went quiet for ${minutes} minutes — watchdog ` +
+              `restarted it (retry ${redelivery.attempt}/2), resuming from its last state.`,
+            { threadRootId, runId: redelivery.runId }
+          )
+        }
+      } else if (channelId) {
         await postSystemMessage(
           ctx,
           channelId,
-          `⚠️ Watchdog stopped **${agent?.name ?? 'an agent'}** — no activity for ${minutes} ` +
-            `minutes (likely hung). @mention it again to retry; the session resumes with full context.`,
+          `⚠️ Watchdog gave up on **${agent?.name ?? 'an agent'}** — quiet for ${minutes} ` +
+            `minutes and out of automatic retries. @mention it to try again manually.`,
           { threadRootId, runId: run.id }
         )
       }

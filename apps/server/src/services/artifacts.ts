@@ -431,9 +431,17 @@ export async function commitPlan(
     .set({ status: 'committed', committedBy: userId, updatedAt: now })
     .where(eq(artifacts.id, artifactId))
 
-  for (const draft of parseDrafts(row.tasks)) {
+  // Materialize the drafts in order, wiring dependsOn (1-based indexes of
+  // EARLIER drafts — later/self references are ignored, so the resulting
+  // graph is acyclic by construction) into blockedBy task ids.
+  const drafts = parseDrafts(row.tasks)
+  const createdIds: string[] = []
+  for (const [index, draft] of drafts.entries()) {
     const scheduledMs = draft.scheduledFor ? Date.parse(draft.scheduledFor) : NaN
-    await createTask(ctx, {
+    const blockedBy = (draft.dependsOn ?? [])
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= index)
+      .map((n) => createdIds[n - 1]!)
+    const task = await createTask(ctx, {
       conversationRootId: row.conversationRootId,
       channelId: row.channelId,
       content: draft.content,
@@ -442,8 +450,10 @@ export async function commitPlan(
       createdById: row.createdByAgentId,
       sourceAgentId: draft.assignee === 'human' ? undefined : row.createdByAgentId,
       assigneeType: draft.assignee ?? 'agent',
-      scheduledFor: Number.isFinite(scheduledMs) ? scheduledMs : undefined
+      scheduledFor: Number.isFinite(scheduledMs) ? scheduledMs : undefined,
+      blockedBy: blockedBy.length > 0 ? blockedBy : undefined
     })
+    createdIds.push(task.id)
   }
 
   const agent = await getAgent(ctx.db, row.createdByAgentId)

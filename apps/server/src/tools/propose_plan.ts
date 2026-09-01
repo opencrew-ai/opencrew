@@ -44,6 +44,17 @@ registerOpenCrewTool({
             .describe(
               'ISO datetime when this step should happen. Agent steps auto-fire at that ' +
                 'time; human steps become due in the inbox then. Omit for "as soon as possible".'
+            ),
+          dependsOn: z
+            .array(z.number().int().min(1))
+            .max(20)
+            .optional()
+            .describe(
+              '1-based indexes of EARLIER tasks in this list that must complete first ' +
+                '(e.g. task 4 with dependsOn [2,3]). Blocked tasks start automatically ' +
+                'the moment their last dependency completes — sequence real pipelines ' +
+                '(build → test → deploy) instead of relying on delegation timing. ' +
+                'Only earlier indexes are valid; later or self references are ignored.'
             )
         })
       )
