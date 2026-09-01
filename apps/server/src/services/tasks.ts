@@ -153,6 +153,8 @@ export interface UpdateTaskPatch {
   status?: TaskStatus
   priority?: TaskPriority
   content?: string
+  /** Agent claiming/working the task (set by update_task). */
+  sourceAgentId?: string
   /** null clears the schedule. */
   scheduledFor?: number | null
 }
@@ -275,6 +277,36 @@ async function workspaceAdminId(db: DB): Promise<string | null> {
   return admin?.id ?? null
 }
 
+export type ShortIdLookup =
+  | { kind: 'one'; task: TaskRow }
+  | { kind: 'none' }
+  | { kind: 'ambiguous' }
+
+/**
+ * Resolve the short "#a1b2c3" ids printed in run prompts back to a task in
+ * this conversation. Prefix match; ambiguity is an error, never a guess.
+ */
+export async function findTaskByShortId(
+  db: DB,
+  conversationRootId: string,
+  shortId: string
+): Promise<ShortIdLookup> {
+  const needle = shortId.replace(/^#/, '').trim()
+  if (!needle) return { kind: 'none' }
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.conversationRootId, conversationRootId))
+  const matches = rows.filter((row) => row.id.startsWith(needle))
+  if (matches.length === 1) return { kind: 'one', task: matches[0]! }
+  return matches.length === 0 ? { kind: 'none' } : { kind: 'ambiguous' }
+}
+
+/** Short id shown next to each task in prompts — enough to be unique per conversation. */
+export function taskShortId(id: string): string {
+  return `#${id.slice(0, 6)}`
+}
+
 /**
  * Merge an agent's TodoWrite snapshot into the SHARED list. Items are
  * matched by exact (trimmed) content — the agent is instructed to echo item
@@ -368,14 +400,16 @@ export async function buildTaskPromptSection(
     const blocked = t.blockedBy?.some((id) => openIds.has(id))
       ? ' [BLOCKED — waits on earlier tasks, do not start]'
       : ''
-    return `${box} (${t.priority}) ${t.content}${author}${assignee}${blocked}`
+    return `${box} ${taskShortId(t.id)} (${t.priority}) ${t.content}${author}${assignee}${blocked}`
   })
   return (
     `\n\nShared task list for this conversation (humans and agents co-edit it):\n` +
     lines.join('\n') +
-    `\nWork the highest-priority open items first. Keep the list current with TodoWrite, ` +
-    `echoing existing item text VERBATIM so status updates match up; add new items as you ` +
-    `discover work.`
+    `\nWork the highest-priority open items first. STATUS IS PART OF THE WORK: when you ` +
+    `start an item, call update_task with its #id and status "in_progress"; the moment its ` +
+    `deliverable exists, call update_task with "completed" — completing is what unblocks ` +
+    `and auto-starts the tasks depending on it. Use TodoWrite freely for your own ` +
+    `finer-grained scratch planning.`
   )
 }
 

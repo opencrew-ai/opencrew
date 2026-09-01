@@ -42,6 +42,8 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'update_doc',
   'read_doc',
   'request_human',
+  // Scoped to the agent's own conversation; human-assigned tasks refused.
+  'update_task',
   // Identity-gated inside execute(): only configured reviewers.
   'review_doc',
   // The ONLY path to a git commit — reviewed diff + human approval.
