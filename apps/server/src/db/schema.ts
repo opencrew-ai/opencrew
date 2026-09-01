@@ -245,6 +245,25 @@ export const reactions = pgTable(
 )
 
 /**
+ * Server-persisted thread read state.
+ * Records the timestamp when a user last marked a thread as read.
+ * Unread = no row exists, or the thread has messages newer than read_at.
+ */
+export const threadReads = pgTable(
+  'thread_reads',
+  {
+    ...ws,
+    userId: text('user_id').notNull(),
+    threadRootId: text('thread_root_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    readAt: bigint('read_at', { mode: 'number' }).notNull()
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.threadRootId] })
+  })
+)
+
+/**
  * SHARED task list items, one row per task, keyed by conversation. Humans
  * create/edit/prioritize in the UI; agents mirror the list via TodoWrite and
  * their snapshots reconcile back into these rows by exact content match.
@@ -324,6 +343,47 @@ export const artifactComments = pgTable('artifact_comments', {
  * credentials, decisions. Surfaced in the Needs-You inbox, deep-linking back
  * to the conversation for context.
  */
+/**
+ * Workspace billing state — one row per workspace, mirrored from Stripe via
+ * webhooks. `plan` is what was bought; whether it's in force depends on
+ * `status` (see services/billing resolvePlan). Absent row = Free.
+ */
+export const subscriptions = pgTable('subscriptions', {
+  workspaceSlug: text('workspace_slug').primaryKey().default('default'),
+  plan: text('plan', { enum: ['free', 'pro', 'team', 'enterprise'] }).notNull(),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  stripePriceId: text('stripe_price_id'),
+  /** Stripe subscription status verbatim (active, trialing, past_due, canceled, …). */
+  status: text('status').notNull(),
+  interval: text('interval', { enum: ['month', 'year'] }),
+  currentPeriodEnd: bigint('current_period_end', { mode: 'number' }),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
+/** Processed Stripe webhook event ids — makes redelivery idempotent. */
+export const billingEvents = pgTable('billing_events', {
+  id: text('id').primaryKey(),
+  ...ws,
+  type: text('type').notNull(),
+  receivedAt: bigint('received_at', { mode: 'number' }).notNull()
+})
+
+/**
+ * Crew Replays published to the relay (opencrew.run/replay/:runId). The URL
+ * is deterministic per run; the row exists only once an admin publishes.
+ */
+export const runReplays = pgTable('run_replays', {
+  runId: text('run_id').primaryKey(),
+  ...ws,
+  token: text('token').notNull(),
+  url: text('url').notNull(),
+  publishedBy: text('published_by').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
 export const attentionRequests = pgTable('attention_requests', {
   id: text('id').primaryKey(),
   ...ws,

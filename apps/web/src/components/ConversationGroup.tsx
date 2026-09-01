@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { Message, RunStatus, SharedTask } from '@opencrew/shared'
 import { MessageItem } from './MessageItem'
+import { UnreadDot } from './UnreadDot'
+import { CheckCheckIcon, CollapseIcon, ExpandIcon } from './Icons'
+import { useThreadReadState } from '../lib/useThreadReadState'
 
 // ---------------------------------------------------------------------------
 // Status pill — derived from run statuses across all agent responses
@@ -175,15 +178,24 @@ export function ConversationGroup({
   defaultCollapsed = false,
   tasksList
 }: ConversationGroupProps) {
-  // null = no manual choice yet. The default is FROZEN at mount: a live
-  // conversation finishing mid-read must never snap shut on the reader —
-  // only conversations that were already done when the channel loaded
-  // start collapsed.
-  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null)
-  const initialCollapsedRef = useRef(defaultCollapsed)
   const { trigger, responses } = group
   const groupRef = useRef<HTMLDivElement>(null)
-  const isCardCollapsed = userCollapsed ?? initialCollapsedRef.current
+
+  // Freeze defaultCollapsed at mount — a live conversation finishing mid-read
+  // must never snap shut on the reader; only conversations already done when
+  // the channel loaded start collapsed. Same pattern as the old useRef guard.
+  const initialCollapsedRef = useRef(defaultCollapsed)
+
+  // Thread read/collapse state — hook manages localStorage + server persistence.
+  const { isCollapsed, isRead, hasNewActivity, collapse, expand, markAsRead } =
+    useThreadReadState({
+      channelId,
+      rootId: trigger?.id ?? '',
+      initialUnread: isUnread,
+      initialCollapsed: initialCollapsedRef.current,
+    })
+
+  const isCardCollapsed = isCollapsed
 
   // Fire onSeen once when the group enters the viewport
   useEffect(() => {
@@ -218,17 +230,65 @@ export function ConversationGroup({
     return (
       <div
         ref={groupRef}
-        className="relative mx-3 mb-2 overflow-hidden rounded-xl border border-zinc-800/40 bg-zinc-950/20"
+        className={[
+          'group relative mx-3 mb-2 overflow-hidden rounded-xl border transition-opacity',
+          'bg-zinc-950/20 opacity-60 hover:opacity-100',
+          isRead ? 'border-zinc-800/30' : 'border-zinc-800/40',
+        ].join(' ')}
+        role="article"
+        aria-expanded={false}
+        aria-label={trigger.content?.slice(0, 80) ?? 'Conversation'}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.target as HTMLElement).matches('input,textarea,button,select')) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            expand()
+          }
+          if (e.key === 'r' || e.key === 'R') markAsRead()
+        }}
       >
-        <div className="absolute right-3 top-2 z-10">
+        {/* Top-right: unread dot + read pill + status pill + hover action strip */}
+        <div className="absolute right-3 top-2 z-10 flex items-center gap-1.5">
+          {hasNewActivity && <UnreadDot animate />}
+          {isRead && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-800/60 px-2 py-0.5 text-xs text-zinc-500">
+              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 text-emerald-600">
+                <path d="M1.5 6.5l2.5 2.5 6.5-6" />
+              </svg>
+              read
+            </span>
+          )}
+          {/* Hover action strip */}
+          <div className="flex items-center gap-0.5 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 opacity-0 shadow-sm transition-opacity duration-100 group-hover:opacity-100">
+            <button
+              onClick={expand}
+              title="Expand (Enter)"
+              aria-label="Expand conversation"
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            >
+              <ExpandIcon />
+            </button>
+            {!isRead && (
+              <button
+                onClick={markAsRead}
+                title="Mark as read (R)"
+                aria-label="Mark as read"
+                className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              >
+                <CheckCheckIcon />
+              </button>
+            )}
+          </div>
           <StatusPill status={groupStatus} onToggleDone={toggleDone} />
         </div>
         <MessageItem message={trigger} onOpenRun={onOpenRun} />
         <button
-          onClick={() => setUserCollapsed(false)}
+          onClick={expand}
           className="px-4 pb-2 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
         >
-          ▼ {hiddenTotal} hidden {hiddenTotal === 1 ? 'message' : 'messages'}
+          <ExpandIcon className="mr-1 inline-block" />
+          {hiddenTotal} hidden {hiddenTotal === 1 ? 'message' : 'messages'}
         </button>
       </div>
     )
@@ -255,8 +315,19 @@ export function ConversationGroup({
   return (
     <div
       ref={groupRef}
+      role="article"
+      aria-expanded={true}
+      aria-label={trigger?.content?.slice(0, 80) ?? 'Conversation'}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if ((e.target as HTMLElement).matches('input,textarea,button,select')) return
+        if (e.key === 'c' || e.key === 'C') collapse()
+        if (e.key === 'r' || e.key === 'R') markAsRead()
+      }}
       className={[
-        'relative mx-3 mb-3 overflow-hidden rounded-xl border bg-zinc-950/30 transition-colors',
+        'group relative mx-3 mb-3 overflow-hidden rounded-xl border bg-zinc-950/30',
+        'transition-colors focus-visible:outline-none focus-visible:ring-2',
+        'focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950',
         // Live conversations breathe: phosphor frame + faint wash while agents
         // work; amber frame while waiting on a human; red edge on failure.
         groupStatus === 'in_progress'
@@ -265,30 +336,37 @@ export function ConversationGroup({
             ? 'border-amber-500/30'
             : groupStatus === 'failed'
               ? 'border-red-500/20'
-              : isUnread
+              : hasNewActivity
                 ? 'border-emerald-500/40'
                 : 'border-zinc-800/60',
       ].join(' ')}
     >
-      {/* Status pill + unread dot — top-right corner */}
+      {/* Top-right: unread dot + hover action strip + status pill */}
       {trigger && (
-        <div className="absolute right-3 top-2 z-10 flex items-center gap-2">
-          {isUnread && (
-            <span
-              title="New activity"
-              className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_2px_rgba(52,211,153,0.5)]"
-            />
-          )}
-          <StatusPill status={groupStatus} onToggleDone={toggleDone} />
-          {groupStatus === 'done' && hiddenTotal > 0 && (
+        <div className="absolute right-3 top-2 z-10 flex items-center gap-1.5">
+          {hasNewActivity && <UnreadDot animate />}
+
+          {/* Hover-reveal action strip — keyboard equivalents in tooltip */}
+          <div className="flex items-center gap-0.5 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 opacity-0 shadow-sm transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100">
             <button
-              onClick={() => setUserCollapsed(true)}
-              title="Collapse conversation"
-              className="text-xs text-zinc-600 transition-colors hover:text-zinc-300"
+              onClick={collapse}
+              title="Collapse (C)"
+              aria-label="Collapse conversation"
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
             >
-              ▲
+              <CollapseIcon />
             </button>
-          )}
+            <button
+              onClick={markAsRead}
+              title="Mark as read (R)"
+              aria-label="Mark conversation as read"
+              className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            >
+              <CheckCheckIcon />
+            </button>
+          </div>
+
+          <StatusPill status={groupStatus} onToggleDone={toggleDone} />
         </div>
       )}
 

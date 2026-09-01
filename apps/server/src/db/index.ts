@@ -242,6 +242,16 @@ CREATE TABLE IF NOT EXISTS reactions (
   created_at BIGINT NOT NULL,
   PRIMARY KEY (message_id, emoji, user_id)
 );
+CREATE TABLE IF NOT EXISTS thread_reads (
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  user_id TEXT NOT NULL,
+  thread_root_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  read_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, thread_root_id)
+);
+CREATE INDEX IF NOT EXISTS idx_thread_reads_user ON thread_reads (user_id);
+CREATE INDEX IF NOT EXISTS idx_thread_reads_channel ON thread_reads (channel_id);
 `
 
 // ---------------------------------------------------------------------------

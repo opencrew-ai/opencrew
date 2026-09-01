@@ -335,6 +335,15 @@ export type ServerEvent =
   | { type: 'artifact_comment'; comment: ArtifactComment }
   /** Member-visible: the Needs-You inbox changed — clients refetch. */
   | { type: 'attention_changed' }
+  /** Member-visible: a user marked a thread as read. Other tabs/devices update optimistic state. */
+  | {
+      type: 'thread_read'
+      userId: string
+      threadRootId: string
+      channelId: string
+      /** null = marked unread again. */
+      readAt: number | null
+    }
 
 /** Client → server WebSocket events. */
 export type ClientEvent = { type: 'ping' }

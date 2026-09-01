@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, normalize, resolve } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import type { AppContext } from '../context'
 import { env } from '../env'
-import { getAgentWithVersion } from '../services/agents'
+import { getAgentWithVersion, listAgentsWithVersions } from '../services/agents'
 import { authGuard, adminGuard, fail, ok } from './helpers'
 
 const MAX_ENTRIES = 300

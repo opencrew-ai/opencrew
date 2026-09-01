@@ -53,3 +53,31 @@ export function DiffIcon({ className = '' }: IconProps) {
     </svg>
   )
 }
+
+/** Collapse: chevron pointing up. */
+export function CollapseIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`${BASE} ${className}`}>
+      <path d="M3.5 10.5L8 5.5l4.5 5" />
+    </svg>
+  )
+}
+
+/** Expand: chevron pointing down. */
+export function ExpandIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`${BASE} ${className}`}>
+      <path d="M3.5 5.5L8 10.5l4.5-5" />
+    </svg>
+  )
+}
+
+/** Double-check mark: mark as read. */
+export function CheckCheckIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`${BASE} ${className}`}>
+      <path d="M1.5 8.5l3 3L11 5" />
+      <path d="M6 11l1.5 1.5L14 5.5" />
+    </svg>
+  )
+}
