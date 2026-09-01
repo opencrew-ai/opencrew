@@ -352,6 +352,46 @@ describe('approval resolution end to end', () => {
   })
 })
 
+describe('usage-limit deferral', () => {
+  test('detects the limit and parses the reset time; ignores normal errors', async () => {
+    const { detectUsageLimit } = await import('../runs/limits')
+    const now = new Date('2026-09-01T10:10:00').getTime()
+    const hit = detectUsageLimit(
+      "You've hit your session limit · resets 11:10am (America/Los_Angeles)",
+      now
+    )
+    expect(hit).not.toBeNull()
+    expect(new Date(hit!.notBefore).getHours()).toBe(11)
+    expect(new Date(hit!.notBefore).getMinutes()).toBe(10)
+
+    // Reset time already past → tomorrow, capped at the 6h max deferral.
+    const past = detectUsageLimit("session limit · resets 9:00am", now)
+    expect(past!.notBefore).toBeLessThanOrEqual(now + 6 * 60 * 60_000)
+    expect(past!.notBefore).toBeGreaterThan(now)
+
+    // No reset stated → short probe window.
+    const vague = detectUsageLimit('rate limit exceeded', now)
+    expect(vague!.notBefore - now).toBeGreaterThanOrEqual(5 * 60_000)
+
+    expect(detectUsageLimit('TypeError: undefined is not a function', now)).toBeNull()
+  })
+
+  test('deferring holds the task until notBefore without charging the attempt', async () => {
+    const db = await makeDb()
+    const { deferFabricTask } = await import('../fabric/store')
+    const id = await seedTask(db)
+    await claimNextTask(db, CLAIM)
+
+    const notBefore = Date.now() + 60 * 60_000
+    expect(await deferFabricTask(db, id, notBefore)).toBe(true)
+    const task = await getFabricTask(db, id)
+    expect(task!.state).toBe('ready')
+    expect(task!.attempts).toBe(0) // the claim's increment was refunded
+    // not_before predicate holds it — nothing claimable until the window ends.
+    expect(await claimNextTask(db, CLAIM)).toBeNull()
+  })
+})
+
 describe('one-shot grants', () => {
   test('canonicalJson is key-order insensitive, value sensitive', () => {
     expect(canonicalJson({ a: 1, b: [{ d: 2, c: 3 }] })).toBe(

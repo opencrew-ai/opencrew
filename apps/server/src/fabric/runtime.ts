@@ -3,6 +3,7 @@ import {
   claimNextTask,
   completeFabricTask,
   cancelLeasedFabricTask,
+  deferFabricTask,
   failAttempt,
   failLeasedFabricTask,
   parkFabricTask,
@@ -31,6 +32,9 @@ export type AttemptOutcome =
   | { outcome: 'cancelled' }
   /** Unrecoverable (bad config, missing rows) — fail WITHOUT retries. */
   | { outcome: 'fatal'; error: string }
+  /** Environment-wide condition (usage limit): defer until notBefore, no
+   *  attempt charged, and the whole runtime pauses claiming until then. */
+  | { outcome: 'deferred'; notBefore: number; reason: string }
   | { outcome: 'error'; error: string }
 
 export interface AttemptHandle {
@@ -55,6 +59,13 @@ export interface FabricHooks {
   onDead?: (task: FabricTask, reason: string) => Promise<void>
   /** A leased task has been event-silent past the notice threshold. */
   onStallNotice?: (task: FabricTask, minutes: number) => Promise<void>
+  /** A task was deferred (usage limit); firstOfWindow = post the one notice. */
+  onDeferred?: (
+    task: FabricTask,
+    notBefore: number,
+    reason: string,
+    firstOfWindow: boolean
+  ) => Promise<void>
 }
 
 interface ActiveAttempt {
@@ -80,6 +91,8 @@ export class FabricRuntime {
   private pumping = false
   private pumpQueued = false
   private stopped = false
+  /** Usage-limit backoff: no claims until this time. */
+  private pausedUntil = 0
 
   constructor(
     private db: DB,
@@ -179,6 +192,8 @@ export class FabricRuntime {
    */
   private async pump(): Promise<void> {
     if (this.stopped || this.pumping) return
+    // Usage-limit window: claiming would only re-learn the same error.
+    if (Date.now() < this.pausedUntil) return
     this.pumping = true
     try {
       for (;;) {
@@ -272,6 +287,21 @@ export class FabricRuntime {
       } else if (result.outcome === 'fatal') {
         // The executor already reported the failure user-visibly.
         await failLeasedFabricTask(this.db, task.id)
+      } else if (result.outcome === 'deferred') {
+        await deferFabricTask(this.db, task.id, result.notBefore)
+        // Account-wide condition: stop claiming until the window ends, and
+        // wake exactly then. Only the FIRST deferral of a window notifies —
+        // every agent hits the limit at once and one notice is the truth.
+        const firstOfWindow = result.notBefore > this.pausedUntil
+        if (firstOfWindow) {
+          this.pausedUntil = result.notBefore
+          const timer = setTimeout(
+            () => this.wake(),
+            Math.min(result.notBefore - Date.now() + 1000, 2 ** 31 - 1)
+          )
+          timer.unref()
+        }
+        await this.hooks.onDeferred?.(task, result.notBefore, result.reason, firstOfWindow)
       } else {
         const reason = handle.abortReason ?? result.error
         const disposition = await failAttempt(this.db, task.id)

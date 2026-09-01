@@ -101,6 +101,37 @@ export function fabricHooksFor(ctx: AppContext): FabricHooks {
       }
     },
 
+    // Usage-limit window: run back to queued quietly; ONE notice per window.
+    onDeferred: async (task, notBefore, reason, firstOfWindow) => {
+      const p = task.payload as TurnPayload
+      const [run] = await ctx.db.select().from(runs).where(eq(runs.id, task.id)).limit(1)
+      if (run) {
+        await ctx.db.update(runs).set({ status: 'queued', error: reason }).where(eq(runs.id, task.id))
+        ctx.hub.broadcast({ type: 'run_status', runId: task.id, agentId: run.agentId, status: 'queued' })
+        ctx.hub.broadcast({
+          type: 'agent_activity',
+          agentId: run.agentId,
+          runId: task.id,
+          label: null,
+          channelId: p.channelId,
+          threadRootId: p.threadRootId ?? null
+        })
+      }
+      broadcastPresence(ctx)
+      if (firstOfWindow && p.channelId) {
+        const resumeAt = new Date(notBefore).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit'
+        })
+        await postSystemMessage(
+          ctx,
+          p.channelId,
+          `⏸ Claude usage limit reached — the crew is paused and resumes automatically ~${resumeAt}. ` +
+            `Interrupted work continues from where it left off; no retries were spent.`
+        )
+      }
+    },
+
     // Honest doubt, surfaced where the user is looking (strip, thread, dot).
     onStallNotice: async (task: FabricTask, minutes: number) => {
       const p = task.payload as TurnPayload

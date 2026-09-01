@@ -31,6 +31,7 @@ import {
 } from '../services/messages'
 import { denyPendingApprovalsForRun } from '../services/approvals'
 import { enqueueMentionRuns } from './enqueue'
+import { detectUsageLimit } from './limits'
 import { recordStep } from './audit'
 import {
   buildContextTranscript,
@@ -242,6 +243,27 @@ export async function executeTurn(
     if (attemptState.park) {
       return { outcome: 'parked', pause: { approvalId: attemptState.park.approvalId } }
     }
+    const error = handle.abortReason ?? (err instanceof Error ? err.message : String(err))
+
+    // Harness-level condition, not a task failure: the Claude subscription's
+    // usage limit. Defer (no attempt charged, whole runtime backs off) and
+    // keep the limit text out of the conversation as a fake agent reply.
+    const limit = detectUsageLimit(`${error} ${reply.text}`)
+    if (limit) {
+      if (reply.messageId) {
+        await updateMessageContent(
+          ctx,
+          reply.messageId,
+          `_(paused — Claude usage limit; resuming ~${limit.resumeLabel})_`
+        )
+      }
+      return {
+        outcome: 'deferred',
+        notBefore: limit.notBefore,
+        reason: `Claude usage limit — resuming ~${limit.resumeLabel}`
+      }
+    }
+
     if (reply.messageId) {
       await updateMessageContent(ctx, reply.messageId, reply.text)
     }
@@ -252,7 +274,6 @@ export async function executeTurn(
       .limit(1)
     // stop_agent / stop-all pre-mark the run cancelled before aborting.
     if (current?.status === 'cancelled') return { outcome: 'cancelled' }
-    const error = handle.abortReason ?? (err instanceof Error ? err.message : String(err))
     return { outcome: 'error', error }
   } finally {
     clearTimeout(timeout)

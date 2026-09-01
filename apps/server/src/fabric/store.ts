@@ -282,6 +282,28 @@ export async function cancelPendingFabricTask(db: DB, taskId: string): Promise<b
   return updated.length > 0
 }
 
+/**
+ * Defer a leased task to a later time WITHOUT charging the attempt — for
+ * environment-wide conditions (usage limits) that are nobody's fault. The
+ * scheduler's not_before predicate holds it until then.
+ */
+export async function deferFabricTask(
+  db: DB,
+  taskId: string,
+  notBefore: number
+): Promise<boolean> {
+  const updated = await db
+    .update(fabricTasks)
+    .set({
+      ...readyPatch(),
+      attempts: sql`GREATEST(${fabricTasks.attempts} - 1, 0)`,
+      notBefore
+    })
+    .where(and(eq(fabricTasks.id, taskId), eq(fabricTasks.state, 'leased')))
+    .returning()
+  return updated.length > 0
+}
+
 /** Fail a leased task terminally, skipping the retry budget (bad config). */
 export async function failLeasedFabricTask(db: DB, taskId: string): Promise<boolean> {
   const updated = await db
