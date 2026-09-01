@@ -226,6 +226,8 @@ export interface ProposePlanInput {
   kind?: ArtifactKind
   /** kind 'change' only: working dir whose staged diff this proposes. */
   sourceDir?: string
+  /** kind 'change' only: the FULL patch — what approval will commit. */
+  patch?: string
 }
 
 /** Normalize a folder path: trim slashes/spaces per segment, drop empties. */
@@ -290,6 +292,7 @@ export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Pro
     createdByAgentId: input.agentId,
     committedBy: null,
     sourceDir: input.sourceDir ?? null,
+    patch: input.patch ?? null,
     createdAt: now,
     updatedAt: now
   }
@@ -544,8 +547,13 @@ export async function commitPlan(
     if (!row.sourceDir) {
       return null
     }
-    const { commitStaged } = await import('./changes')
-    const result = await commitStaged(row.sourceDir, row.title, agent?.name ?? 'OpenCrew agent')
+    // The stored patch is the reviewed change — approval commits exactly it.
+    // Legacy proposals without one fall back to committing the CURRENT index
+    // (racy in a shared working dir; re-propose to upgrade).
+    const { commitPatch, commitStaged } = await import('./changes')
+    const result = row.patch
+      ? await commitPatch(row.sourceDir, row.patch, row.title, agent?.name ?? 'OpenCrew agent')
+      : await commitStaged(row.sourceDir, row.title, agent?.name ?? 'OpenCrew agent')
     if ('error' in result) {
       // Roll the status back so Approve can be retried after the fix.
       await ctx.db
@@ -759,6 +767,7 @@ export async function archiveReplyToDoc(
     createdByAgentId: input.agentId,
     committedBy: null,
     sourceDir: null,
+    patch: null,
     createdAt: now,
     updatedAt: now
   }

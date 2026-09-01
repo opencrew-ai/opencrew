@@ -53,7 +53,8 @@ registerOpenCrewTool({
       tasks: [],
       kind: 'change',
       folder: 'changes',
-      sourceDir: dir
+      sourceDir: dir,
+      patch: captured.patch
     })
     return (
       `Change "${artifact.title}" captured as v${artifact.version} — CodeReviewer will look ` +

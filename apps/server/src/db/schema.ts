@@ -327,6 +327,9 @@ export const artifacts = pgTable('artifacts', {
   committedBy: text('committed_by'),
   /** kind 'change' only: the working dir whose staged diff this captures. */
   sourceDir: text('source_dir'),
+  /** kind 'change' only: the FULL reviewed patch. Approval commits exactly
+   *  this — never whatever happens to be staged at click-time. */
+  patch: text('patch'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 })

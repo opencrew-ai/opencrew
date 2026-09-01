@@ -296,6 +296,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduled_for BIGINT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_by TEXT;
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS consumed_at BIGINT;
 ALTER TABLE fabric_tasks ADD COLUMN IF NOT EXISTS claimed_at BIGINT;
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS patch TEXT;
 `
 
 // ---------------------------------------------------------------------------

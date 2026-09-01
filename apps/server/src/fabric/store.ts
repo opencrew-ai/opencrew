@@ -376,7 +376,11 @@ export async function reapForeignLeases(
   const reaped: ReapedTask[] = []
   for (const row of foreign) {
     const survivedMs = now - (row.claimedAt ?? now)
-    const refund = survivedMs >= RESTART_REFUND_AFTER_MS
+    // Refund when the attempt ran healthily — OR when the whole boot reaped
+    // several tasks at once: a poison task kills its worker alone, a restart
+    // storm kills everyone. Back-to-back dev-watch restarts must not grind
+    // young attempts through the budget.
+    const refund = survivedMs >= RESTART_REFUND_AFTER_MS || foreign.length > 1
     const attempts = refund ? Math.max(0, row.attempts - 1) : row.attempts
     const dead = !refund && attempts >= row.maxAttempts
     const updated = await db
