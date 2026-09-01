@@ -1,7 +1,16 @@
 import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
 import type { AppContext } from '../context'
-import { agents, channels, messages, runs, tasks, users } from '../db/schema'
+import {
+  agents,
+  artifacts,
+  attentionRequests,
+  channels,
+  messages,
+  runs,
+  tasks,
+  users
+} from '../db/schema'
 import {
   createTask,
   deleteTask,
@@ -63,9 +72,18 @@ interface MessageLite {
   createdAt: number
 }
 
-/** Active run states always win; otherwise a human's manual 'done' closes it. */
-function finalStatus(derived: WorkStatus, manualStatus: string | null): WorkStatus {
-  if (derived === 'waiting' || derived === 'in_progress') return derived
+/**
+ * A conversation is never "done" while something in it waits on a human —
+ * a doc awaiting approval or an open agent request outranks finished runs
+ * (and even runs still going: "needs YOU" is the scarcer signal).
+ */
+function finalStatus(
+  derived: WorkStatus,
+  manualStatus: string | null,
+  humanBlocked: boolean
+): WorkStatus {
+  if (derived === 'waiting' || humanBlocked) return 'waiting'
+  if (derived === 'in_progress') return 'in_progress'
   if (manualStatus === 'done') return 'done'
   return derived
 }
@@ -251,7 +269,16 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
   })
 
   app.get('/api/work', { preHandler: authGuard(ctx) }, async () => {
-    const [messageRows, runRows, channelRows, taskRows, agentRows, userRows] = await Promise.all([
+    const [
+      messageRows,
+      runRows,
+      channelRows,
+      taskRows,
+      agentRows,
+      userRows,
+      proposedDocRows,
+      openRequestRows
+    ] = await Promise.all([
       ctx.db
         .select({
           id: messages.id,
@@ -290,7 +317,15 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
       ctx.db
         .select({ id: agents.id, name: agents.name, avatarEmoji: agents.avatarEmoji })
         .from(agents),
-      ctx.db.select({ id: users.id, name: users.name }).from(users)
+      ctx.db.select({ id: users.id, name: users.name }).from(users),
+      ctx.db
+        .select({ conversationRootId: artifacts.conversationRootId })
+        .from(artifacts)
+        .where(eq(artifacts.status, 'proposed')),
+      ctx.db
+        .select({ conversationRootId: attentionRequests.conversationRootId })
+        .from(attentionRequests)
+        .where(eq(attentionRequests.status, 'open'))
     ])
 
     const msgById = new Map<string, MessageLite>(messageRows.map((m) => [m.id, m]))
@@ -300,6 +335,12 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
     const userNameById = new Map(userRows.map((u) => [u.id, u.name]))
     const resolveRoot = makeRootResolver(msgById, runById)
     const tasksByRoot = taskRollup(taskRows)
+    // Conversations with something waiting on a HUMAN — a proposed doc or an
+    // open agent request — can never read as done.
+    const humanBlockedRoots = new Set([
+      ...proposedDocRows.map((r) => r.conversationRootId),
+      ...openRequestRows.map((r) => r.conversationRootId)
+    ])
 
     interface Accumulator {
       runStatuses: RunLite['status'][]
@@ -360,7 +401,11 @@ export function registerWorkRoutes(app: FastifyInstance, ctx: AppContext): void 
             ? `${root.content.slice(0, EXCERPT_LENGTH)}…`
             : root.content,
         authorName,
-        status: finalStatus(deriveStatus(acc.runStatuses), root.manualStatus),
+        status: finalStatus(
+          deriveStatus(acc.runStatuses),
+          root.manualStatus,
+          humanBlockedRoots.has(rootId)
+        ),
         agents: [...acc.agentIds].flatMap((id) => {
           const agent = agentById.get(id)
           return agent ? [{ id: agent.id, name: agent.name, emoji: agent.avatarEmoji }] : []

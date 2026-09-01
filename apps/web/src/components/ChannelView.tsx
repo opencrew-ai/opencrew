@@ -120,7 +120,15 @@ function useWorkStatuses(): Map<string, GroupStatus> {
     }
     void load()
     const unsubscribe = wsClient.subscribe((event) => {
-      if (event.type !== 'run_status' && event.type !== 'thread_status') return
+      // artifact_state/attention_changed: approving a doc or resolving a
+      // request flips a thread out of 'waiting' — statuses must follow.
+      if (
+        event.type !== 'run_status' &&
+        event.type !== 'thread_status' &&
+        event.type !== 'artifact_state' &&
+        event.type !== 'attention_changed'
+      )
+        return
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => void load(), 600)
     })
