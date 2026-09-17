@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   createSdkMcpServer,
@@ -489,6 +489,9 @@ async function runSessionAttempt(
       // The human's own Chrome (Claude in Chrome extension) — the feedback
       // loop for anything visual. Only attached when granted.
       ...(runEnv.version.tools.includes(CHROME_TOOL) ? { extraArgs: { chrome: null } } : {}),
+      // OPENCREW_CLI_DEBUG=1 writes each session's Claude Code debug log to
+      // data/cli-debug/<runId>.log — the only way to see a silent hang.
+      ...cliDebugOptions(runEnv.runId),
       mcpServers: {
         [MCP_SERVER_NAME]: buildMcpServer(toolCtx),
         ...browserMcpServer(runEnv)
@@ -565,6 +568,24 @@ async function runSessionAttempt(
       handle.beat()
       if (msg.type === 'system' && msg.subtype === 'init') {
         runEnv.timer.mark('session_init')
+      } else if (msg.type === 'rate_limit_event') {
+        // Subscription rate limits are the silent killer of "why is nothing
+        // happening": the CLI backs off and retries without a word. Record it
+        // so the terminal panel and the log say so.
+        const info = msg.rate_limit_info
+        if (info.status !== 'allowed') {
+          const resets = info.resetsAt ? new Date(info.resetsAt * 1000).toLocaleTimeString() : 'unknown'
+          console.log(
+            `⏳ ${runEnv.agentName} #${runEnv.runId.slice(0, 6)} · Claude rate limit ${info.status} ` +
+              `(${info.rateLimitType ?? '?'}) · resets ${resets}`
+          )
+          await recordStep(ctx, runEnv.runId, 'llm_call', {
+            phase: 'rate_limit',
+            status: info.status,
+            rateLimitType: info.rateLimitType ?? null,
+            resetsAt: info.resetsAt ?? null
+          })
+        }
       } else if (msg.type === 'assistant') {
         runEnv.timer.mark('first_llm')
         await handleAssistantMessage(ctx, runEnv, handle, reply, msg)
@@ -658,6 +679,18 @@ function sessionEnv(): Record<string, string> {
     clean[key] = value
   }
   return { ...clean, ...SESSION_STARTUP_ENV }
+}
+
+function cliDebugOptions(runId: string): { debug?: boolean; debugFile?: string; stderr?: (data: string) => void } {
+  if (process.env.OPENCREW_CLI_DEBUG !== '1') return {}
+  const dir = join(env.workspacesDir, '..', 'cli-debug')
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, `${runId}.log`)
+  return {
+    debug: true,
+    debugFile: file,
+    stderr: (data) => appendFileSync(file, `[stderr] ${data}`)
+  }
 }
 
 /**
