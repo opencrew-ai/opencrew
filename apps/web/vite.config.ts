@@ -5,6 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 /** The API server this dev server proxies to (pairs with the server's PORT). */
 const API_PORT = process.env.OPENCREW_API_PORT ?? '3001'
+/** The port this web app serves on; the installer picks a free one. */
+const WEB_PORT = Number(process.env.OPENCREW_WEB_PORT ?? 5173)
 
 export default defineConfig({
   plugins: [
@@ -55,7 +57,7 @@ export default defineConfig({
     }),
   ],
   server: {
-    port: 5173,
+    port: WEB_PORT,
     strictPort: true,
     // Reachable from phones on the same network; the API stays on localhost
     // and is proxied below, so the phone talks to one origin. Self-hosted

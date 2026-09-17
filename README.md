@@ -20,15 +20,16 @@ laptop, where every risky action stops at an approval card with your name on it.
 
 ![OpenCrew — agents collaborating in a channel](docs/demo.svg)
 
-**See it work in two minutes** — you need Claude Code installed and logged in, nothing else:
+**One line. Two minutes.** You need a Claude subscription; the script installs the rest.
 
 ```bash
 curl -fsSL https://opencrew.run/install | bash
 ```
 
-Your browser opens `http://localhost:5173` already signed in (localhost is you — no password).
-Type *"can someone check what's new on Hacker News?"* — no @mention needed. Captain 🧭 routes it
-to the right specialist; click **terminal** on the reply and watch the session stream live.
+Your browser opens, already signed in (localhost is you — no password), and asks one question:
+**what are you building?** Name it, point at its repo if there is one, and you land in its room
+with a Captain 🧭 who reads everything you type. Say *"what would you build first here?"* and
+watch the crew work; click **terminal** on any reply to see the session stream live.
 
 ---
 
@@ -162,64 +163,50 @@ Want the wild ride? It's open source — and there's a crew of humans too:
 
 ## Quickstart
 
-### Option A — one line (installs everything for you)
-
 ```bash
 curl -fsSL https://opencrew.run/install | bash
 ```
 
-Detects your OS, installs Node 20, pnpm, and the Claude Code CLI if needed, clones the repo,
-boots the app, and opens your browser signed in. You'll still need to `claude login` once if
-you haven't already. Re-run the same line any time to update and start — it skips whatever is
-already done and is up in a couple of seconds.
+That's the whole install. The script checks for Node 20, pnpm, and the Claude Code CLI and
+installs whatever is missing, clones into `~/opencrew`, starts the app on the first free ports,
+and opens your browser signed in. If Claude Code isn't logged in yet it tells you to run
+`claude login` once. Re-run the same line any time to update and start again — it skips what's
+already done. To remove it: `curl -fsSL https://opencrew.run/install | bash -s -- --uninstall`.
 
-### Option B — GitHub Codespaces (zero local install)
+**What you see first**
 
+1. One question: *what are you building?* A name, and the repo folder if the product has code.
+2. Your project's `#general`, where its Captain 🧭 has already said hello. Just type — no
+   @mention needed. Captain answers the simple stuff and spawns workers (`frontend-1`, `qa-1`,
+   `researcher-1`…) from role templates for the rest; each works in its own checkout of your
+   repo and reports back in the thread.
+3. **Needs You** in the sidebar fills up as work comes back: docs and code changes reviewed by
+   the built-in 📚 Librarian and 🔍 CodeReviewer, waiting for your one-click decision. Your
+   checkout changes only when you approve.
+
+Add your other products with **New project**. **HQ** (`#hq`) is the one room across all of
+them: ask there and the 🗂️ Chief of Staff routes it. **Today** shows every project at a glance.
+
+<details>
+<summary>Other ways to run it</summary>
+
+**GitHub Codespaces** (zero local install):
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/opencrew-ai/opencrew)
+— wait ~90 seconds for the container, run `claude login` once in its terminal.
 
-Click the button, wait ~90 seconds for the container to build, and OpenCrew opens in your
-browser automatically. You'll need to run `claude login` inside the Codespaces terminal once
-to authenticate.
-
-### Option C — manual
-
-**Prerequisites:** Node 20+, pnpm, and [Claude Code](https://claude.com/claude-code) installed
-and logged in. A Claude subscription works — no separate API key needed. You can also set
-`ANTHROPIC_API_KEY` directly.
+**Manual**, with Node 20+, pnpm, and [Claude Code](https://claude.com/claude-code) logged in
+(a subscription works; `ANTHROPIC_API_KEY` also works):
 
 ```bash
 git clone https://github.com/opencrew-ai/opencrew && cd opencrew
 pnpm install
-pnpm start        # pnpm dev = the same, with server hot-reload (restarts abort live agent turns)
+pnpm start        # pnpm dev = the same with server hot-reload (restarts abort live agent turns)
 ```
 
-Open `http://localhost:5173` — a browser on the same machine is signed in automatically as the
-workspace admin (set `OPENCREW_LOCAL_AUTOLOGIN=0` to require the form on a shared machine).
-From a phone or another device on your network, sign in with the seeded admin account and
-change the password in Settings:
-
-```
-Email:    admin@opencrew.local
-Password: opencrew
-```
-
-The first screen asks what you're building: a name and, optionally, the repo folder. That
-creates your first project — its `#general`, its `#customers`, and its Captain, who greets you
-there. The workspace also has **HQ** (`#hq` and the 🗂️ **Chief of Staff**, who routes asks to
-projects) and the two built-in reviewers. Every project's crew starts as:
-
-- 🧭 **Captain** — the project lead. Watches the project's rooms, answers the simple stuff,
-  spawns workers for real work, and hires standing specialists when a discipline recurs
-  (`create_agent` / `update_agent` gated behind your approval).
-- **Workers on demand** — Captain spawns `frontend-1`, `qa-1`, `researcher-1` and so on from
-  role templates for each task; they work in their own environment, report in the thread, and
-  retire. Hire a standing specialist only when a discipline keeps recurring.
-- 📚 **Librarian** (HQ) — the doc reviewer. Every proposed doc passes it before reaching you.
-- 🔍 **CodeReviewer** (HQ) — the code reviewer. Every proposed change passes it before your
-  Approve & commit, and it judges parallel attempts so you see one winner.
-
-Type in the project's `#general` — no @mention needed; Captain reads it and puts the crew on
-it. Click **terminal** on any reply to watch the session stream live.
+Then open `http://localhost:5173`. A browser on this machine is signed in automatically
+(`OPENCREW_LOCAL_AUTOLOGIN=0` to require the form). From a phone on your network, sign in as
+`admin@opencrew.local` / `opencrew` and change the password in Settings.
+</details>
 
 ---
 

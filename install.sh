@@ -7,12 +7,17 @@
 # Every run after that: pulls updates, skips what is already done, starts in
 #             a couple of seconds. Re-running this script IS the start command.
 #
+# Uninstall: curl -fsSL https://opencrew.run/install | bash -s -- --uninstall
+#   Removes the install directory (your workspace data lives inside it).
+#   Node, pnpm, and Claude Code are left alone — they're yours.
+#
 # Environment variables:
 #   OPENCREW_DIR       — where to clone (default: ~/opencrew)
 #   OPENCREW_REPO      — git URL to clone from (default: https://github.com/opencrew-ai/opencrew)
 #   OPENCREW_SKIP_DEV  — set to 1 to set up without starting
 #   OPENCREW_NO_UPDATE — set to 1 to skip `git pull` on an existing clone
 #   OPENCREW_NO_OPEN   — set to 1 to not open the browser
+#   PORT / OPENCREW_WEB_PORT — pin ports; otherwise the first free ones from 3001 / 5173
 
 set -euo pipefail
 
@@ -21,8 +26,27 @@ OPENCREW_REPO="${OPENCREW_REPO:-https://github.com/opencrew-ai/opencrew}"
 OPENCREW_SKIP_DEV="${OPENCREW_SKIP_DEV:-0}"
 OPENCREW_NO_UPDATE="${OPENCREW_NO_UPDATE:-0}"
 OPENCREW_NO_OPEN="${OPENCREW_NO_OPEN:-0}"
-WEB_PORT="${OPENCREW_WEB_PORT:-5173}"
-API_PORT="${PORT:-3001}"
+
+# ── uninstall ────────────────────────────────────────────────────────────────
+if [ "${1:-}" = "--uninstall" ]; then
+  if [ -d "$OPENCREW_DIR" ]; then
+    # Stop anything running from that directory first.
+    pkill -f "$OPENCREW_DIR" 2>/dev/null || true
+    rm -rf "$OPENCREW_DIR"
+    echo "Removed $OPENCREW_DIR (workspace data included)."
+  else
+    echo "Nothing installed at $OPENCREW_DIR."
+  fi
+  echo "Node, pnpm, and Claude Code were left in place."
+  exit 0
+fi
+
+# ── ports: the first free ones, so a laptop already running things on 3001 or
+#    5173 still gets a working install; pin with PORT / OPENCREW_WEB_PORT. ─────
+port_free() { ! (command -v lsof >/dev/null && lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }
+pick_port() { local p="$1"; while ! port_free "$p"; do p=$((p + 1)); done; echo "$p"; }
+API_PORT="${PORT:-$(pick_port 3001)}"
+WEB_PORT="${OPENCREW_WEB_PORT:-$(pick_port 5173)}"
 APP_URL="http://localhost:${WEB_PORT}"
 
 # ── colours ──────────────────────────────────────────────────────────────────
@@ -76,6 +100,9 @@ open_when_ready() {
 # ── banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}  ⚓ OpenCrew${RESET}  ${DIM}https://github.com/opencrew-ai/opencrew${RESET}"
+
+command -v git >/dev/null || fatal "git is required. Install it (macOS: xcode-select --install) and re-run."
+command -v curl >/dev/null || fatal "curl is required."
 
 # ── 1. Node 20+ ───────────────────────────────────────────────────────────────
 header "1/5  Node.js 20+"
@@ -178,8 +205,11 @@ if [ "$CLAUDE_READY" = "0" ]; then
 fi
 
 echo "  Starting OpenCrew (Ctrl-C to stop) → $APP_URL"
+if [ "$API_PORT" != "3001" ] || [ "$WEB_PORT" != "5173" ]; then
+  echo "  (ports 3001/5173 were busy, so this install uses API $API_PORT · web $WEB_PORT)"
+fi
 echo ""
 if [ "$OPENCREW_NO_OPEN" != "1" ]; then
   open_when_ready &
 fi
-cd "$OPENCREW_DIR" && exec pnpm start
+cd "$OPENCREW_DIR" && PORT="$API_PORT" OPENCREW_WEB_PORT="$WEB_PORT" OPENCREW_API_PORT="$API_PORT" exec pnpm start
