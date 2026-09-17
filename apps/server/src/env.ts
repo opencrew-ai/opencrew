@@ -56,6 +56,13 @@ export const env = {
   /** Local hour (0–23) the Chief of Staff posts the morning brief in #hq. */
   briefHour: Number(process.env.OPENCREW_BRIEF_HOUR ?? 8),
   /**
+   * Anonymous daily heartbeat (counts only — never content, paths, or
+   * prompts; see services/telemetry.ts). OPENCREW_TELEMETRY=0 turns it off,
+   * as does the toggle in Settings. The reply carries the latest version.
+   */
+  telemetry: process.env.OPENCREW_TELEMETRY !== '0',
+  telemetryUrl: process.env.OPENCREW_TELEMETRY_URL ?? 'https://opencrew.run/ping',
+  /**
    * Agent→agent mention chains stop at this depth (loop protection; rate
    * limits are the second line of defense). Raise for chattier crews.
    */

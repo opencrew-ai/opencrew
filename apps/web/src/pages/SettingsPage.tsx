@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { showConfirm } from '../lib/dialogs'
 import { Sidebar } from '../components/Sidebar'
 import { AccountCard } from '../components/AccountCard'
+import { PrivacyCard } from '../components/PrivacyCard'
 import { CloudLinkCard } from '../components/CloudLinkCard'
 import { DeviceAccessCard } from '../components/DeviceAccessCard'
 import { ThemeToggle } from '../components/ThemeToggle'
@@ -131,6 +132,8 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        <PrivacyCard />
 
         <AccountCard />
 

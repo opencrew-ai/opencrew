@@ -32,6 +32,7 @@ import { registerCrewsRoutes } from './routes/crews'
 import { registerExportRoutes } from './routes/export'
 import { registerProjectRoutes } from './routes/projects'
 import { registerTodayRoutes } from './routes/today'
+import { startTelemetry, telemetryEnabled } from './services/telemetry'
 import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
@@ -156,6 +157,7 @@ async function main(): Promise<void> {
   // interrupted work redelivers and sessions resume where they left off.
   fabric.start()
   startCloudLink(ctx)
+  startTelemetry(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })
   const bootMs = Date.now() - bootStartedAt
@@ -166,6 +168,12 @@ async function main(): Promise<void> {
   console.log(`   Open http://localhost:${env.webPort} — this machine is signed in automatically.`)
   console.log('   Agents run as local Claude Code sessions (uses your `claude` login or ANTHROPIC_API_KEY).')
   if (seeded) console.log(`   Seeded workspace "OpenCrew HQ".`)
+  if (await telemetryEnabled(db)) {
+    console.log(
+      '   Anonymous daily usage ping is on (counts + version only, never content). ' +
+        'Off: OPENCREW_TELEMETRY=0 or Settings → Privacy.'
+    )
+  }
   console.log(
     `   From another device (phone, LAN): sign in as ${SEED_ADMIN_EMAIL} / ${SEED_ADMIN_PASSWORD}` +
       ` — change it in Settings.`

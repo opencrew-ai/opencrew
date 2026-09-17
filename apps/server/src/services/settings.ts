@@ -13,11 +13,18 @@ export interface WorkspaceSettings {
    * artifacts (docs, plans, change diffs). Default on; admins can opt out.
    */
   badgeEnabled: boolean
+  /** Anonymous daily heartbeat (counts only). Default on; see services/telemetry.ts. */
+  telemetryEnabled: boolean
 }
 
 /** Defaults come from env (which itself defaults sensibly). */
 function defaults(): WorkspaceSettings {
-  return { maxMentionDepth: env.maxMentionDepth, maxAgentFanout: 3, badgeEnabled: true }
+  return {
+    maxMentionDepth: env.maxMentionDepth,
+    maxAgentFanout: 3,
+    badgeEnabled: true,
+    telemetryEnabled: true
+  }
 }
 
 export async function getSettings(db: DB): Promise<WorkspaceSettings> {
@@ -27,11 +34,13 @@ export async function getSettings(db: DB): Promise<WorkspaceSettings> {
   const depth = Number(byKey.get('maxMentionDepth'))
   const fanout = Number(byKey.get('maxAgentFanout'))
   const badgeRaw = byKey.get('badgeEnabled')
+  const telemetryRaw = byKey.get('telemetryEnabled')
   return {
     maxMentionDepth: Number.isInteger(depth) && depth >= 1 ? depth : base.maxMentionDepth,
     maxAgentFanout: Number.isInteger(fanout) && fanout >= 1 ? fanout : base.maxAgentFanout,
     // Default true when unset; explicit 'false' string opts out.
-    badgeEnabled: badgeRaw === undefined ? true : badgeRaw !== 'false'
+    badgeEnabled: badgeRaw === undefined ? true : badgeRaw !== 'false',
+    telemetryEnabled: telemetryRaw === undefined ? true : telemetryRaw !== 'false'
   }
 }
 

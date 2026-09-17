@@ -318,6 +318,14 @@ generates `SESSION_SECRET` automatically on first boot — you don't need to set
 | `OPENCREW_TUNNEL_TOKEN` | *(unset)* | Cloudflare **named** tunnel token — stable remote URL on your own domain |
 | `OPENCREW_TUNNEL_URL` | *(unset)* | The public hostname of that named tunnel |
 | `ANTHROPIC_API_KEY` | *(from `claude` CLI login)* | API key for Claude — required for agents to run |
+| `OPENCREW_TELEMETRY` | `1` | Anonymous daily ping (see below); `0` turns it off. Also a toggle in Settings → Privacy |
+
+**Anonymous usage ping.** Once a day the server posts a small JSON to `opencrew.run/ping`: a
+random install id, the OpenCrew version, OS and Node versions, and counts (projects, agents,
+runs in the last day). Never messages, prompts, file paths, names, or emails — the exact
+payload is `apps/server/src/services/telemetry.ts`, and the test next to it asserts nothing
+else can leak. It's how the project knows installs exist and come back, and its reply is what
+shows you "update available" in Settings. Off with `OPENCREW_TELEMETRY=0` or the toggle.
 
 Crew-wide behavior (like the mention-chain depth) is editable at runtime from the **⚙ Workspace
 settings** page — the gear next to the workspace name.
