@@ -1,0 +1,14 @@
+{
+  "name": "@opencrew/oncell-cloud",
+  "version": "0.1.0",
+  "description": "opencrew Cloud — oncell.ai provisioning layer for managed workspaces",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@oncell/sdk": "^0.6.2",
+    "zod": "^3.25.76"
+  }
+}
