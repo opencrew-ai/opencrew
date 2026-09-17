@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import { and, asc, eq, gte, inArray } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { diffVersions } from '@opencrew/shared'
@@ -17,6 +17,7 @@ import {
   toAgentVersion
 } from '../services/agents'
 import { isKnownToolName, toolCatalog } from '../tools'
+import { getProject } from '../services/projects'
 import { adminGuard, authGuard, fail, ok } from './helpers'
 
 const capabilitiesSchema = z.object({
@@ -48,7 +49,9 @@ const createAgentSchema = z.object({
     .regex(/^[A-Za-z0-9 _-]+$/, 'letters, numbers, spaces, dashes only'),
   avatarEmoji: z.string().min(1).max(8),
   config: configSchema,
-  changeNote: z.string().max(500).default('initial version')
+  changeNote: z.string().max(500).default('initial version'),
+  /** Project the agent belongs to; null = HQ-level. */
+  projectId: z.string().nullable().default(null)
 })
 
 const updateVersionSchema = z.object({
@@ -176,16 +179,27 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: AppContext): void
     const toolError = validateTools(parsed.data.config.tools)
     if (toolError) return reply.code(400).send(fail(toolError))
 
+    const projectId = parsed.data.projectId
+    if (projectId && !(await getProject(ctx.db, projectId))) {
+      return reply.code(404).send(fail('project not found'))
+    }
+    // Names are unique within a project (or within HQ): every project has a Captain.
     const [existing] = await ctx.db
       .select()
       .from(agents)
-      .where(eq(agents.name, parsed.data.name))
+      .where(
+        and(
+          eq(agents.name, parsed.data.name),
+          projectId ? eq(agents.projectId, projectId) : isNull(agents.projectId)
+        )
+      )
       .limit(1)
-    if (existing) return reply.code(409).send(fail('agent name already exists'))
+    if (existing) return reply.code(409).send(fail('agent name already exists in this project'))
 
     const agentId = nanoid()
     await ctx.db.insert(agents).values({
       id: agentId,
+      projectId,
       name: parsed.data.name,
       avatarEmoji: parsed.data.avatarEmoji,
       currentVersionId: 'pending',

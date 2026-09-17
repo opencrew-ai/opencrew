@@ -3,6 +3,13 @@ import type { AgentVersion, Channel } from '@opencrew/shared'
 import type { DB } from '../db'
 import { agents, channels, messages } from '../db/schema'
 import { enrichMessage } from '../services/messages'
+import {
+  agentsVisibleInChannel,
+  channelsVisibleTo,
+  getProject,
+  listProjects
+} from '../services/projects'
+import { CHROME_TOOL } from '../tools/registry'
 
 const CONTEXT_MESSAGE_COUNT = 30
 
@@ -79,35 +86,99 @@ export async function buildIncrementalTranscript(
 }
 
 /** System prompt: the versioned prompt plus identity, crew, and guardrails. */
+/**
+ * The feedback loop. Without it agents argue about whether a change rendered
+ * ("must be a build lag") instead of looking — the exact failure this rule
+ * exists to end.
+ */
+function chromeFeedbackLoopRule(): string {
+  return (
+    `FEEDBACK LOOP (you have the human's own Chrome via the claude-in-chrome tools): ` +
+    `NEVER claim a UI change works, renders, or is "findable" without looking. Open the ` +
+    `page in their Chrome (tabs_context_mcp with createIfEmpty, then navigate), let it finish ` +
+    `loading (single-page apps paint after load: wait ~2s, and if a screenshot is blank wait ` +
+    `and retake it once), take a screenshot or read the page, and report what you actually ` +
+    `saw — the same served ` +
+    `bundle, profile, and logins the human has, so what you see is what they see. ` +
+    `Looking (screenshot, read_page, console, network) never needs approval; navigating, ` +
+    `clicking, typing, or scripting may pause for one. You only see tabs inside the Claude ` +
+    `tab group: open the URL yourself, or ask the human to drag a tab into that group. If the ` +
+    `chrome tools are missing, say so — the human needs the Claude in Chrome extension.`
+  )
+}
+
+/** HQ agents (Chief of Staff, reviewers) get the project directory: where each project's #general is. */
+async function hqProjectsLine(db: DB): Promise<string> {
+  const all = await listProjects(db)
+  if (all.length === 0) return ''
+  const generals = await db.select().from(channels).where(eq(channels.name, 'general'))
+  const entries = all.map((p) => {
+    const general = generals.find((c) => c.projectId === p.id)
+    return `"${p.name}"${general ? ` (#general id: ${general.id})` : ''}`
+  })
+  return (
+    `You are an HQ-level agent spanning every project. Projects in this workspace: ` +
+    `${entries.join('; ')}. To hand work to a project, post into its #general with @Captain.`
+  )
+}
+
 export async function buildSystemPrompt(
   db: DB,
   agentName: string,
   version: AgentVersion,
-  channel: Channel
+  channel: Channel,
+  environment: { path: string; port: number } | null = null
 ): Promise<string> {
-  const allChannels = await db.select().from(channels)
+  // PROJECT BOUNDARY: the agent's world is its project (or HQ). Channels
+  // and teammates outside it are not listed, so they cannot be addressed.
+  const [self] = await db
+    .select({ projectId: agents.projectId })
+    .from(agents)
+    .where(eq(agents.id, version.agentId))
+    .limit(1)
+  const agentProjectId = self?.projectId ?? null
+  const project = agentProjectId ? await getProject(db, agentProjectId) : null
   const postAll = version.capabilities.canPostInChannels.includes('*')
-  const allowedChannels = allChannels
+  const visibleChannels = await channelsVisibleTo(db, agentProjectId, postAll)
+  const allowedChannels = visibleChannels
     .filter((c) => postAll || version.capabilities.canPostInChannels.includes(c.id))
     .map((c) => `#${c.name} (id: ${c.id})`)
   const gated = version.capabilities.requiresApprovalFor
-  const allAgents = await db.select().from(agents)
-  const teammates = allAgents
+  const teammates = (await agentsVisibleInChannel(db, channel.id))
     .filter((a) => a.name !== agentName && a.status === 'active')
     .map((a) => `@${a.name}`)
   const watchesAll = (version.capabilities.watchesChannels ?? []).includes('*')
+  const hasChrome = version.tools.includes(CHROME_TOOL)
+  const projectLine = project
+    ? `PROJECT: you work on "${project.name}".` +
+      ` Other projects exist in this workspace but are none of your concern; never reference them.`
+    : agentProjectId === null
+      ? await hqProjectsLine(db)
+      : ''
+  const environmentLine = environment
+    ? `YOUR ENVIRONMENT: a private checkout of the project repo at ${environment.path} (your ` +
+      `working directory) with port ${environment.port} reserved for you — PORT is set, so ` +
+      `\`pnpm dev\`/\`npm start\` style servers land there; open http://localhost:${environment.port} ` +
+      `in the human's Chrome to look. Other agents have their own checkouts; the human's own ` +
+      `checkout at ${project?.workingDir ?? 'the project repo'} is NOT yours to edit or run — ` +
+      `your changes reach it only through propose_change and the human's approval.`
+    : project?.workingDir
+      ? `The project repo at ${project.workingDir} is not a git repository yet, so you work in your own scratch directory.`
+      : ''
 
   return [
     version.systemPrompt,
+    ...(hasChrome ? [chromeFeedbackLoopRule()] : []),
     '',
     '---',
     `You are "${agentName}", an AI teammate in the OpenCrew workspace, currently replying in ` +
       `#${channel.name}${channel.topic ? ` — this channel is for: "${channel.topic}"` : ''}.`,
+    projectLine,
+    environmentLine,
     `CHANNEL FIT: answer through the lens of THIS channel's purpose. Workspace docs are ` +
       `shared truth, but filter them to what belongs here — in a build channel talk about ` +
       `what gets built, not marketing logistics. If the ask (or part of it) belongs in ` +
       `another channel, cover it in one line and point there instead of importing it.`,
-    `Current date/time: ${new Date().toISOString()} — use it when scheduling plan steps (scheduledFor).`,
     `You are persistent: this conversation resumes the same session every turn, and your working directory persists — you can build things across many messages. Everything you do is streamed live to the crew's terminal panel.`,
     `Your final text IS your chat reply — write conversational markdown, no preamble about being an AI.`,
     `DOC RULE: substantial output NEVER goes into chat — plans, drafts, specs, reports, ` +

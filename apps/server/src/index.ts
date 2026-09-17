@@ -30,6 +30,8 @@ import { registerStatsRoutes } from './routes/stats'
 import { registerThreadShareRoutes } from './routes/threadshare'
 import { registerCrewsRoutes } from './routes/crews'
 import { registerExportRoutes } from './routes/export'
+import { registerProjectRoutes } from './routes/projects'
+import { registerTodayRoutes } from './routes/today'
 import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
 import { broadcastPresence, computePresence } from './services/presence'
@@ -70,8 +72,10 @@ async function assertPortFree(port: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const bootStartedAt = Date.now()
   await assertPortFree(env.port)
   const { db } = await createDb(env.databaseUrl)
+  const dbReadyMs = Date.now() - bootStartedAt
   const seeded = await seedIfEmpty(db)
 
   // Pre-fabric installs may have non-terminal runs with no fabric task —
@@ -114,6 +118,8 @@ async function main(): Promise<void> {
   registerStatsRoutes(app, ctx)
   registerThreadShareRoutes(app, ctx)
   registerThreadReadRoutes(app, ctx)
+  registerProjectRoutes(app, ctx)
+  registerTodayRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 
@@ -152,12 +158,18 @@ async function main(): Promise<void> {
   startCloudLink(ctx)
 
   await app.listen({ port: env.port, host: '127.0.0.1' })
-  console.log(`\n⚓ OpenCrew server on http://localhost:${env.port}`)
+  const bootMs = Date.now() - bootStartedAt
+  console.log(
+    `\n⚓ OpenCrew server on http://localhost:${env.port} ` +
+      `(ready in ${(bootMs / 1000).toFixed(1)}s · db ${(dbReadyMs / 1000).toFixed(1)}s)`
+  )
+  console.log(`   Open http://localhost:${env.webPort} — this machine is signed in automatically.`)
   console.log('   Agents run as local Claude Code sessions (uses your `claude` login or ANTHROPIC_API_KEY).')
-  if (seeded) {
-    console.log(`   Seeded workspace "OpenCrew HQ".`)
-    console.log(`   Admin login: ${SEED_ADMIN_EMAIL} / ${SEED_ADMIN_PASSWORD}`)
-  }
+  if (seeded) console.log(`   Seeded workspace "OpenCrew HQ".`)
+  console.log(
+    `   From another device (phone, LAN): sign in as ${SEED_ADMIN_EMAIL} / ${SEED_ADMIN_PASSWORD}` +
+      ` — change it in Settings.`
+  )
 }
 
 main().catch((err) => {

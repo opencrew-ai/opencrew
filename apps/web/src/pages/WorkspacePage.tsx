@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import type { Channel } from '@opencrew/shared'
+import { api } from '../lib/api'
+import { NewProjectForm } from '../components/NewProjectDialog'
+import { Logo } from '../components/Logo'
 import { Sidebar } from '../components/Sidebar'
 import { ChannelView } from '../components/ChannelView'
 import { TerminalDrawer } from '../components/TerminalDrawer'
@@ -8,7 +12,7 @@ import { SpectatorPanel } from '../components/SpectatorPanel'
 import { useWorkspace } from '../lib/workspace'
 
 export function WorkspacePage() {
-  const { channels } = useWorkspace()
+  const { me, channels, projects, refreshProjects, refreshChannels } = useWorkspace()
   const { channelId } = useParams<{ channelId: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -20,11 +24,17 @@ export function WorkspacePage() {
 
   const channel = channels.find((c) => c.id === channelId)
 
+  // Landing room: the first project's #general (where the work is), then
+  // HQ's #hq, then whatever exists.
   useEffect(() => {
-    if (!channel && channels.length > 0) {
-      navigate(`/channels/${channels[0]!.id}`, { replace: true })
-    }
-  }, [channel, channels, navigate])
+    if (channel || channels.length === 0 || projects.length === 0) return
+    const firstProject = projects[0]
+    const home =
+      channels.find((c) => c.projectId === firstProject?.id && c.name === 'general') ??
+      channels.find((c) => c.projectId === null && c.name === 'hq') ??
+      channels[0]!
+    navigate(`/channels/${home.id}`, { replace: true })
+  }, [channel, channels, projects, navigate])
 
   // Close sidebar when switching channels.
   useEffect(() => {
@@ -42,11 +52,38 @@ export function WorkspacePage() {
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
+  // First run: no project yet. No sidebar, no chrome — one question, then
+  // the person lands in their project's room with Captain talking.
+  if (projects.length === 0) {
+    return (
+      <div className="bg-stage grid min-h-dvh place-items-center px-6 py-10">
+        <div className="w-full max-w-md">
+          <div className="mb-8 flex items-center gap-3">
+            <Logo className="h-9 w-9" />
+            <span className="font-display text-lg font-semibold text-zinc-100">OpenCrew</span>
+          </div>
+          <NewProjectForm
+            firstRun
+            onCreated={async (project) => {
+              await Promise.all([refreshProjects(), refreshChannels()])
+              const rooms = await api.get<Channel[]>('/api/channels')
+              const general = rooms.find((c) => c.projectId === project.id && c.name === 'general')
+              navigate(general ? `/channels/${general.id}` : '/channels', { replace: true })
+            }}
+          />
+          <p className="mt-10 text-xs text-zinc-600">
+            Signed in as {me.name} on this machine. Agents run as your own Claude Code sessions.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   if (!channel) {
     return (
       <div className="flex h-dvh">
         <Sidebar />
-        <div className="grid flex-1 place-items-center text-zinc-500">No channels yet.</div>
+        <div className="grid flex-1 place-items-center text-zinc-500">No rooms yet.</div>
       </div>
     )
   }

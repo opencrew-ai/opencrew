@@ -16,12 +16,17 @@ interface AgentFormProps {
     name: string
     avatarEmoji: string
     config: AgentVersionConfig
+    /** null = HQ-level agent. */
+    projectId?: string | null
   }
+  /** Pre-selects the project for a new agent (e.g. the room you came from). */
+  defaultProjectId?: string | null
   onSubmit: (data: {
     name: string
     avatarEmoji: string
     config: AgentVersionConfig
     changeNote: string
+    projectId: string | null
   }) => Promise<void>
 }
 
@@ -38,9 +43,16 @@ const MODEL_OPTIONS: { id: string; label: string }[] = [
   { id: 'claude-haiku-4-5', label: 'Haiku 4.5 — fastest, cheapest' }
 ]
 
-export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
-  const { channels } = useWorkspace()
+export function AgentForm({ mode, initial, defaultProjectId, onSubmit }: AgentFormProps) {
+  const { channels: allChannels, projects } = useWorkspace()
   const [catalog, setCatalog] = useState<ToolCatalogEntry[]>([])
+  const [projectId, setProjectId] = useState<string | null>(
+    initial?.projectId ?? defaultProjectId ?? projects[0]?.id ?? null
+  )
+  // An agent only ever sees its own project's rooms (HQ agents see HQ's),
+  // so the channel pickers show exactly that.
+  const channels = allChannels.filter((c) => (c.projectId ?? null) === projectId)
+  const projectName = projects.find((p) => p.id === projectId)?.name ?? 'HQ'
   const [name, setName] = useState(initial?.name ?? '')
   const [avatarEmoji, setAvatarEmoji] = useState(initial?.avatarEmoji ?? '🤖')
   const [systemPrompt, setSystemPrompt] = useState(initial?.config.systemPrompt ?? '')
@@ -50,8 +62,9 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
   const [gated, setGated] = useState<string[]>(
     initial?.config.capabilities.requiresApprovalFor ?? []
   )
+  // '*' means "every room in my project" — the server scopes it.
   const [postChannels, setPostChannels] = useState<string[]>(
-    initial?.config.capabilities.canPostInChannels ?? channels.map((c) => c.id)
+    initial?.config.capabilities.canPostInChannels ?? ['*']
   )
   const [watchChannels, setWatchChannels] = useState<string[]>(
     initial?.config.capabilities.watchesChannels ?? []
@@ -99,7 +112,8 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
             workingDir: workingDir.trim()
           }
         },
-        changeNote: changeNote || (mode === 'create' ? 'initial version' : 'config update')
+        changeNote: changeNote || (mode === 'create' ? 'initial version' : 'config update'),
+        projectId
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed')
@@ -110,6 +124,35 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
 
   return (
     <form onSubmit={submit} className="max-w-2xl space-y-5">
+      <div>
+        <label className="label">Project</label>
+        {mode === 'create' ? (
+          <select
+            className="input"
+            value={projectId ?? ''}
+            onChange={(e) => {
+              setProjectId(e.target.value || null)
+              // Room picks belong to the previous project — reset to "all in project".
+              setPostChannels(['*'])
+              setWatchChannels([])
+            }}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+            <option value="">HQ — spans every project (Chief of Staff, reviewers)</option>
+          </select>
+        ) : (
+          <p className="text-sm text-zinc-300">{projectName}</p>
+        )}
+        <p className="mt-1 text-xs text-zinc-500">
+          An agent lives in one project: it sees that project&apos;s rooms, docs, and
+          teammates, and nothing from the others.
+        </p>
+      </div>
+
       <div className="flex gap-3">
         <div className="w-20">
           <label className="label">Emoji</label>
@@ -203,7 +246,7 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
                   setPostChannels(postChannels.includes('*') ? [] : ['*'])
                 }
               />
-              All channels (incl. future ones)
+              All rooms in {projectName} (incl. future ones)
             </label>
             {!postChannels.includes('*') &&
               channels.map((c) => (
@@ -232,7 +275,7 @@ export function AgentForm({ mode, initial, onSubmit }: AgentFormProps) {
                   setWatchChannels(watchChannels.includes('*') ? [] : ['*'])
                 }
               />
-              All channels (orchestrator)
+              All rooms in {projectName} (orchestrator)
             </label>
             {!watchChannels.includes('*') &&
               channels.map((c) => (

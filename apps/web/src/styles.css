@@ -4,31 +4,200 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
-
-  /* Mission-control neutrals: zinc re-tuned from blue-gray to the same
-     green-tinted warmth as the stage (#0a0c0b) and the landing page. Every
-     existing zinc-* class picks this up — one place, whole app. */
-  --color-zinc-950: #0b0d0c;
-  --color-zinc-900: #161916;
-  --color-zinc-800: #252925;
-  --color-zinc-700: #3c423d;
-  --color-zinc-600: #4f564f;
-  --color-zinc-500: #6e756e;
-  --color-zinc-400: #9ea69e;
-  --color-zinc-300: #d1d7d1;
-  --color-zinc-200: #e2e7e2;
-  --color-zinc-100: #f2f5f2;
-  --color-zinc-50: #f9fbf9;
 }
 
+/*
+ * Light Mode Theme — Design Token & Component Spec (§1, adapted to Tailwind v4).
+ *
+ * Two layers, both runtime CSS vars so the theme flips without a rebuild:
+ *
+ *  1. Semantic tokens (--oc-*): canvas / surface / text / border / accent /
+ *     state colours. Components use the aliased utilities (bg-surface,
+ *     text-text-muted, border-border, …) declared in @theme inline below.
+ *
+ *  2. The zinc-* scale itself MIRRORS in light mode (zinc-950 ↔ zinc-50, …).
+ *     The app's neutrals were already re-tuned to the green-tinted
+ *     mission-control ramp; mirroring the ramp means every not-yet-migrated
+ *     zinc-* class in pages outside this pass still reads correctly on the
+ *     light canvas.
+ *
+ * `data-theme` ("light" | "dark") is applied to <html> by lib/theme.ts —
+ * stored preference first, OS preference otherwise.
+ */
 :root {
   color-scheme: dark;
   --bg: #0a0c0b;
+  --stage-glow: rgba(244, 244, 245, 0.06);
+
+  /* Neutral ramp (green-tinted zinc) — dark */
+  --oc-zinc-950: #0b0d0c;
+  --oc-zinc-900: #161916;
+  --oc-zinc-800: #252925;
+  --oc-zinc-700: #3c423d;
+  --oc-zinc-600: #4f564f;
+  --oc-zinc-500: #6e756e;
+  --oc-zinc-400: #9ea69e;
+  --oc-zinc-300: #d1d7d1;
+  --oc-zinc-200: #e2e7e2;
+  --oc-zinc-100: #f2f5f2;
+  --oc-zinc-50: #f9fbf9;
+
+  /* Backgrounds */
+  --oc-bg-canvas: #0b0d0c;
+  --oc-bg-surface: #161916;
+  --oc-bg-surface-2: #252925;
+  --oc-bg-surface-3: #3c423d;
+  --oc-bg-surface-hover: #252925;
+  --oc-surface-inverse: #f2f5f2;
+
+  /* Text */
+  --oc-text-primary: #f2f5f2;
+  --oc-text-secondary: #d1d7d1;
+  --oc-text-muted: #9ea69e;
+  --oc-text-faint: #6e756e;
+  --oc-text-inverse: #161916;
+
+  /* Borders */
+  --oc-border: #252925;
+
+  /* Accent — indigo (run drawer / doc chrome) */
+  --oc-accent: #818cf8; /* indigo-400: text/icon accent on dark */
+  --oc-accent-hover: #a5b4fc; /* indigo-300 */
+  --oc-accent-bg: #1e1b4b; /* indigo-950 */
+
+  /* Accent-secondary — emerald on the INVERSE surface (undo toast) */
+  --oc-accent-secondary: #047857; /* emerald-700 on the light toast */
+
+  /* Semantic states */
+  --oc-success: #34d399; /* emerald-400 */
+  --oc-success-strong: #d1fae5; /* emerald-100 — active-channel text */
+  --oc-success-bg: #022c22; /* emerald-950 */
+  --oc-warning: #fbbf24; /* amber-400 */
+  --oc-warning-bg: #451a03; /* amber-950 */
+  /* Errored-row surface: keeps the subtle 20%/30% amber wash on dark */
+  --oc-warning-surface: rgb(69 26 3 / 0.2);
+  --oc-warning-surface-hover: rgb(69 26 3 / 0.3);
+  --oc-error: #f87171; /* red-400 */
+  --oc-error-bg: #450a0a; /* red-950 */
+
+  /* Markdown / terminal accents */
+  --oc-link: #6ee7b7; /* emerald-300 */
+  --oc-link-decoration: #065f46; /* emerald-800 */
+  --oc-code-accent: #a7f3d0; /* emerald-200 */
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f9fbf9;
+  --stage-glow: rgba(22, 25, 22, 0.05);
+
+  /* Neutral ramp mirrored — zinc-950 renders as the old zinc-50, and so on.
+     zinc-900 maps to pure white (primary panels, per spec §1). */
+  --oc-zinc-950: #f9fbf9;
+  --oc-zinc-900: #ffffff;
+  --oc-zinc-800: #f2f5f2;
+  --oc-zinc-700: #e2e7e2;
+  --oc-zinc-600: #9ea69e;
+  --oc-zinc-500: #6e756e;
+  --oc-zinc-400: #4f564f;
+  --oc-zinc-300: #3c423d;
+  --oc-zinc-200: #252925;
+  --oc-zinc-100: #161916;
+  --oc-zinc-50: #0b0d0c;
+
+  /* Backgrounds — paper-warm, never pure black text / harsh white canvas */
+  --oc-bg-canvas: #f9fbf9;
+  --oc-bg-surface: #ffffff;
+  --oc-bg-surface-2: #f2f5f2;
+  --oc-bg-surface-3: #e2e7e2;
+  --oc-bg-surface-hover: #f2f5f2;
+  --oc-surface-inverse: #252925;
+
+  /* Text */
+  --oc-text-primary: #161916;
+  --oc-text-secondary: #3c423d;
+  --oc-text-muted: #6e756e;
+  --oc-text-faint: #9ea69e;
+  --oc-text-inverse: #f9fbf9;
+
+  /* Borders */
+  --oc-border: #e2e7e2;
+
+  /* Accent — indigo darkens for contrast on white (5.9:1) */
+  --oc-accent: #4f46e5; /* indigo-600 */
+  --oc-accent-hover: #4338ca; /* indigo-700 */
+  --oc-accent-bg: #eef2ff; /* indigo-50 */
+
+  /* Undo toast flips to a dark surface in light mode → emerald brightens */
+  --oc-accent-secondary: #34d399; /* emerald-400 */
+
+  /* Semantic states — darkened for WCAG AA on white/tinted chips */
+  --oc-success: #047857; /* emerald-700: 4.8:1 on emerald-50 */
+  --oc-success-strong: #065f46; /* emerald-800 */
+  --oc-success-bg: #ecfdf5; /* emerald-50 */
+  --oc-warning: #b45309; /* amber-700 */
+  --oc-warning-bg: #fffbeb; /* amber-50 */
+  /* Errored-row surface goes SOLID in light mode — amber-50/20 on white was
+     too washed out (Designer QA, 2026-09-16) */
+  --oc-warning-surface: #fffbeb; /* amber-50 */
+  --oc-warning-surface-hover: #fef3c7; /* amber-100 */
+  --oc-error: #dc2626; /* red-600: 5.3:1 on red-50 */
+  --oc-error-bg: #fef2f2; /* red-50 */
+
+  --oc-link: #047857;
+  --oc-link-decoration: #6ee7b7;
+  --oc-code-accent: #047857;
+}
+
+/* Utility aliases — `inline` so the generated classes reference the runtime
+   var (theme flips live, no rebuild, alpha modifiers still work). */
+@theme inline {
+  --color-zinc-950: var(--oc-zinc-950);
+  --color-zinc-900: var(--oc-zinc-900);
+  --color-zinc-800: var(--oc-zinc-800);
+  --color-zinc-700: var(--oc-zinc-700);
+  --color-zinc-600: var(--oc-zinc-600);
+  --color-zinc-500: var(--oc-zinc-500);
+  --color-zinc-400: var(--oc-zinc-400);
+  --color-zinc-300: var(--oc-zinc-300);
+  --color-zinc-200: var(--oc-zinc-200);
+  --color-zinc-100: var(--oc-zinc-100);
+  --color-zinc-50: var(--oc-zinc-50);
+
+  --color-canvas: var(--oc-bg-canvas);
+  --color-surface: var(--oc-bg-surface);
+  --color-surface-2: var(--oc-bg-surface-2);
+  --color-surface-3: var(--oc-bg-surface-3);
+  --color-surface-hover: var(--oc-bg-surface-hover);
+  --color-surface-inverse: var(--oc-surface-inverse);
+
+  --color-text-primary: var(--oc-text-primary);
+  --color-text-secondary: var(--oc-text-secondary);
+  --color-text-muted: var(--oc-text-muted);
+  --color-text-faint: var(--oc-text-faint);
+  --color-text-inverse: var(--oc-text-inverse);
+
+  --color-border: var(--oc-border);
+
+  --color-accent: var(--oc-accent);
+  --color-accent-hover: var(--oc-accent-hover);
+  --color-accent-bg: var(--oc-accent-bg);
+  --color-accent-secondary: var(--oc-accent-secondary);
+
+  --color-success: var(--oc-success);
+  --color-success-strong: var(--oc-success-strong);
+  --color-success-bg: var(--oc-success-bg);
+  --color-warning: var(--oc-warning);
+  --color-warning-bg: var(--oc-warning-bg);
+  --color-warning-surface: var(--oc-warning-surface);
+  --color-warning-surface-hover: var(--oc-warning-surface-hover);
+  --color-error: var(--oc-error);
+  --color-error-bg: var(--oc-error-bg);
 }
 
 body {
   background: var(--bg);
-  @apply font-sans text-zinc-100 antialiased;
+  @apply font-sans text-text-primary antialiased;
 }
 
 h1,
@@ -42,8 +211,24 @@ h3 {
 
 .bg-stage {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(244, 244, 245, 0.06), transparent 70%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, var(--stage-glow), transparent 70%),
     var(--bg);
+}
+
+/* Light mode scrollbars — visible but subtle (spec §4e) */
+[data-theme='light'] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+[data-theme='light'] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #d1d7d1;
+  border-radius: 9999px;
+}
+[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: #9ea69e;
 }
 
 .terminal-glow {
@@ -124,19 +309,38 @@ h3 {
   animation: cursor-blink 1.1s step-end infinite;
 }
 
+/* ---------- "Built by OpenCrew" badge ---------- */
+
+/* Icon pulses subtly on hover — a nod to a "live crew". Motion-guarded. */
+@media (prefers-reduced-motion: no-preference) {
+  .opencrew-badge:hover .opencrew-badge-icon {
+    animation: badge-pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
 /* ---------- controls ---------- */
 
 .label {
-  @apply mb-1 block font-mono text-xs font-semibold uppercase tracking-wide text-zinc-400;
+  @apply mb-1 block font-mono text-xs font-semibold uppercase tracking-wide text-text-muted;
 }
 .input {
-  @apply w-full rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-500;
+  @apply w-full rounded-lg border border-border bg-surface/80 px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-faint focus:border-text-faint;
 }
 .btn-primary {
   @apply rounded-lg bg-emerald-500 px-3.5 py-2 text-sm font-bold text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-50;
 }
 .btn-secondary {
-  @apply rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2 text-sm text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 disabled:opacity-50;
+  @apply rounded-lg border border-surface-3 bg-surface px-3.5 py-2 text-sm text-text-primary transition hover:border-text-faint hover:bg-surface-2 disabled:opacity-50;
 }
 .btn-danger {
   @apply rounded-lg bg-red-700 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50;
@@ -152,9 +356,9 @@ h3 {
 }
 
 /* Inline emphasis */
-.md-content strong { @apply font-semibold text-zinc-100; }
-.md-content em     { @apply italic text-zinc-300; }
-.md-content del    { @apply line-through text-zinc-500; }
+.md-content strong { @apply font-semibold text-text-primary; }
+.md-content em     { @apply italic text-text-secondary; }
+.md-content del    { @apply line-through text-text-faint; }
 
 /* Lists */
 .md-content ul { @apply list-disc pl-5 space-y-0.5; }
@@ -172,46 +376,54 @@ h3 {
   @apply font-mono tabular-nums;
 }
 
-/* Code — phosphor on black, the product's native tongue */
+/* Code — phosphor on the deepest surface, the product's native tongue.
+   Adapts per theme: soft dark block in dark mode, tinted paper in light. */
 .md-content code {
-  @apply rounded bg-zinc-800/90 px-1 py-0.5 font-mono text-[13px] text-emerald-200;
+  @apply rounded bg-surface-2/90 px-1 py-0.5 font-mono text-[13px];
+  color: var(--oc-code-accent);
 }
 .md-content pre {
-  @apply overflow-x-auto rounded-lg border border-zinc-800/70 bg-black/60 p-3 text-[13px] my-2;
+  @apply overflow-x-auto rounded-lg border border-border/70 p-3 text-[13px] my-2;
+  background: color-mix(in srgb, var(--oc-bg-canvas) 60%, transparent);
 }
 .md-content pre code {
-  @apply bg-transparent p-0 text-zinc-200;
+  @apply bg-transparent p-0 text-text-secondary;
 }
 
 /* Links */
 .md-content a {
-  @apply text-emerald-300 underline decoration-emerald-800 underline-offset-2 hover:decoration-emerald-400;
+  @apply underline underline-offset-2;
+  color: var(--oc-link);
+  text-decoration-color: var(--oc-link-decoration);
+}
+.md-content a:hover {
+  text-decoration-color: var(--oc-link);
 }
 
 /* Blockquote */
 .md-content blockquote {
-  @apply border-l-2 border-zinc-700 pl-3 text-zinc-400 italic my-2;
+  @apply border-l-2 border-surface-3 pl-3 text-text-muted italic my-2;
 }
 
 /* Horizontal rule */
 .md-content hr {
-  @apply border-zinc-800 my-3;
+  @apply border-border my-3;
 }
 
 /* Headings — size hierarchy */
 .md-content h1 {
-  @apply mt-3 mb-1 text-lg font-bold text-zinc-100 leading-snug;
+  @apply mt-3 mb-1 text-lg font-bold text-text-primary leading-snug;
 }
 .md-content h2 {
-  @apply mt-3 mb-1 text-base font-bold text-zinc-100 leading-snug;
+  @apply mt-3 mb-1 text-base font-bold text-text-primary leading-snug;
 }
 .md-content h3 {
-  @apply mt-2 mb-0.5 text-sm font-bold text-zinc-200 leading-snug;
+  @apply mt-2 mb-0.5 text-sm font-bold text-text-primary leading-snug;
 }
 .md-content h4,
 .md-content h5,
 .md-content h6 {
-  @apply mt-2 mb-0.5 text-sm font-semibold text-zinc-300;
+  @apply mt-2 mb-0.5 text-sm font-semibold text-text-secondary;
 }
 
 /* Tables (GFM — requires remark-gfm) */
@@ -219,17 +431,17 @@ h3 {
   @apply w-full border-collapse text-sm my-2;
 }
 .md-content thead {
-  @apply bg-zinc-800/60;
+  @apply bg-surface-2/60;
 }
 .md-content th {
-  @apply border border-zinc-700/60 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-zinc-400;
+  @apply border border-surface-3/60 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-text-muted;
 }
 .md-content td {
-  @apply border border-zinc-800 px-3 py-1.5 text-zinc-300;
+  @apply border border-border px-3 py-1.5 text-text-secondary;
 }
 .md-content tbody tr:nth-child(even) {
-  @apply bg-zinc-900/40;
+  @apply bg-surface/40;
 }
 .md-content tbody tr:hover {
-  @apply bg-zinc-800/30;
+  @apply bg-surface-2/30;
 }

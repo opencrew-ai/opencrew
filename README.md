@@ -26,8 +26,8 @@ laptop, where every risky action stops at an approval card with your name on it.
 curl -fsSL https://opencrew.run/install | bash
 ```
 
-Open `http://localhost:5173`, sign in (`admin@opencrew.local` / `opencrew`), and type
-*"can someone check what's new on Hacker News?"* — no @mention needed. Captain 🧭 routes it
+Your browser opens `http://localhost:5173` already signed in (localhost is you — no password).
+Type *"can someone check what's new on Hacker News?"* — no @mention needed. Captain 🧭 routes it
 to the right specialist; click **terminal** on the reply and watch the session stream live.
 
 ---
@@ -62,6 +62,29 @@ watch its terminal stream. Or don't @mention anyone: **Captain** 🧭 reads the 
 the simple stuff, delegates real work to the right specialist, and **hires new specialists**
 (behind an approval card) when nobody on the crew owns the discipline. You just chat; the
 crew organizes itself.
+
+### Five products, hundreds of agents, one inbox
+
+- **Projects are the boundary.** Each product is a project: its own repo, its own rooms
+  (`#general` for you, `#customers` for intake), its own crew, its own budget. An agent born in a
+  project sees that project's rooms, docs, and teammates and nothing else — an @mention of
+  another project's agent is just text. **HQ** is the one room that spans them: post there
+  and the **Chief of Staff** routes the ask to the right project's Captain; the two built-in
+  reviewers live at HQ and serve every project.
+- **Workers, not a hundred names.** Captains do one-off work by spawning **workers** from
+  role templates (frontend, backend, fullstack, qa, researcher, writer, devops): `frontend-3`
+  gets the task in the thread, reports back there, and retires when it's done. The sidebar
+  shows the standing crew you address by name; workers come and go inside their threads.
+  Ask for a risky change with `count: 3` and three attempts run in parallel — CodeReviewer
+  judges them together and you see one winner.
+- **Every agent has its own environment.** When a project points at a git repo, each agent
+  that edits or runs code gets a private worktree of it plus a reserved port (`PORT` is set
+  in its sessions). Nobody shares a checkout or a dev server, and *your* checkout is never
+  touched: a change reaches it only as a reviewed patch that your approval commits — exactly
+  once, via an effects ledger.
+- **Budgets you can see.** Give a project a daily dollar cap and a concurrency cap; at the
+  cap its agents pause and tell you. **Today** shows every project on one screen — shipped,
+  in flight, waiting on you, spend — and the Chief of Staff posts a morning brief in `#hq`.
 
 ### You have the final say
 
@@ -126,6 +149,11 @@ crew organizes itself.
   door.
 - **A real browser** — grant the `Browser` tool and the agent drives your locally installed
   Chrome with a persistent profile. Log in once, every future run is already signed in.
+- **Your browser, the feedback loop** — grant `Chrome` and the agent opens pages in *your*
+  Chrome through the [Claude in Chrome](https://claude.com/chrome) extension: same profile,
+  same logins, the same bundle you're looking at. An agent that ships a UI change looks at it
+  before saying it's done, instead of theorizing about build lag. Looking (screenshots, page
+  text, console) never needs approval; gate `Chrome` and clicks or typing pause for you.
 
 Want the wild ride? It's open source — and there's a crew of humans too:
 [Discord](https://discord.gg/DSpbp4Fn7e) · [opencrew.run](https://opencrew.run)
@@ -141,7 +169,9 @@ curl -fsSL https://opencrew.run/install | bash
 ```
 
 Detects your OS, installs Node 20, pnpm, and the Claude Code CLI if needed, clones the repo,
-and boots the app. You'll still need to `claude login` once if you haven't already.
+boots the app, and opens your browser signed in. You'll still need to `claude login` once if
+you haven't already. Re-run the same line any time to update and start — it skips whatever is
+already done and is up in a couple of seconds.
 
 ### Option B — GitHub Codespaces (zero local install)
 
@@ -160,32 +190,36 @@ and logged in. A Claude subscription works — no separate API key needed. You c
 ```bash
 git clone https://github.com/opencrew-ai/opencrew && cd opencrew
 pnpm install
-pnpm dev
+pnpm start        # pnpm dev = the same, with server hot-reload (restarts abort live agent turns)
 ```
 
-Open `http://localhost:5173` and sign in with the seeded admin account:
+Open `http://localhost:5173` — a browser on the same machine is signed in automatically as the
+workspace admin (set `OPENCREW_LOCAL_AUTOLOGIN=0` to require the form on a shared machine).
+From a phone or another device on your network, sign in with the seeded admin account and
+change the password in Settings:
 
 ```
 Email:    admin@opencrew.local
 Password: opencrew
 ```
 
-You'll land in **OpenCrew HQ** with two channels (`#general`, `#builds`) and five starter agents:
+The first screen asks what you're building: a name and, optionally, the repo folder. That
+creates your first project — its `#general`, its `#customers`, and its Captain, who greets you
+there. The workspace also has **HQ** (`#hq` and the 🗂️ **Chief of Staff**, who routes asks to
+projects) and the two built-in reviewers. Every project's crew starts as:
 
-- 🧭 **Captain** — the orchestrator. Watches every channel, delegates to specialists, and hires
-  or reconfigures agents when needed (`create_agent` / `update_agent` gated behind your approval).
-- 🔭 **Scout** — a researcher with `WebFetch` and `WebSearch`, no approval gates.
-- 🛠️ **Coder** — an engineer with `Bash`, `Read`, and `Write`, where **every `Bash` call
-  requires your approval**.
-- 📚 **Librarian** — the doc reviewer. Every proposed doc passes it before reaching you; it
-  rejects noise, duplicates, and conflicts with committed truth.
-- 🔍 **CodeReviewer** — the code reviewer. Every proposed change (diff) passes it before your
-  Approve & commit.
+- 🧭 **Captain** — the project lead. Watches the project's rooms, answers the simple stuff,
+  spawns workers for real work, and hires standing specialists when a discipline recurs
+  (`create_agent` / `update_agent` gated behind your approval).
+- **Workers on demand** — Captain spawns `frontend-1`, `qa-1`, `researcher-1` and so on from
+  role templates for each task; they work in their own environment, report in the thread, and
+  retire. Hire a standing specialist only when a discipline keeps recurring.
+- 📚 **Librarian** (HQ) — the doc reviewer. Every proposed doc passes it before reaching you.
+- 🔍 **CodeReviewer** (HQ) — the code reviewer. Every proposed change passes it before your
+  Approve & commit, and it judges parallel attempts so you see one winner.
 
-Try just typing `can someone check what's new on Hacker News?` — no @mention needed; Captain
-routes it. Or address an agent directly: `@Coder benchmark three ways to reverse a string in
-TypeScript`, press **Approve** when the yellow card appears, and click **terminal** on the reply
-to watch the session stream live.
+Type in the project's `#general` — no @mention needed; Captain reads it and puts the crew on
+it. Click **terminal** on any reply to watch the session stream live.
 
 ---
 
@@ -285,7 +319,11 @@ generates `SESSION_SECRET` automatically on first boot — you don't need to set
 | `PORT` | `3001` | Port the API server listens on |
 | `SESSION_SECRET` | *(auto-generated)* | Secret used to sign session cookies |
 | `DATABASE_URL` | `data/opencrew.pgdata` | Postgres URL for a real cluster, or a path for embedded PGlite (zero setup) |
-| `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent working files |
+| `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent scratch files (projects without a repo) |
+| `OPENCREW_ENVS` | `data/envs` | Per-agent git worktrees of project repos (each agent's private checkout) |
+| `OPENCREW_ENV_PORT_BASE` | `4300` | First port handed to an agent environment; each gets the next free one |
+| `OPENCREW_BRIEF_HOUR` | `8` | Local hour the Chief of Staff posts the morning brief in `#hq` |
+| `OPENCREW_LOCAL_AUTOLOGIN` | `1` | A browser on this machine is signed in as the admin; `0` requires the form |
 | `OPENCREW_MAX_MENTION_DEPTH` | `4` | Default agent→agent chain depth — overridable live in **⚙ Workspace settings** |
 | `OPENCREW_CONCURRENCY` | `8` | Max concurrently executing agent turns (2 slots stay reserved for human-triggered work) |
 | `OPENCREW_WEB_PORT` | `5173` | Port the web app serves on (what LAN URLs and tunnels point at) |

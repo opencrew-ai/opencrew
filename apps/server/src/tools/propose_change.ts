@@ -1,17 +1,9 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { z } from 'zod'
 import { registerOpenCrewTool } from './registry'
 import { proposePlan } from '../services/artifacts'
 import { captureStagedDiff } from '../services/changes'
-import { env } from '../env'
-
-/** Same resolution as the executor: configured absolute dir, else workspace. */
-function workingDirFor(agentId: string, configured: string | undefined): string {
-  const dir = configured?.trim()
-  if (dir && dir.startsWith('/') && existsSync(dir)) return dir
-  return join(env.workspacesDir, agentId)
-}
+import { resolveAgentWorkingDir } from '../services/environments'
+import { projectOfChannel } from '../services/projects'
 
 registerOpenCrewTool({
   name: 'propose_change',
@@ -36,7 +28,16 @@ registerOpenCrewTool({
     if (!ctx.threadRootId) {
       return 'Tool error: propose_change requires a conversation context.'
     }
-    const dir = workingDirFor(ctx.agentId, ctx.version.capabilities.workingDir)
+    // Same resolution as the executor: the agent's environment when the
+    // project has a repo, its configured dir, else its scratch workspace.
+    const project = await projectOfChannel(ctx.app.db, ctx.channelId)
+    const { path: dir } = await resolveAgentWorkingDir(
+      ctx.app.db,
+      project,
+      ctx.agentId,
+      ctx.version.capabilities.workingDir,
+      ctx.version.tools
+    )
     const captured = await captureStagedDiff(dir)
     if ('error' in captured) return `Tool error: ${captured.error}`
 

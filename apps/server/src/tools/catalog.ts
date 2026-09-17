@@ -18,6 +18,11 @@ export const BUILTIN_TOOLS: Array<{ name: string; description: string }> = [
     name: 'Browser',
     description:
       'Drive a real local Chrome (persistent per-agent profile) — navigate, click, type. Log into sites once, the session sticks.'
+  },
+  {
+    name: 'Chrome',
+    description:
+      'Your own Chrome, via the Claude in Chrome extension — the agent opens pages in your logged-in browser and sees exactly what you see. Looking (screenshots, page text, console) is always free; add it to approval gates to gate clicks and typing.'
   }
 ]
 

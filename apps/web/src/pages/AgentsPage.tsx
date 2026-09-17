@@ -19,10 +19,26 @@ function agentBlurb(systemPrompt: string, name: string): string {
 }
 
 export function AgentsPage() {
-  const { me, agents, refreshAgents } = useWorkspace()
+  const { me, agents, projects, refreshAgents } = useWorkspace()
   const navigate = useNavigate()
   const [adding, setAdding] = useState(false)
+  const [showWorkers, setShowWorkers] = useState(false)
   const isAdmin = me.role === 'admin'
+
+  // Standing crew by project; workers (spawned per task) behind one toggle.
+  const live = agents.filter((a) => a.status !== 'retired')
+  const standing = live.filter((a) => a.kind !== 'worker')
+  const workers = live.filter((a) => a.kind === 'worker')
+  const groups = [null, ...projects]
+    .map((project) => ({
+      key: project?.id ?? 'hq',
+      label: project?.name ?? 'HQ',
+      color: project?.color ?? null,
+      agents: (showWorkers ? live : standing)
+        .filter((a) => (a.projectId ?? null) === (project?.id ?? null))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    }))
+    .filter((g) => g.agents.length > 0)
 
   return (
     <div className="flex h-screen">
@@ -37,8 +53,19 @@ export function AgentsPage() {
           )}
         </div>
         <p className="mt-1 text-sm text-zinc-500">
-          Agents are teammates: give one a prompt, skills, and tools — it runs on Claude Code
-          under the hood.
+          The standing crew: the names you address. Captains spawn workers per task from
+          role templates; those come and go inside their threads.
+          {workers.length > 0 && (
+            <>
+              {' '}
+              <button
+                onClick={() => setShowWorkers((v) => !v)}
+                className="text-emerald-300 underline-offset-2 hover:underline"
+              >
+                {showWorkers ? 'Hide' : 'Show'} {workers.length} active worker{workers.length === 1 ? '' : 's'}
+              </button>
+            </>
+          )}
         </p>
 
         {adding && (
@@ -55,8 +82,18 @@ export function AgentsPage() {
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {agents.map((a) => (
+        {groups.map((group) => (
+        <section key={group.key} className="mt-6">
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            {group.color ? (
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: group.color }} />
+            ) : (
+              <span className="h-2 w-2 rounded-full border border-zinc-600" />
+            )}
+            {group.label}
+          </h2>
+        <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {group.agents.map((a) => (
             <Link
               key={a.id}
               to={`/agents/${a.id}`}
@@ -70,6 +107,11 @@ export function AgentsPage() {
                     {a.status === 'paused' && (
                       <span className="ml-2 rounded bg-zinc-800 px-1.5 text-xs text-zinc-400">
                         paused
+                      </span>
+                    )}
+                    {a.kind === 'worker' && (
+                      <span className="ml-2 rounded bg-zinc-800 px-1.5 text-xs text-zinc-400" title="Spawned for one task; retires when done">
+                        worker
                       </span>
                     )}
                   </div>
@@ -100,6 +142,8 @@ export function AgentsPage() {
             </Link>
           ))}
         </div>
+        </section>
+        ))}
       </div>
     </div>
   )

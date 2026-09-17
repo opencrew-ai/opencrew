@@ -5,6 +5,8 @@ import type { FastifyInstance } from 'fastify'
 import type { AppContext } from '../context'
 import { env } from '../env'
 import { getAgentWithVersion, listAgentsWithVersions } from '../services/agents'
+import { getProject } from '../services/projects'
+import { resolveAgentWorkingDir } from '../services/environments'
 import { authGuard, adminGuard, fail, ok } from './helpers'
 
 const MAX_ENTRIES = 300
@@ -69,11 +71,15 @@ export function registerFsRoutes(app: FastifyInstance, ctx: AppContext): void {
     } else if (agentId) {
       // Relative path — resolve against the agent's working directory
       const agent = await getAgentWithVersion(ctx.db, agentId)
-      const configured = agent?.currentVersion.capabilities.workingDir?.trim()
-      const baseDir =
-        configured && configured.startsWith('/') && existsSync(configured)
-          ? configured
-          : join(env.workspacesDir, agentId)
+      if (!agent) return reply.code(404).send(fail('agent not found'))
+      const project = agent.projectId ? await getProject(ctx.db, agent.projectId) : null
+      const { path: baseDir } = await resolveAgentWorkingDir(
+        ctx.db,
+        project,
+        agentId,
+        agent.currentVersion.capabilities.workingDir,
+        agent.currentVersion.tools
+      )
 
       target = resolve(baseDir, rawPath)
       // Traverse guard: resolved path must stay inside the base dir

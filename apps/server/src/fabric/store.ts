@@ -22,6 +22,8 @@ export interface FabricTaskSpec {
   payload: Record<string, unknown>
   maxAttempts?: number
   notBefore?: number
+  /** Project the task belongs to (null = HQ). Its cap rides in the payload as `projectCap`. */
+  projectId?: string | null
 }
 
 export interface FabricTask {
@@ -60,6 +62,7 @@ export async function createFabricTask(db: DB, spec: FabricTaskSpec): Promise<vo
   const now = Date.now()
   await db.insert(fabricTasks).values({
     id: spec.id,
+    projectId: spec.projectId ?? null,
     kind: spec.kind,
     lane: spec.lane,
     sessionKey: spec.sessionKey,
@@ -107,6 +110,17 @@ export async function claimNextTask(db: DB, opts: ClaimOptions): Promise<FabricT
   const busyDevices = new Set(leased.flatMap((r) => JSON.parse(r.devices) as string[]))
   const backgroundInFlight = leased.filter((r) => r.lane === 'background').length
   const backgroundCap = Math.max(0, opts.capacity - opts.interactiveReserve)
+  // Per-project concurrency: a project never runs more turns than its cap,
+  // so one busy product can't starve the others of the global capacity.
+  const leasedPerProject = new Map<string, number>()
+  for (const r of leased) {
+    if (r.projectId) leasedPerProject.set(r.projectId, (leasedPerProject.get(r.projectId) ?? 0) + 1)
+  }
+  const projectCapOf = (row: Row): number | null => {
+    if (!row.projectId) return null
+    const cap = (JSON.parse(row.payload) as { projectCap?: unknown }).projectCap
+    return typeof cap === 'number' && cap > 0 ? cap : null
+  }
 
   const candidates = await db
     .select()
@@ -128,6 +142,8 @@ export async function claimNextTask(db: DB, opts: ClaimOptions): Promise<FabricT
     const devices = JSON.parse(row.devices) as string[]
     if (devices.some((d) => busyDevices.has(d))) continue
     if (row.lane === 'background' && backgroundInFlight >= backgroundCap) continue
+    const cap = projectCapOf(row)
+    if (cap !== null && (leasedPerProject.get(row.projectId!) ?? 0) >= cap) continue
 
     const claimed = await db
       .update(fabricTasks)

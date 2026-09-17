@@ -33,14 +33,72 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at BIGINT NOT NULL,
   expires_at BIGINT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL,
+  working_dir TEXT NOT NULL DEFAULT '',
+  daily_budget_usd REAL NOT NULL DEFAULT 0,
+  max_concurrent INTEGER NOT NULL DEFAULT 4,
+  created_at BIGINT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   workspace_slug TEXT NOT NULL DEFAULT 'default',
-  name TEXT NOT NULL UNIQUE,
+  project_id TEXT,
+  name TEXT NOT NULL,
   avatar_emoji TEXT NOT NULL,
   current_version_id TEXT NOT NULL,
   created_by TEXT NOT NULL,
   status TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'standing',
+  template_id TEXT,
+  attempt_group_id TEXT,
+  retired_at BIGINT,
+  created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agent_templates (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  avatar_emoji TEXT NOT NULL,
+  system_prompt TEXT NOT NULL,
+  model TEXT NOT NULL,
+  skills TEXT NOT NULL,
+  tools TEXT NOT NULL,
+  gated_tools TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS environments (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  project_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL UNIQUE,
+  path TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS effects (
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  kind TEXT NOT NULL,
+  ref_id TEXT NOT NULL,
+  result TEXT NOT NULL,
+  performed_at BIGINT NOT NULL,
+  PRIMARY KEY (kind, ref_id)
+);
+CREATE TABLE IF NOT EXISTS attempt_groups (
+  id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  project_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  conversation_root_id TEXT NOT NULL,
+  task TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  spawned_by_agent_id TEXT NOT NULL,
+  judged_at BIGINT,
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS agent_versions (
@@ -60,7 +118,8 @@ CREATE TABLE IF NOT EXISTS agent_versions (
 CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY,
   workspace_slug TEXT NOT NULL DEFAULT 'default',
-  name TEXT NOT NULL UNIQUE,
+  project_id TEXT,
+  name TEXT NOT NULL,
   topic TEXT NOT NULL,
   is_private BOOLEAN NOT NULL,
   created_at BIGINT NOT NULL
@@ -100,6 +159,7 @@ CREATE TABLE IF NOT EXISTS runs (
   trigger_type TEXT NOT NULL DEFAULT 'mention',
   depth INTEGER NOT NULL DEFAULT 0,
   restricted BOOLEAN NOT NULL DEFAULT FALSE,
+  project_id TEXT,
   created_at BIGINT NOT NULL,
   started_at BIGINT,
   finished_at BIGINT
@@ -254,6 +314,7 @@ CREATE TABLE IF NOT EXISTS attention_dismissals (
 CREATE TABLE IF NOT EXISTS fabric_tasks (
   id TEXT PRIMARY KEY,
   workspace_slug TEXT NOT NULL DEFAULT 'default',
+  project_id TEXT,
   kind TEXT NOT NULL,
   lane TEXT NOT NULL,
   session_key TEXT NOT NULL,
@@ -305,6 +366,25 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_by TEXT;
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS consumed_at BIGINT;
 ALTER TABLE fabric_tasks ADD COLUMN IF NOT EXISTS claimed_at BIGINT;
 ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS patch TEXT;
+-- Projects: names are unique per project (every project has a #general and
+-- a Captain), so the original global UNIQUE constraints go away.
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE channels DROP CONSTRAINT IF EXISTS channels_name_key;
+ALTER TABLE agents DROP CONSTRAINT IF EXISTS agents_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_channels_project_name ON channels (COALESCE(project_id, ''), name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_project_name ON agents (COALESCE(project_id, ''), name);
+CREATE INDEX IF NOT EXISTS idx_channels_project ON channels (project_id);
+CREATE INDEX IF NOT EXISTS idx_agents_project ON agents (project_id);
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS daily_budget_usd REAL NOT NULL DEFAULT 0;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS max_concurrent INTEGER NOT NULL DEFAULT 4;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'standing';
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS template_id TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS attempt_group_id TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS retired_at BIGINT;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE fabric_tasks ADD COLUMN IF NOT EXISTS project_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_runs_project ON runs (project_id, created_at);
 `
 
 // ---------------------------------------------------------------------------

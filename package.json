@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "license": "MIT",
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
+    "dev": "pnpm --filter @opencrew/server --filter @opencrew/web --parallel run dev",
+    "start": "pnpm --filter @opencrew/server --filter @opencrew/web --parallel run start",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "seed": "pnpm --filter @opencrew/server run seed"

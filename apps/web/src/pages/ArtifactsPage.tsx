@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { Sidebar } from '../components/Sidebar'
 import { ArtifactDocModal } from '../components/ArtifactCard'
+import { inScope, ProjectDot, ProjectFilter, projectSections, useProjectScope } from '../components/ProjectFilter'
 import { useWorkspace } from '../lib/workspace'
 
 // ---------------------------------------------------------------------------
@@ -166,33 +167,71 @@ export function ArtifactsPage() {
     })
   }, [])
 
-  const tree = useMemo(() => buildTree(artifacts), [artifacts])
-  const rootFolders = [...tree.children.values()].sort((a, b) => a.name.localeCompare(b.name))
-  const rootDocs = [...tree.docs].sort((a, b) => b.updatedAt - a.updatedAt)
-  const isEmpty = rootFolders.length === 0 && rootDocs.length === 0
+  // PROJECT FIRST: one tree per project (HQ first), never one tree mixing
+  // five products' plans/ folders. The filter narrows to one project.
+  const { projects, projectOfChannel } = useWorkspace()
+  const [scope, setScope] = useProjectScope()
+  const sections = useMemo(() => {
+    const live = artifacts.filter((a) => a.status !== 'discarded')
+    return projectSections(projects)
+      .map((section) => {
+        const own = live.filter((a) => (projectOfChannel(a.channelId)?.id ?? null) === (section.project?.id ?? null))
+        const tree = buildTree(own)
+        return {
+          ...section,
+          count: own.length,
+          folders: [...tree.children.values()].sort((a, b) => a.name.localeCompare(b.name)),
+          docs: [...tree.docs].sort((a, b) => b.updatedAt - a.updatedAt)
+        }
+      })
+      .filter((s) => inScope(scope, s.project?.id ?? null))
+  }, [artifacts, projects, projectOfChannel, scope])
+  const counts = Object.fromEntries(
+    projectSections(projects).map((s) => [
+      s.key,
+      artifacts.filter((a) => a.status !== 'discarded' && (projectOfChannel(a.channelId)?.id ?? null) === (s.project?.id ?? null)).length
+    ])
+  )
+  const nonEmpty = sections.filter((s) => s.folders.length + s.docs.length > 0)
+  const isEmpty = nonEmpty.length === 0
 
   return (
     <div className="flex h-screen">
       <Sidebar />
       <div className="flex-1 overflow-y-auto p-6">
-        <h1 className="text-xl font-bold">Artifacts</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-bold">Artifacts</h1>
+          <ProjectFilter scope={scope} onChange={setScope} counts={counts} />
+        </div>
         <p className="mt-1 text-sm text-zinc-500">
-          The crew's durable output — plans and docs, organized in folders. Docs awaiting
+          The crew's durable output — plans and docs, one tree per project. Docs awaiting
           approval are marked; open one to review, comment, and commit.
         </p>
 
-        <div className="mt-5 max-w-3xl rounded-xl border border-zinc-800/60 bg-zinc-950/30 py-2">
-          {loading && <p className="px-4 py-2 text-sm text-zinc-500">Loading…</p>}
-          {!loading && isEmpty && (
-            <p className="px-4 py-6 text-sm text-zinc-500">
-              No artifacts yet — ask the crew for a plan and approve it, and it will land here.
-            </p>
-          )}
-          {rootFolders.map((node) => (
-            <FolderRow key={node.path} node={node} depth={0} onOpen={setOpenArtifact} />
-          ))}
-          {rootDocs.map((artifact) => (
-            <DocRow key={artifact.id} artifact={artifact} depth={0} onOpen={setOpenArtifact} />
+        {loading && <p className="mt-5 text-sm text-zinc-500">Loading…</p>}
+        {!loading && isEmpty && (
+          <p className="mt-5 max-w-3xl rounded-xl border border-zinc-800/60 bg-zinc-950/30 px-4 py-6 text-sm text-zinc-500">
+            No artifacts yet — ask the crew for a plan and approve it, and it will land here.
+          </p>
+        )}
+        <div className="mt-5 max-w-3xl space-y-5">
+          {nonEmpty.map((section) => (
+            <section key={section.key}>
+              {(scope === 'all' || nonEmpty.length > 1) && (
+                <h2 className="mb-1.5 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  <ProjectDot project={section.project} />
+                  {section.label}
+                </h2>
+              )}
+              <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/30 py-2">
+                {section.folders.map((node) => (
+                  <FolderRow key={node.path} node={node} depth={0} onOpen={setOpenArtifact} />
+                ))}
+                {section.docs.map((artifact) => (
+                  <DocRow key={artifact.id} artifact={artifact} depth={0} onOpen={setOpenArtifact} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       </div>

@@ -2,12 +2,37 @@ import { and, eq, gt } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { extractMentions, type Message, type RunTriggerType } from '@opencrew/shared'
 import type { AppContext } from '../context'
-import { agents, runs, users } from '../db/schema'
+import { agents, channels, runs, users } from '../db/schema'
 import { createFabricTask } from '../fabric/store'
-import { getAgentWithVersion, toAgent } from '../services/agents'
+import { getAgentWithVersion } from '../services/agents'
+import {
+  agentsVisibleInChannel,
+  configuredWorkingDir,
+  projectOfChannel,
+  wildcardCovers
+} from '../services/projects'
+import { resolveAgentWorkingDir } from '../services/environments'
+import { isOverBudget, projectSpendToday } from '../services/budgets'
+import { getRawSetting, setRawSetting } from '../services/settings'
+
+/** Post a notice at most once per calendar day per key (budget exhaustion etc.). */
+async function noticeOncePerDay(
+  ctx: AppContext,
+  key: string,
+  channelId: string,
+  content: string,
+  threadRootId: string | null
+): Promise<void> {
+  const today = new Date().toDateString()
+  if ((await getRawSetting(ctx.db, key)) === today) return
+  await setRawSetting(ctx.db, key, today)
+  await postSystemMessage(ctx, channelId, content, { threadRootId })
+}
 import { postSystemMessage } from '../services/messages'
 import { getMaxAgentFanout, getMaxMentionDepth } from '../services/settings'
-import { BROWSER_TOOL } from '../tools'
+import { BROWSER_TOOL, CHROME_TOOL } from '../tools'
+
+export const USER_CHROME_DEVICE = 'browser:user-chrome'
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -65,8 +90,18 @@ export async function enqueueMentionRuns(
   message: Message,
   depth: number
 ): Promise<void> {
-  const agentRows = await ctx.db.select().from(agents)
-  const allAgents = agentRows.map(toAgent)
+  // PROJECT BOUNDARY: only the channel's project crew and HQ agents exist
+  // from here — an @mention of another project's agent is just text.
+  const allAgents = await agentsVisibleInChannel(ctx.db, message.channelId)
+  const [channelRow] = await ctx.db
+    .select({ projectId: channels.projectId })
+    .from(channels)
+    .where(eq(channels.id, message.channelId))
+    .limit(1)
+  const channelProjectId = channelRow?.projectId ?? null
+  const agentRows = await ctx.db
+    .select({ id: agents.id, createdAt: agents.createdAt })
+    .from(agents)
   const names = allAgents.map((a) => a.name)
   const mentioned = extractMentions(message.content, names)
   const restricted = await isRestrictedAuthor(ctx, message)
@@ -126,6 +161,8 @@ export async function enqueueMentionRuns(
   const watchers: {
     agentId: string
     watchesAll: boolean
+    /** Lives in this room's project (HQ watchers span projects but rank below the local crew). */
+    sameProject: boolean
     canDelegate: boolean
     createdAt: number
   }[] = []
@@ -133,12 +170,16 @@ export async function enqueueMentionRuns(
     const full = await getAgentWithVersion(ctx.db, agent.id)
     if (!full) continue
     const watched = full.currentVersion.capabilities.watchesChannels ?? []
-    // '*' = watches every channel (orchestrator pattern).
-    if (watched.includes('*') || watched.includes(message.channelId)) {
+    // '*' = watches every channel the agent can see: its own project for a
+    // project Captain, everywhere for an HQ agent (orchestrator pattern).
+    const watchesAllHere =
+      watched.includes('*') && wildcardCovers(full.projectId, channelProjectId)
+    if (watchesAllHere || watched.includes(message.channelId)) {
       const tools = full.currentVersion.tools
       watchers.push({
         agentId: agent.id,
-        watchesAll: watched.includes('*'),
+        watchesAll: watchesAllHere,
+        sameProject: full.projectId === channelProjectId,
         // Crew-directory / hiring tools mark a TRUE orchestrator — a
         // specialist that merely watches everything shouldn't hold the desk.
         canDelegate: tools.includes('list_agents') || tools.includes('create_agent'),
@@ -148,13 +189,16 @@ export async function enqueueMentionRuns(
   }
   // EXACTLY ONE front desk answers an untargeted message — never a pile-on,
   // even when several agents are configured as watchers. Preference:
-  // '*' watchers over channel-scoped ones, then agents that can actually
-  // delegate (orchestration tools), then earliest-created, then id — fully
+  // '*' watchers over channel-scoped ones, then the room's OWN project crew
+  // over HQ-level watchers (the Chief of Staff spans projects but a project's
+  // Captain holds its desk), then agents that can actually delegate
+  // (orchestration tools), then earliest-created, then id — fully
   // deterministic even when seeded agents share one createdAt timestamp.
   const orchestrators = watchers.filter((w) => w.watchesAll)
   const pool = orchestrators.length > 0 ? orchestrators : watchers
   const frontDesk = pool.sort(
     (a, b) =>
+      Number(b.sameProject) - Number(a.sameProject) ||
       Number(b.canDelegate) - Number(a.canDelegate) ||
       a.createdAt - b.createdAt ||
       a.agentId.localeCompare(b.agentId)
@@ -199,6 +243,25 @@ export async function enqueueRun(
     return
   }
 
+  // BUDGET: a project that has spent its day stops admitting turns and says
+  // so once — the human raises the cap or waits for tomorrow.
+  const project = await projectOfChannel(ctx.db, triggerMessage.channelId)
+  if (project && project.dailyBudgetUsd > 0) {
+    const spent = await projectSpendToday(ctx.db, project.id)
+    if (isOverBudget(spent, project.dailyBudgetUsd)) {
+      await noticeOncePerDay(
+        ctx,
+        `budgetNotice:${project.id}`,
+        triggerMessage.channelId,
+        `⛔ **${project.name}** has spent its daily budget ($${spent.toFixed(2)} of ` +
+          `$${project.dailyBudgetUsd.toFixed(2)}). Agents pause here until tomorrow — raise the ` +
+          `budget in the project's settings to continue.`,
+        conversationThreadOf(triggerMessage)
+      )
+      return
+    }
+  }
+
   const runId = nanoid()
   // Pin the version now: an in-flight run is unaffected by later config edits.
   await ctx.db.insert(runs).values({
@@ -210,6 +273,7 @@ export async function enqueueRun(
     status: 'queued',
     depth,
     restricted,
+    projectId: project?.id ?? null,
     createdAt: Date.now()
   })
 
@@ -229,11 +293,22 @@ export async function enqueueRun(
   if (agent.currentVersion.tools.includes(BROWSER_TOOL)) {
     devices.push(`browser:${caps.useSharedBrowserProfile ? '_shared' : agentId}`)
   }
-  const workingDir = caps.workingDir?.trim()
-  if (workingDir && workingDir.startsWith('/')) devices.push(`dir:${workingDir}`)
+  // The human has one Chrome; one agent drives it at a time.
+  if (agent.currentVersion.tools.includes(CHROME_TOOL)) devices.push(USER_CHROME_DEVICE)
+  // The agent's own environment (a worktree) when the project has a repo —
+  // created here so the lock names a real directory from the first turn.
+  const { path: workingDir, environment } = await resolveAgentWorkingDir(
+    ctx.db,
+    project,
+    agentId,
+    caps.workingDir,
+    agent.currentVersion.tools
+  )
+  if (environment || configuredWorkingDir(project, caps.workingDir)) devices.push(`dir:${workingDir}`)
 
   await createFabricTask(ctx.db, {
     id: runId,
+    projectId: project?.id ?? null,
     kind: 'turn',
     // Interactive = a human is watching this exchange right now; the lane's
     // reserved capacity keeps the workspace responsive under full load.
@@ -246,7 +321,8 @@ export async function enqueueRun(
       agentId,
       channelId: triggerMessage.channelId,
       threadRootId: conversationRoot,
-      triggerType
+      triggerType,
+      projectCap: project?.maxConcurrent ?? null
     }
   })
   ctx.hub.broadcast({ type: 'run_status', runId, agentId, status: 'queued' })

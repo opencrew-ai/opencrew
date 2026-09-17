@@ -1,31 +1,35 @@
 #!/usr/bin/env bash
-# OpenCrew one-line installer
+# OpenCrew one-line installer / launcher
 # Usage: curl -fsSL https://opencrew.run/install | bash
 #
-# What this does:
-#   1. Checks/installs Node 20+
-#   2. Checks/installs pnpm
-#   3. Checks/installs Claude Code CLI
-#   4. Clones the repo (or updates if already cloned)
-#   5. Installs dependencies
-#   6. Starts pnpm dev
+# First run:  installs Node 20+, pnpm, Claude Code if missing; clones; installs
+#             dependencies; starts OpenCrew; opens your browser — signed in.
+# Every run after that: pulls updates, skips what is already done, starts in
+#             a couple of seconds. Re-running this script IS the start command.
 #
 # Environment variables:
-#   OPENCREW_DIR   — where to clone (default: ~/opencrew)
-#   OPENCREW_REPO  — git URL to clone from (default: https://github.com/opencrew-ai/opencrew)
-#   OPENCREW_SKIP_DEV — set to 1 to skip launching pnpm dev
+#   OPENCREW_DIR       — where to clone (default: ~/opencrew)
+#   OPENCREW_REPO      — git URL to clone from (default: https://github.com/opencrew-ai/opencrew)
+#   OPENCREW_SKIP_DEV  — set to 1 to set up without starting
+#   OPENCREW_NO_UPDATE — set to 1 to skip `git pull` on an existing clone
+#   OPENCREW_NO_OPEN   — set to 1 to not open the browser
 
 set -euo pipefail
 
 OPENCREW_DIR="${OPENCREW_DIR:-$HOME/opencrew}"
 OPENCREW_REPO="${OPENCREW_REPO:-https://github.com/opencrew-ai/opencrew}"
 OPENCREW_SKIP_DEV="${OPENCREW_SKIP_DEV:-0}"
+OPENCREW_NO_UPDATE="${OPENCREW_NO_UPDATE:-0}"
+OPENCREW_NO_OPEN="${OPENCREW_NO_OPEN:-0}"
+WEB_PORT="${OPENCREW_WEB_PORT:-5173}"
+API_PORT="${PORT:-3001}"
+APP_URL="http://localhost:${WEB_PORT}"
 
 # ── colours ──────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
-  BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
+  BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; DIM="\033[2m"; RESET="\033[0m"
 else
-  BOLD=""; GREEN=""; YELLOW=""; RED=""; RESET=""
+  BOLD=""; GREEN=""; YELLOW=""; RED=""; DIM=""; RESET=""
 fi
 
 info()    { echo -e "${GREEN}▶${RESET} $*"; }
@@ -34,31 +38,54 @@ success() { echo -e "${GREEN}✓${RESET} $*"; }
 fatal()   { echo -e "${RED}✗${RESET} $*" >&2; exit 1; }
 header()  { echo -e "\n${BOLD}$*${RESET}"; }
 
-# ── helpers ───────────────────────────────────────────────────────────────────
-need_cmd() { command -v "$1" &>/dev/null || fatal "Required command not found: $1. Please install it and re-run."; }
+STARTED_AT=$(date +%s)
+elapsed() { echo "$(( $(date +%s) - STARTED_AT ))s"; }
 
+# ── helpers ───────────────────────────────────────────────────────────────────
 node_version_ok() {
   command -v node &>/dev/null || return 1
-  local v; v=$(node -e "process.exit(process.version.slice(1).split('.')[0] < 20 ? 1 : 0)" 2>/dev/null && echo ok || echo fail)
-  [ "$v" = "ok" ]
+  node -e "process.exit(Number(process.version.slice(1).split('.')[0]) >= 20 ? 0 : 1)" 2>/dev/null
+}
+
+claude_logged_in() {
+  # `claude auth status` prints JSON with "loggedIn": true|false (2.x).
+  command -v claude &>/dev/null || return 1
+  [ -n "${ANTHROPIC_API_KEY:-}" ] && return 0
+  claude auth status 2>/dev/null | grep -q '"loggedIn": *true'
+}
+
+open_browser() {
+  if command -v open &>/dev/null; then open "$1" 2>/dev/null
+  elif command -v xdg-open &>/dev/null; then xdg-open "$1" 2>/dev/null
+  fi
+}
+
+# Waits for the app, then opens it — the browser lands on a signed-in HQ.
+open_when_ready() {
+  local deadline=$(( $(date +%s) + 60 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if curl -fs "http://localhost:${API_PORT}/api/health" >/dev/null 2>&1 \
+       && curl -fs "$APP_URL" >/dev/null 2>&1; then
+      open_browser "$APP_URL"
+      return 0
+    fi
+    sleep 0.2
+  done
 }
 
 # ── banner ────────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}  ⚓ OpenCrew installer${RESET}"
-echo "  https://github.com/opencrew-ai/opencrew"
-echo ""
+echo -e "${BOLD}  ⚓ OpenCrew${RESET}  ${DIM}https://github.com/opencrew-ai/opencrew${RESET}"
 
 # ── 1. Node 20+ ───────────────────────────────────────────────────────────────
 header "1/5  Node.js 20+"
 if node_version_ok; then
-  success "Node $(node --version) already installed"
+  success "Node $(node --version)"
 else
   info "Node 20+ not found — installing via nvm"
   if ! command -v nvm &>/dev/null; then
     info "Installing nvm first…"
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-    # Source nvm for this script session
     export NVM_DIR="$HOME/.nvm"
     # shellcheck source=/dev/null
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -70,7 +97,7 @@ fi
 # ── 2. pnpm ───────────────────────────────────────────────────────────────────
 header "2/5  pnpm"
 if command -v pnpm &>/dev/null; then
-  success "pnpm $(pnpm --version) already installed"
+  success "pnpm $(pnpm --version)"
 else
   info "Installing pnpm via corepack…"
   corepack enable
@@ -81,63 +108,78 @@ fi
 # ── 3. Claude Code CLI ────────────────────────────────────────────────────────
 header "3/5  Claude Code"
 if command -v claude &>/dev/null; then
-  success "Claude Code already installed ($(claude --version 2>/dev/null | head -1))"
+  success "Claude Code $(claude --version 2>/dev/null | head -1)"
 else
   info "Installing Claude Code CLI…"
   npm install -g @anthropic-ai/claude-code
   success "Claude Code installed"
 fi
 
-# Check auth — the CLI exits non-zero and prints to stderr when not logged in.
-if claude --version &>/dev/null; then
-  # Attempt a lightweight auth check by listing models; if ANTHROPIC_API_KEY
-  # is set we skip the interactive login entirely.
-  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-    success "ANTHROPIC_API_KEY is set — skipping interactive Claude login"
-  else
-    echo ""
-    warn "You need to log in to Claude Code (one-time)."
-    warn "Run:  claude login"
-    warn "Then re-run this script, or cd into $OPENCREW_DIR and run: pnpm dev"
-    echo ""
-    # Don't exit — let the rest of the setup continue so it's ready to go.
-  fi
+CLAUDE_READY=1
+if claude_logged_in; then
+  success "Claude is signed in — agents will use this login"
+else
+  CLAUDE_READY=0
+  warn "Claude Code is not signed in. Agents can't run until you do (one time):"
+  warn "    claude login"
 fi
 
 # ── 4. Clone / update repo ───────────────────────────────────────────────────
 header "4/5  Repository"
 if [ -d "$OPENCREW_DIR/.git" ]; then
-  info "Repo already cloned at $OPENCREW_DIR — pulling latest…"
-  git -C "$OPENCREW_DIR" pull --ff-only
-  success "Up to date"
+  if [ "$OPENCREW_NO_UPDATE" = "1" ]; then
+    success "Using $OPENCREW_DIR (update skipped)"
+  else
+    info "Updating $OPENCREW_DIR…"
+    if git -C "$OPENCREW_DIR" pull --ff-only --quiet; then
+      success "Up to date"
+    else
+      warn "Could not fast-forward (local changes?) — starting with what's there"
+    fi
+  fi
 else
   info "Cloning $OPENCREW_REPO → $OPENCREW_DIR"
-  git clone "$OPENCREW_REPO" "$OPENCREW_DIR"
+  git clone --depth 1 "$OPENCREW_REPO" "$OPENCREW_DIR"
   success "Cloned"
 fi
 
-# ── 5. Dependencies ───────────────────────────────────────────────────────────
+# ── 5. Dependencies (only when the lockfile changed) ─────────────────────────
 header "5/5  Dependencies"
-info "Running pnpm install…"
-pnpm --dir "$OPENCREW_DIR" install
-success "Dependencies installed"
+LOCK_STAMP="$OPENCREW_DIR/node_modules/.opencrew-lockfile"
+LOCK_HASH=$(shasum -a 256 "$OPENCREW_DIR/pnpm-lock.yaml" | cut -c1-16)
+if [ -f "$LOCK_STAMP" ] && [ "$(cat "$LOCK_STAMP")" = "$LOCK_HASH" ]; then
+  success "Already installed"
+else
+  info "Running pnpm install…"
+  pnpm --dir "$OPENCREW_DIR" install --prefer-offline
+  echo "$LOCK_HASH" > "$LOCK_STAMP"
+  success "Dependencies installed"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}${GREEN}  ✓ OpenCrew is ready!${RESET}"
+echo -e "${BOLD}${GREEN}  ✓ OpenCrew is ready${RESET} ${DIM}($(elapsed))${RESET}"
 echo ""
-echo "  Admin login:"
-echo "    Email:    admin@opencrew.local"
-echo "    Password: opencrew"
+echo "  This machine signs in automatically — no password on localhost."
+echo "  Phones and other devices on your network sign in as admin@opencrew.local / opencrew"
+echo "  (change it in Settings)."
 echo ""
 
 if [ "$OPENCREW_SKIP_DEV" = "1" ]; then
-  echo "  Start with:"
-  echo "    cd $OPENCREW_DIR && pnpm dev"
+  echo "  Start any time with:"
+  echo "    cd $OPENCREW_DIR && pnpm start"
   echo ""
-else
-  echo "  Starting OpenCrew (Ctrl-C to stop)…"
-  echo "  → http://localhost:5173"
-  echo ""
-  cd "$OPENCREW_DIR" && pnpm dev
+  exit 0
 fi
+
+if [ "$CLAUDE_READY" = "0" ]; then
+  echo "  Starting anyway — run \`claude login\` in another terminal and the crew comes alive."
+  echo ""
+fi
+
+echo "  Starting OpenCrew (Ctrl-C to stop) → $APP_URL"
+echo ""
+if [ "$OPENCREW_NO_OPEN" != "1" ]; then
+  open_when_ready &
+fi
+cd "$OPENCREW_DIR" && exec pnpm start

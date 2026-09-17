@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+/** The API server this dev server proxies to (pairs with the server's PORT). */
+const API_PORT = process.env.OPENCREW_API_PORT ?? '3001'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -59,9 +62,12 @@ export default defineConfig({
     // tool — auth is the boundary, not the bind address.
     host: true,
     allowedHosts: true,
+    // xfwd: the server sees the real client address behind this proxy, so
+    // loopback auto-login (server auth/localauth.ts) can tell a browser on
+    // this machine from a phone on the LAN.
     proxy: {
-      '/api/ws': { target: 'ws://localhost:3001', ws: true },
-      '/api': { target: 'http://localhost:3001' }
+      '/api/ws': { target: `ws://localhost:${API_PORT}`, ws: true, xfwd: true },
+      '/api': { target: `http://localhost:${API_PORT}`, xfwd: true }
     }
   }
 })

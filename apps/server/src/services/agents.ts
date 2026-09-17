@@ -19,7 +19,11 @@ export function toAgent(row: AgentRow): Agent {
     avatarEmoji: row.avatarEmoji,
     currentVersionId: row.currentVersionId,
     createdBy: row.createdBy,
-    status: row.status
+    status: row.status,
+    projectId: row.projectId ?? null,
+    kind: row.kind ?? 'standing',
+    templateId: row.templateId ?? null,
+    retiredAt: row.retiredAt ?? null
   }
 }
 

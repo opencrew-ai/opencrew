@@ -62,11 +62,22 @@ export async function commitPatch(
   dir: string,
   patch: string,
   message: string,
-  authorName: string
+  authorName: string,
+  opts: {
+    /**
+     * The patch was produced in ANOTHER checkout (a worker's environment):
+     * also apply it to this directory's working tree and index, so the
+     * human's checkout shows the committed files, not a reverse diff.
+     */
+    applyToWorkingTree?: boolean
+  } = {}
 ): Promise<{ sha: string } | { error: string }> {
   const suffix = Math.random().toString(36).slice(2, 10)
-  const tmpIndex = join(dir, '.git', `opencrew-index-${suffix}`)
-  const tmpPatch = join(dir, '.git', `opencrew-patch-${suffix}`)
+  const gitDir = (await run('git', ['rev-parse', '--git-dir'], { cwd: dir, timeout: GIT_TIMEOUT_MS }))
+    .stdout.trim()
+  const gitDirAbs = gitDir.startsWith('/') ? gitDir : join(dir, gitDir)
+  const tmpIndex = join(gitDirAbs, `opencrew-index-${suffix}`)
+  const tmpPatch = join(gitDirAbs, `opencrew-patch-${suffix}`)
   const env = { ...process.env, GIT_INDEX_FILE: tmpIndex }
   const gitEnv = (args: string[]) =>
     run('git', args, { cwd: dir, env, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER })
@@ -75,6 +86,11 @@ export async function commitPatch(
     const { writeFile, rm } = await import('node:fs/promises')
     await writeFile(tmpPatch, patch, 'utf8')
     try {
+      if (opts.applyToWorkingTree) {
+        // Fail before committing anything if the human's checkout conflicts.
+        await git(dir, ['apply', '--check', '--binary', tmpPatch])
+        await git(dir, ['apply', '--index', '--binary', tmpPatch])
+      }
       const hasHead = await run('git', ['rev-parse', '--verify', 'HEAD'], {
         cwd: dir,
         timeout: GIT_TIMEOUT_MS

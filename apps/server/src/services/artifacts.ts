@@ -9,6 +9,7 @@ import { postMessage } from './post'
 import { createTask } from './tasks'
 import { getAgent } from './agents'
 import { getRawSetting, getSettings } from './settings'
+import { projectOfChannel } from './projects'
 import { enqueueRun } from '../runs/enqueue'
 
 export const DOC_REVIEWER_SETTING = 'docReviewerAgentId'
@@ -300,7 +301,15 @@ export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Pro
   const artifact = toArtifact(row)
   ctx.hub.broadcast({ type: 'artifact_state', artifact })
   if (needsReview && reviewerId) {
-    await dispatchDocReview(ctx, artifact.conversationRootId, reviewerId)
+    // Parallel attempts are judged TOGETHER once every attempt is in — one
+    // review run, one winner — instead of a review per proposal.
+    const { attemptGroupOfAgent, maybeJudgeGroup } = await import('./workers')
+    const groupId = kind === 'change' ? await attemptGroupOfAgent(ctx, input.agentId) : null
+    if (groupId) {
+      await maybeJudgeGroup(ctx, groupId)
+    } else {
+      await dispatchDocReview(ctx, artifact.conversationRootId, reviewerId)
+    }
   }
   return artifact
 }
@@ -547,13 +556,31 @@ export async function commitPlan(
     if (!row.sourceDir) {
       return null
     }
+    // EXACTLY ONCE: a retried or double-clicked approval must not commit
+    // twice. The effects ledger remembers the sha the first approval made.
+    const { alreadyPerformed, recordEffect } = await import('./effects')
+    const prior = await alreadyPerformed(ctx.db, 'commit', row.id)
     // The stored patch is the reviewed change — approval commits exactly it.
-    // Legacy proposals without one fall back to committing the CURRENT index
-    // (racy in a shared working dir; re-propose to upgrade).
+    // A patch produced in a worker's environment (a worktree) is committed
+    // to the PROJECT's checkout and applied to its working tree, so the
+    // human's repo shows the change; a legacy proposal from a shared dir
+    // commits in place. Proposals without a patch fall back to committing
+    // the CURRENT index (racy; re-propose to upgrade).
     const { commitPatch, commitStaged } = await import('./changes')
-    const result = row.patch
-      ? await commitPatch(row.sourceDir, row.patch, row.title, agent?.name ?? 'OpenCrew agent')
-      : await commitStaged(row.sourceDir, row.title, agent?.name ?? 'OpenCrew agent')
+    const { isGitRepo } = await import('./environments')
+    const project = await projectOfChannel(ctx.db, row.channelId)
+    const projectDir = project?.workingDir ?? ''
+    const fromEnvironment =
+      projectDir.startsWith('/') && row.sourceDir !== projectDir && (await isGitRepo(projectDir))
+    const targetDir = fromEnvironment ? projectDir : row.sourceDir
+    const result = prior
+      ? { sha: prior }
+      : row.patch
+        ? await commitPatch(targetDir, row.patch, row.title, agent?.name ?? 'OpenCrew agent', {
+            applyToWorkingTree: fromEnvironment
+          })
+        : await commitStaged(row.sourceDir, row.title, agent?.name ?? 'OpenCrew agent')
+    if (!('error' in result) && !prior) await recordEffect(ctx.db, 'commit', row.id, result.sha)
     if ('error' in result) {
       // Roll the status back so Approve can be retried after the fix.
       await ctx.db

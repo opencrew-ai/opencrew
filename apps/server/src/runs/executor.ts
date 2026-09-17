@@ -11,7 +11,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import { and, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import type { AgentVersion, Channel, RunStatus, RunTriggerType } from '@opencrew/shared'
+import type { AgentVersion, Channel, Project, RunStatus, RunTriggerType } from '@opencrew/shared'
 import type { AppContext } from '../context'
 import type { AttemptHandle, AttemptOutcome } from '../fabric/runtime'
 import type { FabricTask } from '../fabric/store'
@@ -49,8 +49,10 @@ import {
   ALWAYS_AVAILABLE_TOOLS,
   BROWSER_MCP_SERVER,
   BROWSER_TOOL,
+  CHROME_TOOL,
   MCP_SERVER_NAME,
   fromSdkToolName,
+  isChromeLook,
   listOpenCrewTools,
   toSdkToolName,
   toolCatalog,
@@ -71,6 +73,13 @@ import {
   reviewKindsForAgent
 } from '../services/artifacts'
 import { env } from '../env'
+import { getProject } from '../services/projects'
+import {
+  environmentEnv,
+  resolveAgentWorkingDir,
+  syncEnvironment
+} from '../services/environments'
+import { formatTurnTimings, TurnTimer } from './timing'
 
 // Build sessions can legitimately run long.
 const RUN_TIMEOUT_MS = 30 * 60 * 1000
@@ -89,6 +98,10 @@ interface RunEnv {
   threadRootId: string | null
   depth: number
   triggerType: RunTriggerType
+  /** The channel's project; null in HQ. Decides the working directory. */
+  project: Project | null
+  /** Phase clock for this attempt — see runs/timing.ts. */
+  timer: TurnTimer
 }
 
 interface ReplyState {
@@ -220,7 +233,9 @@ export async function executeTurn(
     channel: { ...channelRow, isPrivate: channelRow.isPrivate },
     threadRootId: conversationRoot,
     depth: run.depth,
-    triggerType: run.triggerType
+    triggerType: run.triggerType,
+    project: channelRow.projectId ? await getProject(ctx.db, channelRow.projectId) : null,
+    timer: new TurnTimer(run.createdAt)
   }
   const attemptState: AttemptState = { park: null }
   const resume = (task.payload.resume as ResumeGrant | undefined) ?? null
@@ -351,7 +366,15 @@ async function runSessionAttempt(
   session: { sessionId: string; updatedAt: number } | null
 ): Promise<void> {
   const promptBuiltAt = Date.now()
-  const cwd = resolveWorkingDir(runEnv)
+  const { path: cwd, environment } = await resolveAgentWorkingDir(
+    ctx.db,
+    runEnv.project,
+    runEnv.agentId,
+    runEnv.version.capabilities.workingDir,
+    runEnv.version.tools
+  )
+  // A clean worktree starts each turn at what the human last approved.
+  if (environment && runEnv.project) await syncEnvironment(runEnv.project.workingDir, environment)
   if (runEnv.version.tools.includes(BROWSER_TOOL)) {
     await prepareBrowserProfile(browserProfileDir(runEnv))
   }
@@ -423,7 +446,11 @@ async function runSessionAttempt(
       `You were @mentioned. Do what was asked (use your tools if needed), ` +
       `then write your reply message.`
   }
-  const prompt = `${intro}\n\n${transcript}${taskSection}${docsSection}\n\n${instruction}`
+  // The clock lives in the TURN prompt, never the system prompt: a system
+  // prompt that changes every turn invalidates its prompt-cache prefix on
+  // every call (measured: ~10k tokens re-created per run before this).
+  const clock = `Current date/time: ${new Date().toISOString()} — use it when scheduling plan steps (scheduledFor).`
+  const prompt = `${intro}\n\n${transcript}${taskSection}${docsSection}\n\n${clock}\n${instruction}`
 
   const toolCtx: ToolRunContext = {
     app: ctx,
@@ -439,8 +466,10 @@ async function runSessionAttempt(
     ctx.db,
     runEnv.agentName,
     runEnv.version,
-    runEnv.channel
+    runEnv.channel,
+    environment
   )
+  runEnv.timer.mark('prompt_built')
 
   const stream = query({
     prompt,
@@ -456,7 +485,10 @@ async function runSessionAttempt(
       // their allow rules would shadow canUseTool and bypass approval gates.
       settingSources: [],
       permissionMode: 'default',
-      env: sessionEnv(),
+      env: { ...sessionEnv(), ...(environment ? environmentEnv(environment) : {}) },
+      // The human's own Chrome (Claude in Chrome extension) — the feedback
+      // loop for anything visual. Only attached when granted.
+      ...(runEnv.version.tools.includes(CHROME_TOOL) ? { extraArgs: { chrome: null } } : {}),
       mcpServers: {
         [MCP_SERVER_NAME]: buildMcpServer(toolCtx),
         ...browserMcpServer(runEnv)
@@ -526,22 +558,33 @@ async function runSessionAttempt(
 
   let resultError: string | null = null
   let capturedSessionId: string | null = null
+  const logExtra: { turns?: number; cacheCreate?: number; cacheRead?: number; costUsd?: number } = {}
   try {
     for await (const msg of stream) {
       capturedSessionId ??= msg.session_id ?? null
       handle.beat()
-      if (msg.type === 'assistant') {
+      if (msg.type === 'system' && msg.subtype === 'init') {
+        runEnv.timer.mark('session_init')
+      } else if (msg.type === 'assistant') {
+        runEnv.timer.mark('first_llm')
         await handleAssistantMessage(ctx, runEnv, handle, reply, msg)
       } else if (msg.type === 'user') {
         await handleUserMessage(ctx, runEnv, handle, msg)
       } else if (msg.type === 'result') {
+        runEnv.timer.mark('result')
+        const usage = msg.usage as Record<string, unknown> | undefined
+        logExtra.turns = msg.num_turns
+        logExtra.costUsd = msg.total_cost_usd
+        logExtra.cacheCreate = Number(usage?.cache_creation_input_tokens ?? 0)
+        logExtra.cacheRead = Number(usage?.cache_read_input_tokens ?? 0)
         await recordStep(ctx, runEnv.runId, 'llm_call', {
           phase: 'result',
           subtype: msg.subtype,
           numTurns: msg.num_turns,
           durationMs: msg.duration_ms,
           costUsd: msg.total_cost_usd,
-          usage: msg.usage
+          usage: msg.usage,
+          timings: runEnv.timer.summary()
         })
         if (msg.subtype !== 'success') resultError = msg.subtype
       }
@@ -554,9 +597,16 @@ async function runSessionAttempt(
     }
   }
 
-  if (attemptState.park) return
+  const label = `${runEnv.agentName} #${runEnv.runId.slice(0, 6)}`
+  if (attemptState.park) {
+    runEnv.timer.mark('finalized')
+    console.log(formatTurnTimings(`${label} (parked for approval)`, runEnv.timer.summary(), logExtra))
+    return
+  }
   if (resultError) throw new Error(`session ended with ${resultError}`)
   await finalizeRun(ctx, runEnv, reply)
+  runEnv.timer.mark('finalized')
+  console.log(formatTurnTimings(label, runEnv.timer.summary(), logExtra))
 }
 
 const GRANT_PREVIEW_LIMIT = 2000
@@ -594,17 +644,6 @@ async function saveSession(
     })
 }
 
-/** Point the agent at a real repo when configured; its workspace otherwise. */
-function resolveWorkingDir(runEnv: RunEnv): string {
-  const configured = runEnv.version.capabilities.workingDir?.trim()
-  if (configured && configured.startsWith('/') && existsSync(configured)) {
-    return configured
-  }
-  const fallback = join(env.workspacesDir, runEnv.agentId)
-  mkdirSync(fallback, { recursive: true })
-  return fallback
-}
-
 /**
  * GUARDRAIL: strip Claude Code session markers from the environment. When the
  * OpenCrew server itself runs inside a Claude Code terminal, inherited
@@ -618,7 +657,24 @@ function sessionEnv(): Record<string, string> {
     if (/^(CLAUDECODE|CLAUDE_|IS_SANDBOX)/.test(key)) continue
     clean[key] = value
   }
-  return clean
+  return { ...clean, ...SESSION_STARTUP_ENV }
+}
+
+/**
+ * PERF: Claude Code's interactive startup phones home before it will take a
+ * prompt — feature flags (GrowthBook), the claude.ai MCP-server directory,
+ * eligibility "passes", the auto-updater, telemetry. Measured on this
+ * machine: session init 2.5s with that traffic, 0.35s without; a trivial
+ * turn 3.9s → 1.3s. None of it matters to a headless agent turn. Applied
+ * AFTER the guardrail strip above, which would otherwise remove the
+ * CLAUDE_* key.
+ */
+const SESSION_STARTUP_ENV: Record<string, string> = {
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+  DISABLE_AUTOUPDATER: '1',
+  DISABLE_TELEMETRY: '1',
+  DISABLE_ERROR_REPORTING: '1',
+  DISABLE_BUG_COMMAND: '1'
 }
 
 async function prepareBrowserProfile(profileDir: string): Promise<void> {
@@ -721,6 +777,8 @@ async function gateToolUse(
   const verdict = evaluateToolUse(runEnv.version, name)
   if (verdict === 'deny') return 'forbidden'
   if (verdict === 'allow') return 'allowed'
+  // Looking at the human's Chrome is never gated; acting in it is.
+  if (name === CHROME_TOOL && isChromeLook(sdkName, input)) return 'allowed'
 
   // Already parking — deny any further gated calls without new paperwork.
   if (attemptState.park) return 'park'

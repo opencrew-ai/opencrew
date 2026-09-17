@@ -5,6 +5,7 @@ import { Sidebar } from '../components/Sidebar'
 import { AccountCard } from '../components/AccountCard'
 import { CloudLinkCard } from '../components/CloudLinkCard'
 import { DeviceAccessCard } from '../components/DeviceAccessCard'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { useWorkspace } from '../lib/workspace'
 
 interface WorkspaceSettings {
@@ -79,19 +80,30 @@ export function SettingsPage() {
       <Sidebar />
       <div className="flex-1 overflow-y-auto p-6">
         <h1 className="text-xl font-bold">Workspace settings</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <p className="mt-1 text-sm text-text-faint">
           Crew-wide behavior. Per-agent guardrails (tools, gates, rate limits) live on each
           agent&apos;s page.
         </p>
 
+        {/* Appearance — per-device preference, no save needed. Mirrors the
+            compact ☀/◑/☾ pill in the sidebar footer. */}
+        <div className="mt-8 max-w-xl rounded-lg border border-border p-5">
+          <h2 className="font-semibold">Appearance</h2>
+          <p className="mb-3 mt-1 text-sm text-text-faint">
+            Theme for this device. Auto follows your OS setting. Also available in the
+            sidebar footer, next to Sign out.
+          </p>
+          <ThemeToggle showLabels />
+        </div>
+
         {!loaded ? (
-          <p className="mt-8 text-sm text-zinc-500">Loading…</p>
+          <p className="mt-8 text-sm text-text-faint">Loading…</p>
         ) : (
-          <div className="mt-8 max-w-xl rounded-lg border border-zinc-800 p-5">
+          <div className="mt-8 max-w-xl rounded-lg border border-border p-5">
             <h2 className="font-semibold">Agent collaboration</h2>
             <div className="mt-4">
               <label className="label">Mention chain depth limit</label>
-              <p className="mb-2 text-xs text-zinc-500">
+              <p className="mb-2 text-xs text-text-faint">
                 How many agent→agent handoffs a chain may make before stopping (you →
                 Captain is 0, Captain → Coder is 1, …). No cap — your call. Each
                 agent&apos;s max runs/hour remains the safety valve against loops, and the
@@ -113,9 +125,9 @@ export function SettingsPage() {
                 )}
               </div>
               {!isAdmin && (
-                <p className="mt-2 text-xs text-zinc-500">Only admins can change settings.</p>
+                <p className="mt-2 text-xs text-text-faint">Only admins can change settings.</p>
               )}
-              {status && <p className="mt-2 text-sm text-zinc-300">{status}</p>}
+              {status && <p className="mt-2 text-sm text-text-secondary">{status}</p>}
             </div>
           </div>
         )}
@@ -127,9 +139,9 @@ export function SettingsPage() {
         <DeviceAccessCard />
 
         {isAdmin && (
-          <div className="mt-6 max-w-xl rounded-lg border border-red-900/60 bg-red-950/10 p-5">
-            <h2 className="font-semibold text-red-300">Emergency stop</h2>
-            <p className="mt-1 text-sm text-zinc-400">
+          <div className="mt-6 max-w-xl rounded-lg border border-error/40 bg-error-bg/10 p-5">
+            <h2 className="font-semibold text-error">Emergency stop</h2>
+            <p className="mt-1 text-sm text-text-muted">
               Immediately aborts every live agent session, cancels everything queued, and
               denies all pending approval cards. Persistent sessions and workspaces are
               untouched — agents respond normally to the next message.
@@ -141,7 +153,7 @@ export function SettingsPage() {
             >
               {stopping ? 'Stopping…' : '🛑 STOP ALL AGENTS'}
             </button>
-            {stopStatus && <p className="mt-3 text-sm text-zinc-300">{stopStatus}</p>}
+            {stopStatus && <p className="mt-3 text-sm text-text-secondary">{stopStatus}</p>}
           </div>
         )}
       </div>

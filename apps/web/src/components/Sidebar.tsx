@@ -8,11 +8,26 @@ import { useAgentLoad } from '../lib/useAgentLoad'
 import { useAgentActivity, useLiveChannels } from '../lib/useAgentActivity'
 import { useAttention } from '../lib/useAttention'
 import { AttentionModal } from './AttentionModal'
-import type { AttentionItem } from '@opencrew/shared'
+import { NewProjectDialog } from './NewProjectDialog'
+import type { AgentWithVersion, AttentionItem, Project } from '@opencrew/shared'
 import { Logo } from './Logo'
-import { FolderIcon, GearIcon, TasksIcon } from './Icons'
+import { FolderIcon, GearIcon, TasksIcon, TodayIcon } from './Icons'
+import { ProjectSettingsDialog } from './ProjectSettingsDialog'
 import { PresenceDot } from './PresenceDot'
 import type { Channel } from '@opencrew/shared'
+
+/** Colored dot that marks everything belonging to a project; HQ has none. */
+function ProjectDot({ project, className = '' }: { project: Project | null; className?: string }) {
+  if (!project) return null
+  return (
+    <span
+      aria-hidden="true"
+      title={project.name}
+      className={`inline-block h-2 w-2 shrink-0 rounded-full ${className}`}
+      style={{ backgroundColor: project.color }}
+    />
+  )
+}
 
 interface TodayStats {
   runs: number
@@ -58,8 +73,21 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
-  const { me, channels, agents, users, presence, logout, refreshChannels } = useWorkspace()
+  const {
+    me,
+    channels,
+    agents,
+    projects,
+    users,
+    presence,
+    projectOfChannel,
+    logout,
+    refreshChannels,
+    refreshProjects
+  } = useWorkspace()
   const navigate = useNavigate()
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
   const agentLoad = useAgentLoad()
   const agentActivity = useAgentActivity()
   const attention = useAttention()
@@ -131,15 +159,19 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
     return () => panel.removeEventListener('keydown', trap)
   }, [open])
 
-  const createChannel = async () => {
+  const createChannel = async (project: Project | null) => {
     const name = await showPrompt('Channel name (lowercase, dashes):', {
-      title: 'New channel',
+      title: project ? `New channel in ${project.name}` : 'New HQ channel',
       placeholder: 'growth-experiments',
       confirmLabel: 'Create'
     })
     if (!name) return
     try {
-      const channel = await api.post<Channel>('/api/channels', { name, topic: '' })
+      const channel = await api.post<Channel>('/api/channels', {
+        name,
+        topic: '',
+        projectId: project?.id ?? null
+      })
       await refreshChannels()
       navigate(`/channels/${channel.id}`)
       onClose?.()
@@ -174,6 +206,66 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const stateOf = (type: 'human' | 'agent', id: string) =>
     presence.get(presenceKey(type, id))?.state ?? (type === 'human' ? 'offline' : 'idle')
 
+  // Rooms and crews grouped by project. HQ first (the room that spans every
+  // project), then projects in creation order. Each group shows how many of
+  // its rooms have agents working and how many items wait on the human.
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)
+  const needsYouByChannel = new Map<string, number>()
+  for (const item of attention) {
+    needsYouByChannel.set(item.channelId, (needsYouByChannel.get(item.channelId) ?? 0) + 1)
+  }
+  const groupFor = (project: Project | null) => {
+    const groupChannels = channels
+      .filter((c) => (c.projectId ?? null) === (project?.id ?? null))
+      .sort(byName)
+    return {
+      key: project?.id ?? 'hq',
+      label: project?.name ?? 'HQ',
+      project,
+      channels: groupChannels,
+      working: groupChannels.filter((c) => liveChannels.has(c.id)).length,
+      needsYou: groupChannels.reduce((n, c) => n + (needsYouByChannel.get(c.id) ?? 0), 0)
+    }
+  }
+  // Needs You, by project: items sorted HQ-first then project order, with a
+  // tiny header where the project changes (only when more than one is
+  // represented). The first 8 items show; the rest are a count.
+  const projectIndex = new Map<string | null, number>([[null, 0], ...projects.map((p, i) => [p.id, i + 1] as [string, number])])
+  const attentionSorted = [...attention].sort(
+    (a, b) =>
+      (projectIndex.get(projectOfChannel(a.channelId)?.id ?? null) ?? 99) -
+        (projectIndex.get(projectOfChannel(b.channelId)?.id ?? null) ?? 99) || b.createdAt - a.createdAt
+  )
+  const representedProjects = new Set(attentionSorted.map((i) => projectOfChannel(i.channelId)?.id ?? null))
+  const needsYouRows: ({ type: 'header'; project: Project | null; key: string } | { type: 'item'; item: AttentionItem })[] = []
+  let lastProject: string | null | undefined
+  for (const item of attentionSorted.slice(0, 8)) {
+    const project = projectOfChannel(item.channelId)
+    const key = project?.id ?? null
+    if (representedProjects.size > 1 && key !== lastProject) {
+      needsYouRows.push({ type: 'header', project, key: `h-${key ?? 'hq'}` })
+      lastProject = key
+    }
+    needsYouRows.push({ type: 'item', item })
+  }
+
+  const channelGroups = [groupFor(null), ...projects.map(groupFor)].filter(
+    (g) => g.channels.length > 0 || g.project !== null
+  )
+  // The crew list is the STANDING crew — the names you address. Workers
+  // come and go inside their task threads; retired agents stay in history.
+  const agentGroups = [null, ...projects]
+    .map((project) => ({
+      key: project?.id ?? 'hq',
+      label: project?.name ?? 'HQ',
+      project,
+      agents: agents
+        .filter((a) => (a.projectId ?? null) === (project?.id ?? null))
+        .filter((a) => a.kind !== 'worker' && a.status !== 'retired')
+        .sort(byName)
+    }))
+    .filter((g) => g.agents.length > 0)
+
   const aside = (
     <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800/70 bg-zinc-950">
       <div className="flex items-center gap-2.5 border-b border-zinc-800/70 px-4 py-3">
@@ -202,6 +294,14 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-2 py-4">
+        <Link
+          to="/today"
+          onClick={onClose}
+          className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+        >
+          <TodayIcon className="text-zinc-500" />
+          <span>Today</span>
+        </Link>
         <Link
           to="/artifacts"
           onClick={onClose}
@@ -259,7 +359,19 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
             )
           ) : (
             <div className="mt-1">
-              {attention.slice(0, 8).map((item) => {
+              {needsYouRows.map((row) => {
+                if (row.type === 'header') {
+                  return (
+                    <div
+                      key={row.key}
+                      className="mt-1.5 flex items-center gap-1.5 px-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-600 first:mt-0"
+                    >
+                      <ProjectDot project={row.project} />
+                      {row.project?.name ?? 'HQ'}
+                    </div>
+                  )
+                }
+                const item = row.item
                 const icon =
                   item.kind === 'doc_review'
                     ? '📄'
@@ -314,17 +426,50 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           )}
         </section>
 
-        <section>
-          <div className="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            <span>Channels</span>
-            <button onClick={createChannel} className="text-zinc-400 hover:text-white" title="New channel">
-              +
-            </button>
-          </div>
-          <nav className="mt-1">
-            {[...channels]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((c) => (
+        {/* Rooms, grouped by project. HQ is the one room that spans them all. */}
+        {channelGroups.map((group) => (
+          <section key={group.key}>
+            <div className="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <ProjectDot project={group.project} />
+                {group.project && isAdmin ? (
+                  <button
+                    onClick={() => setEditingProject(group.project)}
+                    className="truncate text-left uppercase hover:text-zinc-200"
+                    title={`${group.label} settings${group.project.workingDir ? ` · ${group.project.workingDir}` : ''}`}
+                  >
+                    {group.label}
+                  </button>
+                ) : (
+                  <span className="truncate">{group.label}</span>
+                )}
+                {group.working > 0 && (
+                  <span
+                    title={`${group.working} room${group.working === 1 ? '' : 's'} with agents working`}
+                    className="rounded-full bg-emerald-500/15 px-1.5 font-mono text-[10px] normal-case tracking-normal text-emerald-300"
+                  >
+                    {group.working}
+                  </span>
+                )}
+                {group.needsYou > 0 && (
+                  <span
+                    title={`${group.needsYou} waiting on you`}
+                    className="rounded-full bg-amber-500/20 px-1.5 font-mono text-[10px] normal-case tracking-normal text-amber-300"
+                  >
+                    {group.needsYou}
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={() => void createChannel(group.project)}
+                className="text-zinc-400 hover:text-white"
+                title={group.project ? `New channel in ${group.label}` : 'New HQ channel'}
+              >
+                +
+              </button>
+            </div>
+            <nav className="mt-1">
+              {group.channels.map((c) => (
                 <Link
                   key={c.id}
                   to={`/channels/${c.id}`}
@@ -344,8 +489,17 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
                   )}
                 </Link>
               ))}
-          </nav>
-        </section>
+            </nav>
+          </section>
+        ))}
+        {isAdmin && (
+          <button
+            onClick={() => setShowNewProject(true)}
+            className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-200"
+          >
+            <span className="text-base leading-none">+</span> New project
+          </button>
+        )}
 
         <section>
           <div className="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -357,45 +511,17 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
             )}
           </div>
           <div className="mt-1">
-            {[...agents]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((a) => {
-                const load = agentLoad.get(a.id)
-                return (
-                  <Link
-                    key={a.id}
-                    to={`/agents/${a.id}`}
-                    onClick={onClose}
-                    className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
-                    title={
-                      load?.status === 'rate_limited'
-                        ? `Rate limited — ${load.runsLastHour}/${load.maxRunsPerHour} runs/hr`
-                        : load?.status === 'busy'
-                          ? `${load.activeRuns} active run${load.activeRuns !== 1 ? 's' : ''}`
-                          : undefined
-                    }
-                  >
-                    <PresenceDot state={stateOf('agent', a.id)} />
-                    <span>{a.avatarEmoji}</span>
-                    <span className={`min-w-0 flex-1 ${a.status === 'paused' ? 'line-through opacity-50' : ''}`}>
-                      <span className="block truncate">{a.name}</span>
-                      {agentActivity.get(a.id) && (
-                        <span className="block truncate text-[10px] italic text-amber-400/90">
-                          {agentActivity.get(a.id)}
-                        </span>
-                      )}
-                    </span>
-                    {load?.status === 'rate_limited' && (
-                      <span className="text-[10px] text-red-400" title="Rate limited">⛔</span>
-                    )}
-                    {load?.status === 'busy' && load.activeRuns >= 2 && (
-                      <span className="text-[10px] text-amber-400" title={`${load.activeRuns} active runs`}>
-                        ×{load.activeRuns}
-                      </span>
-                    )}
-                  </Link>
-                )
-              })}
+            {agentGroups.map((group) => (
+              <div key={group.key}>
+                {agentGroups.length > 1 && (
+                  <div className="mt-2 flex items-center gap-1.5 px-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-600 first:mt-0">
+                    <ProjectDot project={group.project} />
+                    <span className="truncate">{group.label}</span>
+                  </div>
+                )}
+                {group.agents.map((a) => renderAgent(a))}
+              </div>
+            ))}
             {agents.length === 0 && (
               <p className="px-2 text-xs text-zinc-600">No agents yet.</p>
             )}
@@ -474,6 +600,46 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
     </aside>
   )
 
+  // The old inline agent row, kept verbatim as a render helper so grouping
+  // by project doesn't change how an agent looks.
+  function renderAgent(a: AgentWithVersion) {
+                const load = agentLoad.get(a.id)
+                return (
+                  <Link
+                    key={a.id}
+                    to={`/agents/${a.id}`}
+                    onClick={onClose}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+                    title={
+                      load?.status === 'rate_limited'
+                        ? `Rate limited — ${load.runsLastHour}/${load.maxRunsPerHour} runs/hr`
+                        : load?.status === 'busy'
+                          ? `${load.activeRuns} active run${load.activeRuns !== 1 ? 's' : ''}`
+                          : undefined
+                    }
+                  >
+                    <PresenceDot state={stateOf('agent', a.id)} />
+                    <span>{a.avatarEmoji}</span>
+                    <span className={`min-w-0 flex-1 ${a.status === 'paused' ? 'line-through opacity-50' : ''}`}>
+                      <span className="block truncate">{a.name}</span>
+                      {agentActivity.get(a.id) && (
+                        <span className="block truncate text-[10px] italic text-amber-400/90">
+                          {agentActivity.get(a.id)}
+                        </span>
+                      )}
+                    </span>
+                    {load?.status === 'rate_limited' && (
+                      <span className="text-[10px] text-red-400" title="Rate limited">⛔</span>
+                    )}
+                    {load?.status === 'busy' && load.activeRuns >= 2 && (
+                      <span className="text-[10px] text-amber-400" title={`${load.activeRuns} active runs`}>
+                        ×{load.activeRuns}
+                      </span>
+                    )}
+                  </Link>
+                )
+  }
+
   // On desktop: render inline as part of the flex row.
   // On mobile: render as a fixed overlay that slides in from the left.
   return (
@@ -510,6 +676,25 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
       {/* Needs-You item detail — self-sufficient modal, rendered via portal */}
       {activeAttention && (
         <AttentionModal item={activeAttention} onClose={() => setActiveAttention(null)} />
+      )}
+
+      {editingProject && (
+        <ProjectSettingsDialog project={editingProject} onClose={() => setEditingProject(null)} />
+      )}
+
+      {showNewProject && (
+        <NewProjectDialog
+          onClose={() => setShowNewProject(false)}
+          onCreated={async (project) => {
+            setShowNewProject(false)
+            await Promise.all([refreshProjects(), refreshChannels()])
+            const general = (await api.get<Channel[]>('/api/channels')).find(
+              (c) => c.projectId === project.id && c.name === 'general'
+            )
+            navigate(general ? `/channels/${general.id}` : '/channels')
+            onClose?.()
+          }}
+        />
       )}
     </>
   )

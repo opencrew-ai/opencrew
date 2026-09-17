@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { Sidebar } from '../components/Sidebar'
 import { AttentionModal } from '../components/AttentionModal'
+import { inScope, ProjectDot, ProjectFilter, projectSections, useProjectScope } from '../components/ProjectFilter'
 import { useWorkspace } from '../lib/workspace'
 
 const REFRESH_DEBOUNCE_MS = 400
@@ -49,7 +50,8 @@ function taskToAttentionItem(task: SharedTask): AttentionItem {
 }
 
 export function TasksPage() {
-  const { agents, channels } = useWorkspace()
+  const { agents, channels, projects, projectOfChannel } = useWorkspace()
+  const [scope, setScope] = useProjectScope()
   const navigate = useNavigate()
   const [tasks, setTasks] = useState<SharedTask[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
@@ -91,6 +93,7 @@ export function TasksPage() {
 
   const visible = useMemo(() => {
     return tasks
+      .filter((t) => inScope(scope, projectOfChannel(t.channelId)?.id ?? null))
       .filter((t) => (showDone ? true : t.status !== 'completed'))
       .filter((t) => assigneeFilter === 'all' || t.assigneeType === assigneeFilter)
       .sort(
@@ -99,7 +102,7 @@ export function TasksPage() {
           PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
           a.position - b.position
       )
-  }, [tasks, showDone, assigneeFilter])
+  }, [tasks, showDone, assigneeFilter, scope, projectOfChannel])
 
   // Group the flat list by the conversation (= plan) each task belongs to,
   // so the page answers "is the crew on track?" per initiative instead of
@@ -138,6 +141,29 @@ export function TasksPage() {
       })
       .sort((a, b) => b.running - a.running || a.nextAt - b.nextAt)
   }, [visible, tasks, artifacts, channels])
+
+  // PROJECT FIRST: plans are listed under their project (HQ first), so five
+  // products never read as one interleaved list.
+  const projectGroups = useMemo(
+    () =>
+      projectSections(projects)
+        .map((section) => ({
+          ...section,
+          groups: groups.filter(
+            (g) => (projectOfChannel(g.channelId)?.id ?? null) === (section.project?.id ?? null)
+          )
+        }))
+        .filter((s) => s.groups.length > 0),
+    [groups, projects, projectOfChannel]
+  )
+  const openCounts = Object.fromEntries(
+    projectSections(projects).map((s) => [
+      s.key,
+      tasks.filter(
+        (t) => t.status !== 'completed' && (projectOfChannel(t.channelId)?.id ?? null) === (s.project?.id ?? null)
+      ).length
+    ])
+  )
 
   const setSchedule = (task: SharedTask, value: string) => {
     const ms = value ? new Date(value).getTime() : null
@@ -188,6 +214,7 @@ export function TasksPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-bold">Tasks</h1>
+          <ProjectFilter scope={scope} onChange={setScope} counts={openCounts} />
           <div className="flex rounded-lg border border-zinc-800 text-xs">
             {(['list', 'calendar'] as const).map((v) => (
               <button
@@ -233,13 +260,25 @@ export function TasksPage() {
 
         {loading && <p className="mt-6 text-sm text-zinc-500">Loading…</p>}
         {!loading && visible.length === 0 && (
-          <p className="mt-6 text-sm text-zinc-500">No tasks match this filter.</p>
+          <p className="mt-6 text-sm text-zinc-500">
+            {tasks.length === 0
+              ? 'No tasks yet. When you approve a plan, its steps land here; give one a time and it fires itself.'
+              : 'No tasks match this filter.'}
+          </p>
         )}
 
-        {/* ---- List view: grouped by plan/conversation ---- */}
+        {/* ---- List view: by project, then by plan/conversation ---- */}
         {view === 'list' && !loading && visible.length > 0 && (
-          <div className="mt-5 max-w-4xl space-y-5">
-            {groups.map((group) => (
+          <div className="mt-5 max-w-4xl space-y-6">
+            {projectGroups.map((section) => (
+            <section key={section.key} className="space-y-3">
+              {(scope === 'all' || projectGroups.length > 1) && (
+                <h2 className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  <ProjectDot project={section.project} />
+                  {section.label}
+                </h2>
+              )}
+            {section.groups.map((group) => (
               <div
                 key={group.rootId}
                 className="overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-950/30"
@@ -373,6 +412,8 @@ export function TasksPage() {
                   })}
                 </div>
               </div>
+            ))}
+            </section>
             ))}
           </div>
         )}

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { registerOpenCrewTool } from './registry'
@@ -61,12 +61,24 @@ registerOpenCrewTool({
     if (unknown.length > 0) {
       throw new Error(`unknown tools: ${unknown.join(', ')} — use names from the catalog`)
     }
+    // A hire joins the hiring agent's project (HQ agents hire into HQ).
+    const [hirer] = await ctx.app.db
+      .select({ projectId: agents.projectId })
+      .from(agents)
+      .where(eq(agents.id, ctx.agentId))
+      .limit(1)
+    const projectId = hirer?.projectId ?? null
     const [existing] = await ctx.app.db
       .select()
       .from(agents)
-      .where(eq(agents.name, input.name))
+      .where(
+        and(
+          eq(agents.name, input.name),
+          projectId ? eq(agents.projectId, projectId) : isNull(agents.projectId)
+        )
+      )
       .limit(1)
-    if (existing) throw new Error(`agent "${input.name}" already exists`)
+    if (existing) throw new Error(`agent "${input.name}" already exists in this project`)
 
     const gated = (input.gatedTools ?? DEFAULT_GATED).filter((t) =>
       input.tools.includes(t)
@@ -76,6 +88,7 @@ registerOpenCrewTool({
       .insert(agents)
       .values({
         id: agentId,
+        projectId,
         name: input.name,
         avatarEmoji: input.avatarEmoji,
         currentVersionId: 'pending',

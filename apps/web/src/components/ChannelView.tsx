@@ -6,6 +6,7 @@ const SCROLLED_UP_THRESHOLD_PX = 300
 import type { Artifact, Channel } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
+import { useWorkspace } from '../lib/workspace'
 import { useMessages } from '../lib/useMessages'
 import { useConversationTasks } from '../lib/useConversationTasks'
 import {
@@ -157,6 +158,8 @@ export function ChannelView({
   targetArtifactId,
   onThreadFocused
 }: ChannelViewProps) {
+  const { projectOfChannel } = useWorkspace()
+  const project = projectOfChannel(channel.id)
   const { messages, loading, post } = useMessages(channel.id, null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -386,7 +389,23 @@ export function ChannelView({
     <ArtifactsByIdContext.Provider value={artifactsById}>
     <div className="bg-stage flex min-w-0 flex-1 flex-col">
       <div className="border-b border-zinc-800 px-4 py-3">
-        <h2 className="font-bold"># {channel.name}</h2>
+        <h2 className="flex items-center gap-2 font-bold">
+          {project ? (
+            <span
+              className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+              style={{ borderColor: `${project.color}66`, color: project.color }}
+              title={project.workingDir ? `Repo: ${project.workingDir}` : 'No repo set'}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: project.color }} />
+              {project.name}
+            </span>
+          ) : (
+            <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
+              HQ
+            </span>
+          )}
+          <span># {channel.name}</span>
+        </h2>
         {channel.topic && <p className="text-xs text-zinc-500">{channel.topic}</p>}
       </div>
 
@@ -507,8 +526,8 @@ export function ChannelView({
           <div className="px-4 py-8 text-sm text-zinc-500">
             <p className="text-2xl">👋</p>
             <p className="mt-2">
-              This is the start of <b>#{channel.name}</b>. @mention an agent to put the crew
-              to work.
+              This is the start of <b>#{channel.name}</b>. Just type — {project ? 'Captain' : 'the Chief of Staff'} reads
+              every message here; @mention an agent only when you want a specific one.
             </p>
           </div>
         )}

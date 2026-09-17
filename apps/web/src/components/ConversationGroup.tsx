@@ -234,15 +234,52 @@ export function ConversationGroup({
     !!targetThreadId &&
     (trigger?.id === targetThreadId || responses.some((m) => m.id === targetThreadId))
 
+  // "Chatting" guard: a conversation the user is actively in must never fold
+  // itself. Engaged = focus is currently inside this card (e.g. the thread
+  // composer) OR the user clicked/typed/focused inside it recently.
+  const ENGAGEMENT_WINDOW_MS = 30_000
+  const lastInteractionRef = useRef(0)
+  useEffect(() => {
+    const el = groupRef.current
+    if (!el) return
+    const note = () => {
+      lastInteractionRef.current = Date.now()
+    }
+    // focusin/pointerdown/keydown all bubble, so composer activity inside the
+    // inline thread (and nested sub-threads) counts too.
+    el.addEventListener('pointerdown', note)
+    el.addEventListener('keydown', note)
+    el.addEventListener('focusin', note)
+    return () => {
+      el.removeEventListener('pointerdown', note)
+      el.removeEventListener('keydown', note)
+      el.removeEventListener('focusin', note)
+    }
+  }, [])
+  const isUserEngaged = () => {
+    const el = groupRef.current
+    if (!el) return false
+    const active = document.activeElement
+    if (active && active !== document.body && el.contains(active)) return true
+    return Date.now() - lastInteractionRef.current < ENGAGEMENT_WINDOW_MS
+  }
+
   // Completed threads fold themselves: when status transitions to done LIVE
   // (the crew finished while the user watched), collapse to the ✓ Done
   // summary card. Expanding afterwards sticks — the transition fires once —
-  // and deep-link targets never snap shut.
+  // deep-link targets never snap shut, and a thread the user is actively
+  // chatting in stays open (they collapse it themselves when done reading).
   const prevStatusRef = useRef(groupStatus)
   useEffect(() => {
     const prev = prevStatusRef.current
     prevStatusRef.current = groupStatus
-    if (prev !== 'done' && prev !== groupStatus && groupStatus === 'done' && !containsTarget) {
+    if (
+      prev !== 'done' &&
+      prev !== groupStatus &&
+      groupStatus === 'done' &&
+      !containsTarget &&
+      !isUserEngaged()
+    ) {
       collapse()
     }
   }, [groupStatus, containsTarget, collapse])

@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import type { AppContext } from '../context'
 import { users } from '../db/schema'
 import { env } from '../env'
+import { RELAY_FORWARDED_FOR } from '../auth/localauth'
 import { clearSetting, getRawSetting, setRawSetting } from './settings'
 
 /**
@@ -210,7 +211,7 @@ async function handleFrame(ctx: AppContext, socket: WebSocket, raw: Buffer): Pro
       try {
         const response = await fetch(`http://127.0.0.1:${env.port}${path}`, {
           method,
-          headers,
+          headers: stampRelayHeaders(headers),
           body:
             body && method !== 'GET' && method !== 'HEAD'
               ? Buffer.from(body, 'base64')
@@ -248,7 +249,9 @@ async function handleFrame(ctx: AppContext, socket: WebSocket, raw: Buffer): Pro
         path: string
         headers: Record<string, string>
       }
-      const local = new WebSocket(`ws://127.0.0.1:${env.port}${path}`, { headers })
+      const local = new WebSocket(`ws://127.0.0.1:${env.port}${path}`, {
+        headers: stampRelayHeaders(headers)
+      })
       state.streams.set(streamId, local)
       local.on('message', (data: Buffer) => {
         socket.send(
@@ -291,6 +294,19 @@ export interface RelayIdentity {
   email: string
   name: string
   owner: boolean
+}
+
+/**
+ * Headers for a request the connector replays into the local server. The
+ * relay forwards the visitor's headers as-is, and the replay arrives from
+ * loopback — so X-Forwarded-For is OVERWRITTEN (never merged) with a value
+ * that can't pass the loopback auto-login check (auth/localauth.ts).
+ */
+export function stampRelayHeaders(headers: Record<string, string>): Record<string, string> {
+  const kept = Object.fromEntries(
+    Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'x-forwarded-for')
+  )
+  return { ...kept, 'x-forwarded-for': RELAY_FORWARDED_FOR }
 }
 
 /**

@@ -4,7 +4,8 @@ import {
   integer,
   bigint,
   primaryKey,
-  boolean
+  boolean,
+  real
 } from 'drizzle-orm/pg-core'
 
 // ---------------------------------------------------------------------------
@@ -44,14 +45,95 @@ export const sessions = pgTable('sessions', {
   expiresAt: bigint('expires_at', { mode: 'number' }).notNull()
 })
 
+/** One product: repo, channels, crew. See shared `Project`. */
+export const projects = pgTable('projects', {
+  id: text('id').primaryKey(),
+  ...ws,
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  color: text('color').notNull(),
+  workingDir: text('working_dir').notNull().default(''),
+  /** Model spend cap per calendar day; 0 = unlimited. Enforced at admission. */
+  dailyBudgetUsd: real('daily_budget_usd').notNull().default(0),
+  /** Max concurrently running turns in this project. Enforced by the fabric. */
+  maxConcurrent: integer('max_concurrent').notNull().default(4),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull()
+})
+
 export const agents = pgTable('agents', {
   id: text('id').primaryKey(),
   ...ws,
-  name: text('name').notNull().unique(),
+  /** null = HQ-level agent (Chief of Staff, the built-in reviewers). */
+  projectId: text('project_id'),
+  // Unique per project (index in DDL), not globally: every project has a Captain.
+  name: text('name').notNull(),
   avatarEmoji: text('avatar_emoji').notNull(),
   currentVersionId: text('current_version_id').notNull(),
   createdBy: text('created_by').notNull(),
-  status: text('status', { enum: ['active', 'paused'] }).notNull(),
+  status: text('status', { enum: ['active', 'paused', 'retired'] }).notNull(),
+  /** standing = a named crew member; worker = spawned from a template for one task. */
+  kind: text('kind', { enum: ['standing', 'worker'] }).notNull().default('standing'),
+  templateId: text('template_id'),
+  /** Workers spawned together as parallel attempts at one task. */
+  attemptGroupId: text('attempt_group_id'),
+  retiredAt: bigint('retired_at', { mode: 'number' }),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull()
+})
+
+/** Reusable role blueprints workers are spawned from (workspace-level). */
+export const agentTemplates = pgTable('agent_templates', {
+  id: text('id').primaryKey(),
+  ...ws,
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  avatarEmoji: text('avatar_emoji').notNull(),
+  systemPrompt: text('system_prompt').notNull(),
+  model: text('model').notNull(),
+  /** JSON arrays. */
+  skills: text('skills').notNull(),
+  tools: text('tools').notNull(),
+  gatedTools: text('gated_tools').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull()
+})
+
+/**
+ * A worker's environment: its own git worktree of the project repo plus a
+ * reserved port for a dev server. Agents never share a checkout.
+ */
+export const environments = pgTable('environments', {
+  id: text('id').primaryKey(),
+  ...ws,
+  projectId: text('project_id').notNull(),
+  agentId: text('agent_id').notNull().unique(),
+  path: text('path').notNull(),
+  port: integer('port').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull()
+})
+
+/** Exactly-once ledger for side effects (commits, deploys) keyed by what they act on. */
+export const effects = pgTable(
+  'effects',
+  {
+    ...ws,
+    kind: text('kind').notNull(),
+    refId: text('ref_id').notNull(),
+    result: text('result').notNull(),
+    performedAt: bigint('performed_at', { mode: 'number' }).notNull()
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.kind, t.refId] }) })
+)
+
+/** N workers spawned on one task; a judge picks the winning change. */
+export const attemptGroups = pgTable('attempt_groups', {
+  id: text('id').primaryKey(),
+  ...ws,
+  projectId: text('project_id').notNull(),
+  channelId: text('channel_id').notNull(),
+  conversationRootId: text('conversation_root_id').notNull(),
+  task: text('task').notNull(),
+  size: integer('size').notNull(),
+  spawnedByAgentId: text('spawned_by_agent_id').notNull(),
+  judgedAt: bigint('judged_at', { mode: 'number' }),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
 })
 
@@ -74,7 +156,10 @@ export const agentVersions = pgTable('agent_versions', {
 export const channels = pgTable('channels', {
   id: text('id').primaryKey(),
   ...ws,
-  name: text('name').notNull().unique(),
+  /** null = HQ channel. */
+  projectId: text('project_id'),
+  // Unique per project (index in DDL): every project has a #general.
+  name: text('name').notNull(),
   topic: text('topic').notNull(),
   isPrivate: boolean('is_private').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
@@ -144,6 +229,8 @@ export const runs = pgTable('runs', {
   depth: integer('depth').notNull().default(0),
   /** Community mode: run triggered by a non-admin — tools clipped to chat-only. */
   restricted: boolean('restricted').notNull().default(false),
+  /** The channel's project at admission; null = HQ. Budgets and Today read this. */
+  projectId: text('project_id'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   startedAt: bigint('started_at', { mode: 'number' }),
   finishedAt: bigint('finished_at', { mode: 'number' })
@@ -401,6 +488,8 @@ export const runReplays = pgTable('run_replays', {
 export const fabricTasks = pgTable('fabric_tasks', {
   id: text('id').primaryKey(),
   ...ws,
+  /** Per-project concurrency cap is enforced on claim; null = HQ (uncapped). */
+  projectId: text('project_id'),
   kind: text('kind', { enum: ['turn'] }).notNull(),
   /** interactive = trigger chain roots at a live human message. */
   lane: text('lane', { enum: ['interactive', 'background'] }).notNull(),

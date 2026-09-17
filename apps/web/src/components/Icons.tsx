@@ -81,3 +81,43 @@ export function CheckCheckIcon({ className = '' }: IconProps) {
     </svg>
   )
 }
+
+/** Today: a calendar page with one mark. */
+export function TodayIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className={`${BASE} ${className}`}>
+      <rect x="2" y="3" width="12" height="11" rx="2" />
+      <path d="M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4" />
+      <circle cx="8" cy="10.2" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+/** Sun: light theme. */
+export function SunIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className={`${BASE} ${className}`}>
+      <circle cx="8" cy="8" r="2.6" />
+      <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" />
+    </svg>
+  )
+}
+
+/** Crescent moon: dark theme. */
+export function MoonIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" className={`${BASE} ${className}`}>
+      <path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8z" />
+    </svg>
+  )
+}
+
+/** Monitor: follow the system theme. */
+export function MonitorIcon({ className = '' }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className={`${BASE} ${className}`}>
+      <rect x="1.8" y="2.8" width="12.4" height="8.2" rx="1.4" />
+      <path d="M6 13.4h4M8 11v2.4" />
+    </svg>
+  )
+}

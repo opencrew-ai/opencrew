@@ -5,6 +5,7 @@ import { agents, channels, messages, runs, users } from '../db/schema'
 import type { DB } from '../db'
 import type { AppContext } from '../context'
 import { getVersion, getAgent } from './agents'
+import { wildcardCovers } from './projects'
 
 export interface CreateMessageInput {
   channelId: string
@@ -148,11 +149,12 @@ export async function createMessage(
     // permission to answer there — otherwise delegation into a channel
     // outside an agent's list does the work and then fails to report it.
     const allowed = version.capabilities.canPostInChannels
-    if (
-      !input.isRunReply &&
-      !allowed.includes('*') &&
-      !allowed.includes(input.channelId)
-    ) {
+    // PROJECT BOUNDARY: a project agent's '*' means its own project's
+    // channels; only HQ agents (Chief of Staff, reviewers) span projects.
+    const author = await getAgent(db, input.authorId)
+    const wildcardHere =
+      allowed.includes('*') && wildcardCovers(author?.projectId ?? null, channel.projectId)
+    if (!input.isRunReply && !wildcardHere && !allowed.includes(input.channelId)) {
       throw new GuardrailViolation(`agent is not allowed to post in #${channel.name}`)
     }
   }

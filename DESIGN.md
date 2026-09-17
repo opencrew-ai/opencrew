@@ -191,11 +191,19 @@ thread shares work unchanged. The shared task board still dispatches by posting
 action-thread messages, which trigger admission → fabric tasks — so the DAG rides
 the fabric without new plumbing.
 
-**Phase 2:** git worktree per attempt for configured repos; effects ledger
-(exactly-once side effects); fabric-native events table absorbing `run_steps`.
+**Phase 2 (implemented as environments):** a git worktree per *agent* for a
+project's repo (`services/environments.ts`) with a reserved port; the lock
+device names the worktree, so agents in one repo run in parallel and the
+human's checkout is never edited. Approval commits the reviewed patch into the
+project checkout, exactly once via the effects ledger (`services/effects.ts`).
+Per-project concurrency is a claim-time cap (`payload.projectCap`); daily
+dollar budgets are enforced at admission. Fabric-native events absorbing
+`run_steps` remain open.
 
-**Phase 3:** plan steps and human requests become fabric tasks natively
-(`kind` ≠ `turn`); Needs-You reads `needs_human` directly.
+**Phase 3 (implemented as workers):** ephemeral agents spawned from role
+templates (`services/workers.ts`, `spawn_worker`) do one task each in their
+own environment and retire; parallel attempts form a group judged by a single
+reviewer run. Plan steps and human requests as native task kinds remain open.
 
 **Phase 4:** multi-process control plane — the store API becomes the worker
 protocol (`claim / emit / gate / complete` over WSS), LISTEN/NOTIFY replaces the

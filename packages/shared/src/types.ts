@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'member' | 'guest'
-export type AgentStatus = 'active' | 'paused'
+export type AgentStatus = 'active' | 'paused' | 'retired'
 export type MemberType = 'human' | 'agent'
 export type AuthorType = 'human' | 'agent' | 'system'
 export type RunStatus =
@@ -78,6 +78,29 @@ export interface AgentVersion extends AgentVersionConfig {
   changeNote: string
 }
 
+/**
+ * A project is one product: its repo, its channels, its crew. Everything an
+ * agent sees is scoped to the project its channel belongs to. `projectId`
+ * null on a channel or agent means HQ — the workspace-level room where the
+ * Chief of Staff routes work and shared services (the reviewers) live.
+ */
+export interface Project {
+  id: string
+  slug: string
+  name: string
+  /** Hex color used for the project's dot, chips, and inbox grouping. */
+  color: string
+  /** Absolute path of the project's repo; '' = agents use their own dirs. */
+  workingDir: string
+  /** Model spend cap per day in USD; 0 = unlimited. */
+  dailyBudgetUsd: number
+  /** Max turns running at once in this project. */
+  maxConcurrent: number
+  createdAt: number
+}
+
+export type AgentKind = 'standing' | 'worker'
+
 export interface Agent {
   id: string
   name: string
@@ -85,6 +108,35 @@ export interface Agent {
   currentVersionId: string
   createdBy: string
   status: AgentStatus
+  /** null = HQ-level (workspace-wide) agent. */
+  projectId: string | null
+  /** standing = named crew member; worker = spawned for one task, retired after. */
+  kind: AgentKind
+  templateId: string | null
+  retiredAt: number | null
+}
+
+/** A role blueprint workers are spawned from. */
+export interface AgentTemplate {
+  id: string
+  slug: string
+  name: string
+  avatarEmoji: string
+  systemPrompt: string
+  model: string
+  skills: string[]
+  tools: string[]
+  gatedTools: string[]
+}
+
+/** One project's day at a glance — the Today page. */
+export interface ProjectToday {
+  projectId: string | null
+  shipped: { changes: number; docs: number }
+  inFlight: { runs: number; workers: number }
+  needsYou: number
+  spendUsd: number
+  budgetUsd: number
 }
 
 export interface AgentWithVersion extends Agent {
@@ -96,6 +148,8 @@ export interface Channel {
   name: string
   topic: string
   isPrivate: boolean
+  /** null = HQ channel. */
+  projectId: string | null
 }
 
 export interface Message {
@@ -112,6 +166,13 @@ export interface Message {
   authorName?: string
   authorEmoji?: string
   replyCount?: number
+  /** Conversation roots only: unix-ms of the newest message in the thread (root included). */
+  lastActivityAt?: number
+  /**
+   * Conversation roots only: when the REQUESTING user last marked this thread
+   * read. Absent = never. Unread ⇔ readAt absent or readAt < lastActivityAt.
+   */
+  readAt?: number
   /** Set when this system message is an approval card. */
   approvalId?: string
   runId?: string
@@ -321,6 +382,8 @@ export type ServerEvent =
   | { type: 'approval_updated'; approval: Approval }
   | { type: 'run_step'; agentId: string; step: RunStep }
   | { type: 'channel_created'; channel: Channel }
+  | { type: 'project_created'; project: Project }
+  | { type: 'project_updated'; project: Project }
   | { type: 'agent_updated'; agent: AgentWithVersion }
   | { type: 'user_updated'; user: User }
   | { type: 'thread_status'; rootId: string; channelId: string; manualStatus: 'done' | null }

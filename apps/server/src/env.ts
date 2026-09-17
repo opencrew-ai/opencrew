@@ -49,6 +49,12 @@ export const env = {
   /** Each agent gets its own working directory for its Claude Code sessions. */
   workspacesDir:
     process.env.OPENCREW_WORKSPACES ?? resolve(process.cwd(), '../../data/workspaces'),
+  /** Per-agent git worktrees of project repos live here (see services/environments.ts). */
+  envsDir: process.env.OPENCREW_ENVS ?? resolve(process.cwd(), '../../data/envs'),
+  /** First port handed to an environment; each gets the next free one. */
+  envPortBase: Number(process.env.OPENCREW_ENV_PORT_BASE ?? 4300),
+  /** Local hour (0–23) the Chief of Staff posts the morning brief in #hq. */
+  briefHour: Number(process.env.OPENCREW_BRIEF_HOUR ?? 8),
   /**
    * Agent→agent mention chains stop at this depth (loop protection; rate
    * limits are the second line of defense). Raise for chattier crews.
@@ -60,6 +66,15 @@ export const env = {
    * for human-triggered work so the workspace stays responsive at full load.
    */
   concurrency: Number(process.env.OPENCREW_CONCURRENCY ?? 8),
+  /**
+   * A browser on this machine (loopback) is signed in as the local admin
+   * automatically — no password on localhost. Set OPENCREW_LOCAL_AUTOLOGIN=0
+   * on a shared machine, or when fronting the server with your own reverse
+   * proxy (one that rewrites Host and sets no X-Forwarded-For would make
+   * every client look local). The Vite proxy, Cloud Link, and the Cloudflare
+   * tunnel are all handled — see auth/localauth.ts.
+   */
+  localAutoLogin: process.env.OPENCREW_LOCAL_AUTOLOGIN !== '0',
   /** Port the web app serves on — what LAN URLs and tunnels point at. */
   webPort: Number(process.env.OPENCREW_WEB_PORT ?? 5173),
   /**

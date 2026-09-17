@@ -11,6 +11,7 @@ import type {
   AgentWithVersion,
   Channel,
   PresenceEntry,
+  Project,
   ServerEvent,
   User
 } from '@opencrew/shared'
@@ -21,10 +22,17 @@ interface WorkspaceState {
   me: User
   channels: Channel[]
   agents: AgentWithVersion[]
+  /** Ordered by creation; a channel or agent with projectId null is HQ. */
+  projects: Project[]
+  /** Palette offered when creating a project. */
+  projectColors: string[]
   users: User[]
   presence: Map<string, PresenceEntry>
+  /** The project a channel belongs to; null for HQ channels. */
+  projectOfChannel: (channelId: string | undefined) => Project | null
   refreshChannels: () => Promise<void>
   refreshAgents: () => Promise<void>
+  refreshProjects: () => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -52,6 +60,8 @@ export function WorkspaceProvider({
   const [meState, setMeState] = useState<User>(me)
   const [channels, setChannels] = useState<Channel[]>([])
   const [agents, setAgents] = useState<AgentWithVersion[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectColors, setProjectColors] = useState<string[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [presence, setPresence] = useState<Map<string, PresenceEntry>>(new Map())
   const [loaded, setLoaded] = useState(false)
@@ -62,14 +72,20 @@ export function WorkspaceProvider({
   const refreshAgents = useCallback(async () => {
     setAgents(await api.get<AgentWithVersion[]>('/api/agents'))
   }, [])
+  const refreshProjects = useCallback(async () => {
+    const data = await api.get<{ projects: Project[]; colors: string[] }>('/api/projects')
+    setProjects(data.projects)
+    setProjectColors(data.colors)
+  }, [])
 
   useEffect(() => {
     void Promise.all([
       refreshChannels(),
       refreshAgents(),
+      refreshProjects(),
       api.get<User[]>('/api/users').then(setUsers)
     ]).then(() => setLoaded(true))
-  }, [refreshChannels, refreshAgents])
+  }, [refreshChannels, refreshAgents, refreshProjects])
 
   useEffect(() => {
     wsClient.connect()
@@ -82,6 +98,12 @@ export function WorkspaceProvider({
         setChannels((prev) =>
           prev.some((c) => c.id === event.channel.id) ? prev : [...prev, event.channel]
         )
+      } else if (event.type === 'project_created') {
+        setProjects((prev) =>
+          prev.some((p) => p.id === event.project.id) ? prev : [...prev, event.project]
+        )
+      } else if (event.type === 'project_updated') {
+        setProjects((prev) => prev.map((p) => (p.id === event.project.id ? event.project : p)))
       } else if (event.type === 'agent_updated') {
         setAgents((prev) => {
           const rest = prev.filter((a) => a.id !== event.agent.id)
@@ -109,18 +131,44 @@ export function WorkspaceProvider({
     onLoggedOut()
   }, [onLoggedOut])
 
+  const projectOfChannel = useCallback(
+    (channelId: string | undefined): Project | null => {
+      const channel = channels.find((c) => c.id === channelId)
+      if (!channel?.projectId) return null
+      return projects.find((p) => p.id === channel.projectId) ?? null
+    },
+    [channels, projects]
+  )
+
   const value = useMemo(
     () => ({
       me: meState,
       channels,
       agents,
+      projects,
+      projectColors,
       users,
       presence,
+      projectOfChannel,
       refreshChannels,
       refreshAgents,
+      refreshProjects,
       logout
     }),
-    [meState, channels, agents, users, presence, refreshChannels, refreshAgents, logout]
+    [
+      meState,
+      channels,
+      agents,
+      projects,
+      projectColors,
+      users,
+      presence,
+      projectOfChannel,
+      refreshChannels,
+      refreshAgents,
+      refreshProjects,
+      logout
+    ]
   )
 
   if (!loaded) {

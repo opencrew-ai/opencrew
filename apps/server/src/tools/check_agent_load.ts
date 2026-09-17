@@ -7,7 +7,7 @@ import { listAgentsWithVersions, getAgentWithVersion } from '../services/agents'
 /**
  * Returns the load status of one or all active agents, so Captain (and other
  * orchestrators) can decide whether to delegate to an existing agent or spawn
- * a parallel clone via spawn_parallel.
+ * a worker from a template via spawn_worker.
  *
  * Load statuses:
  *   idle          — no active runs, within hourly rate limit
@@ -20,7 +20,7 @@ registerOpenCrewTool({
   description:
     'Check whether an agent (or all agents) is idle, busy, or rate-limited before delegating. ' +
     "Call this before @mentioning an agent so you don't queue work onto an overloaded specialist. " +
-    'If the target is rate_limited or very busy, use spawn_parallel to create a numbered clone ' +
+    'If the target is rate_limited or very busy, spawn_worker from a role template instead of waiting ' +
     'and split the work across both.',
   inputShape: {
     agentName: z
@@ -78,10 +78,10 @@ registerOpenCrewTool({
         advice = '⚠️  Paused — unpause in agent settings before delegating.'
       } else if (runsLastHour >= max) {
         status = 'rate_limited'
-        advice = `⛔ Hit ${max}/hr limit. Use spawn_parallel to create ${a.name}2 and delegate there.`
+        advice = `⛔ Hit ${max}/hr limit. spawn_worker from a matching template and delegate there.`
       } else if (activeRuns >= 2) {
         status = 'busy'
-        advice = `⚡ ${activeRuns} active runs. Consider spawn_parallel if task is urgent.`
+        advice = `⚡ ${activeRuns} active runs. Consider spawn_worker if the task is urgent.`
       } else if (activeRuns === 1) {
         status = 'busy'
         advice = '✅ One run in flight — can still accept new work.'

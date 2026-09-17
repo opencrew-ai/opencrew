@@ -6,17 +6,21 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx src/db/seed-cli.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "tsx src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.251",
     "@fastify/cookie": "^10.0.1",
     "@fastify/websocket": "^11.0.1",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@opencrew/shared": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2",
     "drizzle-orm": "^0.36.4",
     "fastify": "^5.1.0",
     "nanoid": "^5.0.9",
     "postgres": "^3.4.9",
+    "satori": "^0.33.4",
     "ws": "^8.21.3",
     "zod": "^3.23.8"
   },

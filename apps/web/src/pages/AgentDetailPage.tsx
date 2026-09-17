@@ -219,7 +219,8 @@ export function AgentDetailPage() {
                   initial={{
                     name: agent.name,
                     avatarEmoji: agent.avatarEmoji,
-                    config: agent.currentVersion
+                    config: agent.currentVersion,
+                    projectId: agent.projectId
                   }}
                   onSubmit={async (data) => {
                     await api.post(`/api/agents/${agent.id}/versions`, {

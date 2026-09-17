@@ -9,6 +9,8 @@ import { createSession, destroySession, SESSION_COOKIE } from '../auth/sessions'
 import { getRawSetting } from '../services/settings'
 import { adminGuard, authGuard, currentUser, fail, ok } from './helpers'
 import { ensureRelayInviteUrl } from '../services/cloudlink'
+import { findLocalAdmin, isLoopbackOrigin } from '../auth/localauth'
+import { env } from '../env'
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -155,9 +157,29 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
 
   app.get('/api/auth/me', async (req, reply) => {
     const user = await currentUser(ctx, req)
+    if (user) return ok(publicUser(user))
+
+    // Local-first: the browser on this machine IS the owner — no password
+    // form on localhost (see auth/localauth.ts for the origin checks).
+    const loopback =
+      env.localAutoLogin &&
+      isLoopbackOrigin({
+        remoteAddress: req.socket.remoteAddress,
+        forwardedFor: headerValue(req.headers['x-forwarded-for']),
+        host: headerValue(req.headers.host),
+        viaRelay: req.headers['x-opencrew-identity'] !== undefined
+      })
+    if (loopback) {
+      const admin = await findLocalAdmin(ctx.db)
+      if (admin) {
+        const sessionId = await createSession(ctx.db, admin.id)
+        reply.setCookie(SESSION_COOKIE, sessionId, cookieOpts())
+        return ok(publicUser(admin))
+      }
+    }
+
     const userCount = (await ctx.db.select().from(users)).length
-    if (!user) return reply.code(401).send(fail(userCount === 0 ? 'bootstrap' : 'unauthorized'))
-    return ok(publicUser(user))
+    return reply.code(401).send(fail(userCount === 0 ? 'bootstrap' : 'unauthorized'))
   })
 
   app.get('/api/users', { preHandler: authGuard(ctx) }, async () => {
@@ -217,6 +239,10 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
     }
     return ok({ valid: true, role: invite.role })
   })
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
 }
 
 function cookieOpts() {
