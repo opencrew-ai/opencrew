@@ -244,15 +244,20 @@ export function normalizeFolder(folder: string | undefined, fallback: string): s
  * Store a plan proposal as a versioned artifact. Re-proposing the same title
  * in the same conversation supersedes the previous version (which is marked
  * discarded so exactly one proposal per title is ever actionable).
+ *
+ * Changes version per AUTHOR: parallel attempts at one task routinely land on
+ * the same title, and one attempt must never discard another's proposal.
  */
 export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Promise<Artifact> {
+  const kind = input.kind ?? 'plan'
   const prior = await ctx.db
     .select()
     .from(artifacts)
     .where(
       and(
         eq(artifacts.conversationRootId, input.conversationRootId),
-        eq(artifacts.title, input.title)
+        eq(artifacts.title, input.title),
+        ...(kind === 'change' ? [eq(artifacts.createdByAgentId, input.agentId)] : [])
       )
     )
   const now = Date.now()
@@ -273,7 +278,6 @@ export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Pro
   // Reviewer gate: proposals pass their kind's reviewer BEFORE reaching a
   // human — Librarian for docs/plans, CodeReviewer for changes. A reviewer's
   // own proposals skip the gate — no self-review loops.
-  const kind = input.kind ?? 'plan'
   const reviewerId =
     kind === 'change' ? await getCodeReviewerId(ctx.db) : await getDocReviewerId(ctx.db)
   const needsReview = reviewerId !== null && reviewerId !== input.agentId
@@ -330,7 +334,11 @@ async function dispatchDocReview(
 }
 
 /** Docs currently in review for a conversation, with their author names. */
-/** True when a newer, non-discarded version of the same doc exists. */
+/**
+ * True when a newer, non-discarded version of the same doc exists. Changes
+ * are versioned per author (see proposePlan), so another attempt's same-titled
+ * change never counts as a newer version of this one.
+ */
 async function supersededByNewer(db: DB, row: ArtifactRow): Promise<boolean> {
   const newer = await db
     .select({ id: artifacts.id })
@@ -340,7 +348,8 @@ async function supersededByNewer(db: DB, row: ArtifactRow): Promise<boolean> {
         eq(artifacts.conversationRootId, row.conversationRootId),
         eq(artifacts.title, row.title),
         gt(artifacts.version, row.version),
-        ne(artifacts.status, 'discarded')
+        ne(artifacts.status, 'discarded'),
+        ...(row.kind === 'change' ? [eq(artifacts.createdByAgentId, row.createdByAgentId)] : [])
       )
     )
     .limit(1)

@@ -30,9 +30,7 @@ async function noticeOncePerDay(
 }
 import { postSystemMessage } from '../services/messages'
 import { getMaxAgentFanout, getMaxMentionDepth } from '../services/settings'
-import { BROWSER_TOOL, CHROME_TOOL } from '../tools'
-
-export const USER_CHROME_DEVICE = 'browser:user-chrome'
+import { BROWSER_TOOL } from '../tools'
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -293,8 +291,8 @@ export async function enqueueRun(
   if (agent.currentVersion.tools.includes(BROWSER_TOOL)) {
     devices.push(`browser:${caps.useSharedBrowserProfile ? '_shared' : agentId}`)
   }
-  // The human has one Chrome; one agent drives it at a time.
-  if (agent.currentVersion.tools.includes(CHROME_TOOL)) devices.push(USER_CHROME_DEVICE)
+  // The human's one Chrome is NOT leased per run: agents hold it per tool call
+  // (runs/chromelock.ts), so Chrome-capable workers still run in parallel.
   // The agent's own environment (a worktree) when the project has a repo —
   // created here so the lock names a real directory from the first turn.
   const { path: workingDir, environment } = await resolveAgentWorkingDir(

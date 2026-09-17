@@ -31,6 +31,7 @@ import {
 } from '../services/messages'
 import { denyPendingApprovalsForRun } from '../services/approvals'
 import { enqueueMentionRuns } from './enqueue'
+import { chromeLock } from './chromelock'
 import { detectUsageLimit } from './limits'
 import { recordStep } from './audit'
 import {
@@ -532,11 +533,23 @@ async function runSessionAttempt(
                     `Tool ${fromSdkToolName(hookInput.tool_name)} is not permitted for this agent.`
                   )
                 }
+                // One Chrome: hold it for this call only, never for the run.
+                if (fromSdkToolName(hookInput.tool_name) === CHROME_TOOL) {
+                  const got = await chromeLock.acquire(runEnv.runId, CHROME_WAIT_MS)
+                  if (!got) {
+                    return permissionHookOutput(
+                      'deny',
+                      'Another agent is using the browser right now. Do other work for a moment, then retry this call.'
+                    )
+                  }
+                }
                 return permissionHookOutput('allow', 'opencrew guardrails')
               }
             ]
           }
-        ]
+        ],
+        PostToolUse: [{ hooks: [releaseChromeAfter(runEnv.runId)] }],
+        PostToolUseFailure: [{ hooks: [releaseChromeAfter(runEnv.runId)] }]
       },
       // Fallback choke point if a permission prompt ever reaches this far.
       canUseTool: async (sdkName, input): Promise<PermissionResult> => {
@@ -611,6 +624,8 @@ async function runSessionAttempt(
       }
     }
   } finally {
+    // A turn that ended mid-call (abort, park) must not keep the browser.
+    chromeLock.release(runEnv.runId)
     // The session is the resume point for parked and redelivered attempts —
     // persist it even when the stream ended by abort.
     if (capturedSessionId) {
@@ -781,6 +796,18 @@ function disallowedToolsFor(version: AgentVersion): string[] {
 }
 
 type GateOutcome = 'allowed' | 'forbidden' | 'park'
+
+/** How long a Chrome call waits for another agent to finish with the browser. */
+const CHROME_WAIT_MS = 45_000
+
+/** PostToolUse/PostToolUseFailure: give the browser back after a Chrome call. */
+function releaseChromeAfter(runId: string) {
+  return async (input: unknown) => {
+    const { tool_name } = input as { tool_name: string }
+    if (fromSdkToolName(tool_name) === CHROME_TOOL) chromeLock.release(runId)
+    return {}
+  }
+}
 
 function permissionHookOutput(decision: 'allow' | 'deny', reason: string) {
   return {

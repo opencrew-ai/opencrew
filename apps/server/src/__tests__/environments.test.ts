@@ -305,6 +305,56 @@ describe('workers', () => {
     expect(reviewRuns[0]?.triggerType).toBe('review')
   })
 
+  it('attempts that land on the same title do not discard each other, and the judge still fires', async () => {
+    const ctx = await makeTestCtx()
+    const userId = await seedUser(ctx.db)
+    await seedTemplates(ctx.db)
+    const { CODE_REVIEWER_SETTING } = await import('../services/artifacts')
+    const { setRawSetting } = await import('../services/settings')
+    const reviewer = await seedAgent(ctx.db, userId, { name: 'CodeReviewer', tools: [] })
+    await setRawSetting(ctx.db, CODE_REVIEWER_SETTING, reviewer.agentId)
+    const project = await projectWithRepo(ctx, userId, 'SameTitle')
+    const captain = (await ctx.db.select().from(agents).where(eq(agents.projectId, project.id)))[0]!
+    const { channels } = await import('../db/schema')
+    const [room] = await ctx.db.select().from(channels).where(eq(channels.projectId, project.id))
+    const root = await createMessage(ctx, { channelId: room!.id, authorType: 'human', authorId: userId, content: 'go' })
+    const template = (await getTemplateBySlug(ctx.db, 'frontend'))!
+    const spawned = await spawnWorkers(ctx, {
+      template,
+      task: 'Add a loading state to the products page.',
+      count: 2,
+      channelId: room!.id,
+      conversationRootId: root.id,
+      spawnedByAgentId: captain.id,
+      runId: 'r',
+      depth: 0
+    })
+    if ('error' in spawned) throw new Error(spawned.error)
+    const workers = await ctx.db.select().from(agents).where(eq(agents.kind, 'worker'))
+    const sameTitle = 'feat: loading state on products page'
+    const propose = (w: (typeof workers)[number]) =>
+      proposePlan(ctx, {
+        conversationRootId: root.id,
+        channelId: room!.id,
+        runId: 'r',
+        agentId: w.id,
+        title: sameTitle,
+        content: 'diff',
+        tasks: [],
+        kind: 'change',
+        sourceDir: '/x',
+        patch: 'p'
+      })
+    await propose(workers[0]!)
+    await propose(workers[1]!)
+    const proposals = (await ctx.db.select().from(artifacts)).filter((a) => a.title === sameTitle)
+    expect(proposals.map((p) => p.status).sort()).toEqual(['review', 'review'])
+    const [group] = await ctx.db.select().from(attemptGroups)
+    expect(group?.judgedAt).toBeTruthy()
+    const reviewRuns = (await ctx.db.select().from(runs)).filter((r) => r.agentId === reviewer.agentId)
+    expect(reviewRuns).toHaveLength(1)
+  })
+
   it('retires idle workers and frees their environments; busy or waiting ones stay', async () => {
     const ctx = await makeTestCtx()
     const userId = await seedUser(ctx.db)

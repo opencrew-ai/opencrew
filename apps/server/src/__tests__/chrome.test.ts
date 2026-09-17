@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { CHROME_TOOL, fromSdkToolName, isChromeLook, toSdkToolName } from '../tools'
 import { buildSystemPrompt } from '../runs/context'
-import { enqueueMentionRuns, USER_CHROME_DEVICE } from '../runs/enqueue'
+import { enqueueMentionRuns } from '../runs/enqueue'
 import { createMessage } from '../services/messages'
 import { getVersion } from '../services/agents'
 import { fabricTasks } from '../db/schema'
@@ -44,11 +44,11 @@ describe('Chrome in the runtime', () => {
     expect(promptWithout).not.toContain('FEEDBACK LOOP')
   })
 
-  it('serializes agents on the one user Chrome via an exclusive device', async () => {
+  it('does not lease the user Chrome per run — Chrome agents run in parallel, the lock is per call', async () => {
     const ctx = await makeTestCtx()
     const userId = await seedUser(ctx.db)
     const channelId = await seedChannel(ctx.db)
-    const { agentId } = await seedAgent(ctx.db, userId, { name: 'Eyes', tools: ['Chrome'] })
+    await seedAgent(ctx.db, userId, { name: 'Eyes', tools: ['Chrome'] })
     const row = await createMessage(ctx, {
       channelId,
       authorType: 'human',
@@ -58,7 +58,6 @@ describe('Chrome in the runtime', () => {
     await enqueueMentionRuns(ctx, row, 0)
     const [task] = await ctx.db.select().from(fabricTasks).where(eq(fabricTasks.state, 'ready'))
     expect(task).toBeDefined()
-    expect(JSON.parse(task!.devices)).toContain(USER_CHROME_DEVICE)
-    void agentId
+    expect((JSON.parse(task!.devices) as string[]).some((d) => d.startsWith('browser:'))).toBe(false)
   })
 })
