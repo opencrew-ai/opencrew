@@ -207,5 +207,10 @@ reviewer run. Plan steps and human requests as native task kinds remain open.
 
 **Phase 4:** multi-process control plane — the store API becomes the worker
 protocol (`claim / emit / gate / complete` over WSS), LISTEN/NOTIFY replaces the
-in-process wake bus, OnCell cells join as workers. The kernel does not change
+in-process wake bus, and **project cells** join as workers: one container per
+project holding its repo, environments, harness sessions, and secrets, dialing
+out to the control plane. Cells are substrate-agnostic (a Fly Machine, a
+Kubernetes pod with a persistent volume, a VM) behind a small provider
+interface: create, start, stop, destroy, inject secrets. Pause = stop with
+disk kept; resume = start on the next message. The kernel does not change
 shape for this; only the transport does.
