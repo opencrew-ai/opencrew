@@ -49,27 +49,30 @@ export function DeviceAccessCard() {
 
   return (
     <div className="mt-6 max-w-xl rounded-lg border border-zinc-800 p-5">
-      <h2 className="font-semibold">📱 Access from other devices</h2>
+      <h2 className="font-semibold">📱 Same Wi-Fi</h2>
       <p className="mt-1 text-sm text-zinc-400">
-        Phone, laptop, tablet — sign in with the same account. On a phone, scan the QR and use
-        &ldquo;Add to Home Screen&rdquo; for the app feel.
+        A phone or tablet on this network can open the crew directly. Scan, sign in with the
+        same account, and use &ldquo;Add to Home Screen&rdquo; for the app feel. From anywhere
+        else, link to opencrew.run above.
       </p>
 
-      <div className="mt-4 grid gap-6 sm:grid-cols-2">
-        <div>
-          <h3 className="label">Same Wi-Fi</h3>
-          {lanUrl ? (
-            <div className="space-y-2">
-              <QrCode value={lanUrl} />
-              <code className="block break-all font-mono text-xs text-emerald-300">{lanUrl}</code>
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-500">No LAN address detected.</p>
-          )}
-        </div>
+      <div className="mt-4">
+        {lanUrl ? (
+          <div className="space-y-2">
+            <QrCode value={lanUrl} />
+            <code className="block break-all font-mono text-xs text-emerald-300">{lanUrl}</code>
+          </div>
+        ) : (
+          <p className="text-xs text-zinc-500">No LAN address detected.</p>
+        )}
+      </div>
 
-        <div>
-          <h3 className="label">From anywhere</h3>
+      {/* The tunnel is for people who'd rather not use opencrew.run at all. */}
+      <details className="mt-5 text-sm">
+        <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
+          Advanced: your own public tunnel instead of opencrew.run
+        </summary>
+        <div className="mt-3">
           {info?.tunnel ? (
             <div className="space-y-2">
               <QrCode value={info.tunnel.url} />
@@ -102,7 +105,7 @@ export function DeviceAccessCard() {
           )}
           {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
         </div>
-      </div>
+      </details>
     </div>
   )
 }

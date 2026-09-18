@@ -45,6 +45,9 @@ export function CloudLinkCard() {
         instanceName: 'OpenCrew HQ'
       })
       setApproveUrl(r.approveUrl)
+      // Same browser, same person: approving is one click away, so open it.
+      // The QR stays below for the phone case.
+      window.open(r.approveUrl, '_blank', 'noopener')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed')
     } finally {
@@ -102,18 +105,23 @@ export function CloudLinkCard() {
       ) : approveUrl ? (
         <div className="mt-2 space-y-3">
           <p className="text-sm text-zinc-400">
-            Open this link (or scan it) and approve on your opencrew.run profile — this page
-            updates automatically once linked.
+            Approve it on your opencrew.run profile — this page updates by itself once linked.
           </p>
-          <QrCode value={approveUrl} />
           <a
             href={approveUrl}
             target="_blank"
             rel="noreferrer"
-            className="block break-all font-mono text-xs text-emerald-400 underline"
+            className="btn-primary inline-block"
           >
-            {approveUrl}
+            Approve on opencrew.run →
           </a>
+          <details className="text-xs text-zinc-500">
+            <summary className="cursor-pointer hover:text-zinc-300">Approving from your phone instead? Scan this.</summary>
+            <div className="mt-2 space-y-2">
+              <QrCode value={approveUrl} />
+              <code className="block break-all font-mono text-[11px] text-emerald-400">{approveUrl}</code>
+            </div>
+          </details>
         </div>
       ) : (
         <div className="mt-2 space-y-2">
