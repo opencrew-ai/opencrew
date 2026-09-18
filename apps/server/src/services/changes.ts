@@ -49,6 +49,20 @@ export async function captureStagedDiff(
   }
 }
 
+/** A whole file to commit alongside a patch — record files (docs, decisions). */
+export interface CommitFile {
+  /** Repo-relative path, e.g. `.opencrew/decisions.md`. */
+  path: string
+  content: string
+}
+
+/** Repo-relative paths only: no absolute paths, no `..` segments. */
+function assertRepoRelative(path: string): void {
+  if (path.startsWith('/') || path.split('/').some((s) => s === '..' || s === '')) {
+    throw new Error(`refusing to commit outside the repo: ${path}`)
+  }
+}
+
 /**
  * Commit EXACTLY the reviewed patch, using a throwaway index so neither the
  * live index nor the working tree is touched. In a shared working dir the
@@ -57,6 +71,10 @@ export async function captureStagedDiff(
  * something nobody reviewed (or nothing at all, silently failing). This
  * path is deterministic: the approved artifact IS the commit, or the apply
  * conflicts and the error says so honestly.
+ *
+ * `files` are whole files written into the same commit AND into the working
+ * tree (they are the record — `.opencrew/` — and the human's checkout must
+ * show them). An empty patch with files is a plain file commit.
  */
 export async function commitPatch(
   dir: string,
@@ -70,6 +88,7 @@ export async function commitPatch(
      * human's checkout shows the committed files, not a reverse diff.
      */
     applyToWorkingTree?: boolean
+    files?: CommitFile[]
   } = {}
 ): Promise<{ sha: string } | { error: string }> {
   const suffix = Math.random().toString(36).slice(2, 10)
@@ -81,12 +100,15 @@ export async function commitPatch(
   const env = { ...process.env, GIT_INDEX_FILE: tmpIndex }
   const gitEnv = (args: string[]) =>
     run('git', args, { cwd: dir, env, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER })
+  const files = opts.files ?? []
+  for (const file of files) assertRepoRelative(file.path)
+  const hasPatch = patch.trim().length > 0
 
   try {
-    const { writeFile, rm } = await import('node:fs/promises')
+    const { writeFile, rm, mkdir } = await import('node:fs/promises')
     await writeFile(tmpPatch, patch, 'utf8')
     try {
-      if (opts.applyToWorkingTree) {
+      if (hasPatch && opts.applyToWorkingTree) {
         // Fail before committing anything if the human's checkout conflicts.
         await git(dir, ['apply', '--check', '--binary', tmpPatch])
         await git(dir, ['apply', '--index', '--binary', tmpPatch])
@@ -101,7 +123,17 @@ export async function commitPatch(
       // Temp index = HEAD's tree (or empty), plus exactly the patch.
       if (hasHead) await gitEnv(['read-tree', 'HEAD'])
       else await gitEnv(['read-tree', '--empty'])
-      await gitEnv(['apply', '--cached', '--binary', tmpPatch])
+      if (hasPatch) await gitEnv(['apply', '--cached', '--binary', tmpPatch])
+      // Record files: into the temp index, the working tree, and the live
+      // index, so `git status` stays clean after the commit.
+      for (const file of files) {
+        const abs = join(dir, file.path)
+        await mkdir(join(abs, '..'), { recursive: true })
+        await writeFile(abs, file.content, 'utf8')
+        const blob = (await git(dir, ['hash-object', '-w', abs])).trim()
+        await gitEnv(['update-index', '--add', '--cacheinfo', `100644,${blob},${file.path}`])
+        await git(dir, ['add', '--', file.path])
+      }
       const tree = (await gitEnv(['write-tree'])).stdout.trim()
 
       const commitEnv = {
@@ -130,6 +162,35 @@ export async function commitPatch(
       ? ' — the repo has changed since this diff was reviewed; ask the agent to re-propose.'
       : ''
     return { error: `${raw}${hint}` }
+  }
+}
+
+/** Commit whole files (no patch): the record's own commits — docs, decisions. */
+export async function commitFiles(
+  dir: string,
+  files: CommitFile[],
+  message: string,
+  authorName: string
+): Promise<{ sha: string } | { error: string }> {
+  return commitPatch(dir, '', message, authorName, { files })
+}
+
+/**
+ * The review thread behind a commit, kept where the commit is: a git note
+ * on the `opencrew` ref. `git log --notes=opencrew` shows it; pushing
+ * `refs/notes/opencrew` carries it to any clone. Best effort — a note that
+ * fails to write never fails an approval.
+ */
+export async function addReviewNote(dir: string, sha: string, text: string): Promise<boolean> {
+  try {
+    await run('git', ['notes', '--ref', 'opencrew', 'add', '-f', '-m', text, sha], {
+      cwd: dir,
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: GIT_MAX_BUFFER
+    })
+    return true
+  } catch {
+    return false
   }
 }
 

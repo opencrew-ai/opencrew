@@ -37,7 +37,8 @@ const postMessageSchema = z
 
 export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/channels', { preHandler: authGuard(ctx) }, async () => {
-    const rows = await ctx.db.select().from(channels)
+    // Consult lines (services/ask.ts) are not rooms: never listed.
+    const rows = await ctx.db.select().from(channels).where(eq(channels.kind, 'room'))
     return ok(
       rows.map((c) => ({
         id: c.id,

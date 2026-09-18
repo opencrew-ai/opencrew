@@ -1,10 +1,11 @@
-import { asc, eq, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, isNull, or } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import type { Agent, AgentVersionConfig, Project } from '@opencrew/shared'
 import type { DB } from '../db'
 import { agents, channels, messages, projects } from '../db/schema'
 import type { AppContext } from '../context'
 import { createVersion, toAgent } from './agents'
+import { RECORD_DIR, defaultRepoDir, ensureRepo } from './record'
 
 /**
  * Projects — one product each: its repo, its channels, its crew. A project
@@ -108,9 +109,12 @@ export async function channelsVisibleTo(
   agentProjectId: string | null,
   wildcard: boolean
 ): Promise<(typeof channels.$inferSelect)[]> {
-  if (agentProjectId === null && wildcard) return db.select().from(channels)
+  // Consult lines (a person's private line to a Captain) are never rooms an
+  // agent may address on its own.
+  const rooms = eq(channels.kind, 'room')
+  if (agentProjectId === null && wildcard) return db.select().from(channels).where(rooms)
   const scope = agentProjectId ? eq(channels.projectId, agentProjectId) : isNull(channels.projectId)
-  return db.select().from(channels).where(scope)
+  return db.select().from(channels).where(and(rooms, scope))
 }
 
 /**
@@ -279,12 +283,18 @@ export async function insertProject(
   input: CreateProjectInput
 ): Promise<{ project: Project; channels: (typeof channels.$inferSelect)[]; captainId: string }> {
   const count = (await db.select({ id: projects.id }).from(projects)).length
+  const slug = await uniqueSlug(db, slugify(input.name))
+  // Every project has a repo: the repo is the record (services/record.ts).
+  // No folder given → OpenCrew keeps one for it. A folder that is not a
+  // repo yet → `git init` there, committing only .opencrew/.
+  const givenDir = input.workingDir?.trim() ?? ''
+  const repo = await ensureRepo(givenDir.startsWith('/') ? givenDir : defaultRepoDir(slug))
   const row = {
     id: nanoid(),
-    slug: await uniqueSlug(db, slugify(input.name)),
+    slug,
     name: input.name.trim(),
     color: input.color ?? PROJECT_COLORS[count % PROJECT_COLORS.length]!,
-    workingDir: input.workingDir?.trim() ?? '',
+    workingDir: repo.dir,
     dailyBudgetUsd: 0,
     maxConcurrent: DEFAULT_MAX_CONCURRENT,
     createdAt: Date.now()
@@ -299,6 +309,7 @@ export async function insertProject(
       name: c.name,
       topic: c.topic,
       isPrivate: false,
+      kind: 'room' as const,
       createdAt: Date.now()
     }
     await db.insert(channels).values(channel)
@@ -319,11 +330,13 @@ export async function insertProject(
       `1. **Just type.** I read every message in this project's rooms — no @mention needed. ` +
       `I answer the simple stuff and put workers on the rest.\n` +
       `2. **Nothing ships without you.** Changes and docs land in **Needs You** with a review ` +
-      `and a one-click decision` +
-      (row.workingDir
-        ? `; your checkout at \`${row.workingDir}\` changes only when you approve.\n`
-        : `. Set a repo folder in the project settings when you want the crew building code.\n`) +
+      `and a one-click decision. Every approval is a commit in \`${row.workingDir}\` — docs and ` +
+      `decisions go to \`${RECORD_DIR}/\` there, so plain \`git log\` tells the whole story.\n` +
       `3. **Budgets are yours.** A daily cap and a concurrency cap live in the project settings.\n\n` +
+      (givenDir && repo.initialized
+        ? `_Your folder wasn't a git repo, so I ran \`git init\` there and committed only ` +
+          `\`${RECORD_DIR}/\`. Commit your own files when you're ready so workers can see them._\n\n`
+        : '') +
       `Try: _"what would you build first here?"_`,
     createdAt: Date.now()
   })
@@ -357,7 +370,11 @@ export async function updateProject(
   const set: Partial<typeof projects.$inferInsert> = {}
   if (patch.name !== undefined) set.name = patch.name.trim()
   if (patch.color !== undefined) set.color = patch.color
-  if (patch.workingDir !== undefined) set.workingDir = patch.workingDir.trim()
+  if (patch.workingDir !== undefined) {
+    // A new folder becomes a repo too (the record moves with the project).
+    const dir = patch.workingDir.trim()
+    set.workingDir = dir.startsWith('/') ? (await ensureRepo(dir)).dir : dir
+  }
   if (patch.dailyBudgetUsd !== undefined) set.dailyBudgetUsd = patch.dailyBudgetUsd
   if (patch.maxConcurrent !== undefined) set.maxConcurrent = patch.maxConcurrent
   if (Object.keys(set).length > 0) {

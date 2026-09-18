@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { agents, runs } from '../db/schema'
@@ -10,7 +13,9 @@ describe('telemetry heartbeat', () => {
   it('sends counts and versions only — nothing that could identify a person or a repo', async () => {
     const ctx = await makeTestCtx()
     const userId = await seedUser(ctx.db)
-    await createProject(ctx, { name: 'Secret Product', workingDir: '/Users/someone/private', createdBy: userId })
+    // A real folder (every project gets a repo) whose path must never leave the machine.
+    const privateDir = mkdtempSync(join(tmpdir(), 'someone-private-'))
+    await createProject(ctx, { name: 'Secret Product', workingDir: privateDir, createdBy: userId })
     const { agentId } = await seedAgent(ctx.db, userId, { name: 'Worker' })
     await ctx.db.update(agents).set({ kind: 'worker' }).where(eq(agents.id, agentId))
     await ctx.db.insert(runs).values({

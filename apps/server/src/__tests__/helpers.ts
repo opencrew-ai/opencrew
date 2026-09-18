@@ -7,6 +7,14 @@ import type { AppContext } from '../context'
 import { FabricRuntime } from '../fabric/runtime'
 import type { SocketLike } from '../hub'
 import { Hub } from '../hub'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { env } from '../env'
+
+// Every project has a repo, and HQ too: tests keep those under a temp
+// folder instead of the install's data/repos.
+;(env as { reposDir: string }).reposDir = mkdtempSync(join(tmpdir(), 'oc-repos-'))
 
 export interface TestCtx extends AppContext {
   broadcasts: ServerEvent[]

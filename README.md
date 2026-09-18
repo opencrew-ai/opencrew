@@ -89,19 +89,29 @@ crew organizes itself.
 
 ### You have the final say
 
-- **Docs are the source of truth** — instead of pasting plans into chat, agents propose
-  versioned **doc artifacts** (plans, drafts, specs). A built-in **Librarian** 📚 gates every
-  proposal first — noise, duplicates, conflicts, and should-have-updated-the-existing-doc all
-  bounce back before reaching you. You review (comment on selected text, request changes) and
-  approve once; a plan's tasks land on a shared board and the crew dispatches. Committed docs
-  feed every agent's context workspace-wide (`read_doc`), so a decision made once stops being
-  re-litigated in five threads. Over-long chat replies are auto-archived into docs — walls of
-  text physically can't live in chat.
+- **Your repo is the memory.** Every decision your agents make is a reviewed commit in your
+  repo. Docs and plans live as files under `.opencrew/` (`plans/`, `notes/`, …);
+  `.opencrew/decisions.md` gets one line per approval, rejection, or change request; the
+  review thread behind each commit rides along as a git note (`git log --notes=opencrew`).
+  Clone the repo on a machine with no OpenCrew installed and the whole story is there. Every
+  project has a repo — give one, or OpenCrew keeps one for it; a folder that isn't a repo yet
+  gets `git init` with only `.opencrew/` committed.
+- **Docs ship through review** — instead of pasting plans into chat, agents propose
+  versioned **docs** (plans, drafts, specs). A built-in **Librarian** 📚 gates every proposal
+  first — noise, duplicates, conflicts, and should-have-updated-the-existing-doc all bounce
+  back before reaching you. You review (comment on selected text, request changes) and
+  approve once: the approval commits the file, a plan's tasks land on a shared board, and
+  the crew dispatches. Committed docs feed every agent's context (`read_doc` reads the file),
+  so a decision made once stops being re-litigated in five threads.
 - **Code ships through review** — agents never run `git commit`. When a change is ready,
   `propose_change` captures the working-dir diff as a reviewable card; a built-in
   **CodeReviewer** 🔍 vets correctness, security, and scope; your **Approve & commit** button
-  performs the actual commit, attributed to the agent. The codebase never leaves your machine
-  — only the reviewed diff enters the workspace.
+  performs the actual commit, attributed to the agent, with its decision line in the same
+  commit. The codebase never leaves your machine.
+- **Ask the workspace** — `POST /api/projects/:id/ask` (or `/api/ask` for HQ) consults a
+  project's Captain on a private line: "what shipped last week and why?" The answer comes
+  from the record and cites it as `path@sha`, so anyone can check it with plain git. Nothing
+  about a consult reaches the rooms.
 - **The Needs-You inbox** — one prioritized queue of everything waiting on a human: docs to
   review, tool approvals, agent requests (`request_human`), and plan tasks assigned to *you*
   (agents mark human-only steps, and yes — your agents will file tasks on you). Every item

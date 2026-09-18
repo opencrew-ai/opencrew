@@ -129,7 +129,7 @@ export function registerArtifactRoutes(app: FastifyInstance, ctx: AppContext): v
     { preHandler: memberGuard(ctx) },
     async (req, reply) => {
       const { artifactId } = req.params as { artifactId: string }
-      const artifact = await discardPlan(ctx, artifactId)
+      const artifact = await discardPlan(ctx, artifactId, req.user!.id)
       if (!artifact) return reply.code(404).send(fail('no proposed artifact with that id'))
       return ok(artifact)
     }

@@ -1,13 +1,13 @@
 import { z } from 'zod'
 import { registerOpenCrewTool } from './registry'
-import { findDocByTitle, listComments } from '../services/artifacts'
+import { docText, findDocByTitle, listComments } from '../services/artifacts'
 
 registerOpenCrewTool({
   name: 'read_doc',
   description:
-    'Read a workspace doc by exact title. Committed docs are the workspace source of truth — ' +
-    'read the relevant doc BEFORE deciding or answering on its topic. Returns the full ' +
-    'markdown plus any review comments.',
+    'Read a doc by exact title. Committed docs are files in the repo\'s .opencrew/ folder — ' +
+    'the record, the source of truth — so read the relevant doc BEFORE deciding or answering ' +
+    'on its topic. Returns the full markdown plus any review comments.',
   inputShape: {
     title: z.string().min(1).max(120).describe('Exact title of the doc to read')
   },
@@ -26,9 +26,10 @@ registerOpenCrewTool({
             )
             .join('\n')}`
         : ''
+    const where = artifact.path ? `, file: ${artifact.path}${artifact.sha ? `@${artifact.sha}` : ''}` : ''
     return (
-      `# ${artifact.title} (v${artifact.version}, ${artifact.status}, folder: ${artifact.folder})\n\n` +
-      artifact.content +
+      `# ${artifact.title} (v${artifact.version}, ${artifact.status}${where})\n\n` +
+      (await docText(ctx.app.db, artifact)) +
       commentBlock
     )
   }

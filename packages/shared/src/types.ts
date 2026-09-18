@@ -200,7 +200,8 @@ export interface Message {
   conversationRootId?: string
 }
 
-export type RunTriggerType = 'mention' | 'watch' | 'review'
+/** ask = a person consulting a Captain privately (services/ask.ts): answer only, no delegation. */
+export type RunTriggerType = 'mention' | 'watch' | 'review' | 'ask'
 
 export interface Run {
   id: string
@@ -368,6 +369,10 @@ export interface Artifact {
   version: number
   createdByAgentId: string
   committedBy?: string
+  /** Once committed: the file in the repo, e.g. `.opencrew/plans/launch.md`. */
+  path?: string
+  /** Once committed: the short sha of the commit that carries it. */
+  sha?: string
   createdAt: number
   updatedAt: number
 }

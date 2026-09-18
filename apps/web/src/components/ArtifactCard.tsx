@@ -96,6 +96,24 @@ function StatusBadge({ status }: { status: Artifact['status'] }) {
   )
 }
 
+/**
+ * Where a committed artifact lives in the repo: the file for a doc, the
+ * commit for a change. The record is git, so this is the one thing a person
+ * needs to find it without OpenCrew.
+ */
+function RecordRef({ artifact }: { artifact: Pick<Artifact, 'status' | 'path' | 'sha'> }) {
+  if (artifact.status !== 'committed' || !artifact.sha) return null
+  const label = artifact.path ? `${artifact.path}@${artifact.sha}` : artifact.sha
+  return (
+    <span
+      className="max-w-[18rem] truncate font-mono text-[10px] text-zinc-500"
+      title={artifact.path ? `Committed as ${artifact.path} in ${artifact.sha}` : `Commit ${artifact.sha}`}
+    >
+      {label}
+    </span>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Review modal — read the doc, comment on selections, approve/reject/revise
 // ---------------------------------------------------------------------------
@@ -302,6 +320,7 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
           <h2 className="min-w-0 flex-1 truncate font-bold text-zinc-100">{doc.title}</h2>
           <span className="font-mono text-xs tabular-nums text-zinc-500">v{doc.version}</span>
           <StatusBadge status={doc.status} />
+          <RecordRef artifact={doc} />
           {canReview && !isEditing && (
             <button
               onClick={() => startEdit()}
@@ -656,6 +675,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
         </button>
         <span className="font-mono text-[10px] tabular-nums text-zinc-500">v{artifact.version}</span>
         <StatusBadge status={artifact.status} />
+        <RecordRef artifact={artifact} />
         {agentLabel && <span className="text-xs text-zinc-500">{agentLabel}</span>}
         <span className="text-xs text-zinc-500">
           {artifact.tasks.length} task{artifact.tasks.length === 1 ? '' : 's'}

@@ -51,6 +51,12 @@ export const env = {
     process.env.OPENCREW_WORKSPACES ?? resolve(process.cwd(), '../../data/workspaces'),
   /** Per-agent git worktrees of project repos live here (see services/environments.ts). */
   envsDir: process.env.OPENCREW_ENVS ?? resolve(process.cwd(), '../../data/envs'),
+  /**
+   * Repos OpenCrew creates itself: for projects started without a folder, and
+   * for HQ. Every project has a repo because the repo IS the record
+   * (services/record.ts) — docs and decisions are committed files.
+   */
+  reposDir: process.env.OPENCREW_REPOS ?? resolve(process.cwd(), '../../data/repos'),
   /** First port handed to an environment; each gets the next free one. */
   envPortBase: Number(process.env.OPENCREW_ENV_PORT_BASE ?? 4300),
   /** Local hour (0–23) the Chief of Staff posts the morning brief in #hq. */

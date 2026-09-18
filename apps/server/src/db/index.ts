@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS channels (
   name TEXT NOT NULL,
   topic TEXT NOT NULL,
   is_private BOOLEAN NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'room',
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS memberships (
@@ -235,6 +236,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_by_agent_id TEXT NOT NULL,
   committed_by TEXT,
   source_dir TEXT,
+  patch TEXT,
+  path TEXT,
+  sha TEXT,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL
 );
@@ -366,6 +370,10 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked_by TEXT;
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS consumed_at BIGINT;
 ALTER TABLE fabric_tasks ADD COLUMN IF NOT EXISTS claimed_at BIGINT;
 ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS patch TEXT;
+-- The repo is the record: committed docs know their file and commit.
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS path TEXT;
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS sha TEXT;
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'room';
 -- Projects: names are unique per project (every project has a #general and
 -- a Captain), so the original global UNIQUE constraints go away.
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS project_id TEXT;

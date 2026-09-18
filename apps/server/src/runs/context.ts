@@ -10,6 +10,7 @@ import {
   listProjects
 } from '../services/projects'
 import { CHROME_TOOL } from '../tools/registry'
+import { hqRepoDir } from '../services/record'
 
 const CONTEXT_MESSAGE_COUNT = 30
 
@@ -155,6 +156,7 @@ export async function buildSystemPrompt(
     : agentProjectId === null
       ? await hqProjectsLine(db)
       : ''
+  const recordDir = project?.workingDir || hqRepoDir()
   const environmentLine = environment
     ? `YOUR ENVIRONMENT: a private checkout of the project repo at ${environment.path} (your ` +
       `working directory) with port ${environment.port} reserved for you — PORT is set, so ` +
@@ -162,9 +164,7 @@ export async function buildSystemPrompt(
       `in the human's Chrome to look. Other agents have their own checkouts; the human's own ` +
       `checkout at ${project?.workingDir ?? 'the project repo'} is NOT yours to edit or run — ` +
       `your changes reach it only through propose_change and the human's approval.`
-    : project?.workingDir
-      ? `The project repo at ${project.workingDir} is not a git repository yet, so you work in your own scratch directory.`
-      : ''
+    : ''
 
   return [
     version.systemPrompt,
@@ -175,6 +175,10 @@ export async function buildSystemPrompt(
       `#${channel.name}${channel.topic ? ` — this channel is for: "${channel.topic}"` : ''}.`,
     projectLine,
     environmentLine,
+    `THE RECORD: \`${recordDir}/.opencrew/\` is this ${project ? 'project' : 'workspace'}'s ` +
+      `memory, committed with git — docs and plans as files, one line per decision in ` +
+      `decisions.md, the review thread behind each commit as a git note. Read docs there ` +
+      `with read_doc; a doc you propose becomes a file there the moment a human approves it.`,
     `CHANNEL FIT: answer through the lens of THIS channel's purpose. Workspace docs are ` +
       `shared truth, but filter them to what belongs here — in a build channel talk about ` +
       `what gets built, not marketing logistics. If the ask (or part of it) belongs in ` +

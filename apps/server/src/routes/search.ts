@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm'
 import type { AppContext } from '../context'
 import { channels, messages } from '../db/schema'
 import { enrichMessage } from '../services/messages'
@@ -32,21 +32,25 @@ export function registerSearchRoutes(app: FastifyInstance, ctx: AppContext): voi
     const limit = Math.min(20, Math.max(1, parseInt(limitStr ?? '5', 10) || 5))
     const pattern = `%${q.trim()}%`
 
+    // Rooms only: a person's private consult line is never searchable.
+    const channelRows = await ctx.db.select().from(channels).where(eq(channels.kind, 'room'))
+    const channelMap = new Map(channelRows.map((c) => [c.id, c.name]))
+    const roomIds = channelRows.map((c) => c.id)
+    if (roomIds.length === 0) return ok<ThreadSearchResult[]>([])
+
     // Find top-level messages (threadRootId IS NULL) whose content matches the query.
     const roots = await ctx.db
       .select()
       .from(messages)
-      .where(and(isNull(messages.threadRootId), ilike(messages.content, pattern)))
+      .where(
+        and(isNull(messages.threadRootId), ilike(messages.content, pattern), inArray(messages.channelId, roomIds))
+      )
       .orderBy(desc(messages.createdAt))
       .limit(limit)
 
     if (roots.length === 0) {
       return ok<ThreadSearchResult[]>([])
     }
-
-    // Load channel names
-    const channelRows = await ctx.db.select().from(channels)
-    const channelMap = new Map(channelRows.map((c) => [c.id, c.name]))
 
     // Enrich each root with author name and reply count
     const results: ThreadSearchResult[] = await Promise.all(

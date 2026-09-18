@@ -213,9 +213,9 @@ export async function enqueueRun(
   depth: number,
   triggerType: RunTriggerType,
   restricted: boolean
-): Promise<void> {
+): Promise<string | null> {
   const agent = await getAgentWithVersion(ctx.db, agentId)
-  if (!agent) return
+  if (!agent) return null
 
   if (agent.status === 'paused') {
     if (triggerType === 'mention') {
@@ -226,7 +226,7 @@ export async function enqueueRun(
         { threadRootId: conversationThreadOf(triggerMessage) }
       )
     }
-    return
+    return null
   }
 
   // GUARDRAIL: maxRunsPerHour enforced at enqueue time.
@@ -238,7 +238,7 @@ export async function enqueueRun(
       `⛔ **${agent.name}** hit its rate limit (${limit} runs/hour). Try again later.`,
       { threadRootId: conversationThreadOf(triggerMessage) }
     )
-    return
+    return null
   }
 
   // BUDGET: a project that has spent its day stops admitting turns and says
@@ -256,7 +256,7 @@ export async function enqueueRun(
           `budget in the project's settings to continue.`,
         conversationThreadOf(triggerMessage)
       )
-      return
+      return null
     }
   }
 
@@ -325,4 +325,5 @@ export async function enqueueRun(
   })
   ctx.hub.broadcast({ type: 'run_status', runId, agentId, status: 'queued' })
   ctx.fabric.wake()
+  return runId
 }

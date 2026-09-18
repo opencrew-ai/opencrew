@@ -32,6 +32,7 @@ import {
 import { denyPendingApprovalsForRun } from '../services/approvals'
 import { enqueueMentionRuns } from './enqueue'
 import { chromeLock } from './chromelock'
+import { hqRepoDir } from '../services/record'
 import { detectUsageLimit } from './limits'
 import { recordStep } from './audit'
 import {
@@ -404,9 +405,13 @@ async function runSessionAttempt(
     ? await buildTaskPromptSection(ctx.db, runEnv.threadRootId)
     : ''
   // Existing docs + their review comments — agents point to docs by title,
-  // and revisions must address the feedback.
+  // and revisions must address the feedback — plus the record: what is
+  // committed in the repo (.opencrew/). Consults also see recent commits.
+  const recordDir = runEnv.project ? runEnv.project.workingDir || null : hqRepoDir()
   const docsSection = runEnv.threadRootId
-    ? await buildDocsPromptSection(ctx.db, runEnv.threadRootId)
+    ? await buildDocsPromptSection(ctx.db, runEnv.threadRootId, recordDir, {
+        commits: runEnv.triggerType === 'ask'
+      })
     : ''
   let instruction: string
   if (resume) {
@@ -442,6 +447,14 @@ async function runSessionAttempt(
       `A new message was just posted in #${runEnv.channel.name}, a channel you watch ` +
       `(you were NOT @mentioned). Follow your standing instructions for handling new ` +
       `posts in this channel, then write a short status reply.`
+  } else if (runEnv.triggerType === 'ask') {
+    instruction =
+      `You are being CONSULTED privately by a person on the team. Answer their question ` +
+      `from the record above (docs, decisions, recent commits), the conversation, and ` +
+      `read_doc — be direct and specific, and say plainly when the record does not cover ` +
+      `something. Cite what you rely on inline as \`path@sha\` for docs and \`sha\` for ` +
+      `commits, exactly as listed above. This is an answer, not a task: do NOT delegate, ` +
+      `@mention anyone, spawn workers, or propose docs or changes. Length: what the answer needs.`
   } else {
     instruction =
       `You were @mentioned. Do what was asked (use your tools if needed), ` +
@@ -1040,9 +1053,12 @@ async function finalizeRun(
   runEnv: RunEnv,
   reply: ReplyState
 ): Promise<void> {
+  // A consult answer is the deliverable: never archived into a doc, never a
+  // source of delegation (mentions inside it trigger nobody).
+  const consult = runEnv.triggerType === 'ask'
   if (reply.messageId) {
     let finalText = reply.text
-    if (finalText.length > CHAT_REPLY_DOC_LIMIT && runEnv.threadRootId) {
+    if (!consult && finalText.length > CHAT_REPLY_DOC_LIMIT && runEnv.threadRootId) {
       // Mentions are re-scanned on the SHORT text below, so a mention buried
       // inside an archived wall never fans out — delegations must be explicit
       // in the reply itself.
@@ -1066,7 +1082,7 @@ async function finalizeRun(
       .from(messagesTable)
       .where(eq(messagesTable.id, reply.messageId))
       .limit(1)
-    if (row) {
+    if (row && !consult) {
       await enqueueMentionRuns(ctx, await enrichMessage(ctx.db, row), runEnv.depth + 1)
     }
   }

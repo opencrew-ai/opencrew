@@ -32,6 +32,8 @@ import { registerCrewsRoutes } from './routes/crews'
 import { registerExportRoutes } from './routes/export'
 import { registerProjectRoutes } from './routes/projects'
 import { registerTodayRoutes } from './routes/today'
+import { registerAskRoutes } from './routes/ask'
+import { ensureHqRepo } from './services/record'
 import { startTelemetry, telemetryEnabled } from './services/telemetry'
 import { startCloudLink } from './services/cloudlink'
 import { currentUser } from './routes/helpers'
@@ -78,6 +80,8 @@ async function main(): Promise<void> {
   const { db } = await createDb(env.databaseUrl)
   const dbReadyMs = Date.now() - bootStartedAt
   const seeded = await seedIfEmpty(db)
+  // HQ's record: a repo OpenCrew keeps, so decisions made at HQ are committed too.
+  await ensureHqRepo()
 
   // Pre-fabric installs may have non-terminal runs with no fabric task —
   // nothing will ever execute those; close them out honestly. One-time
@@ -121,6 +125,7 @@ async function main(): Promise<void> {
   registerThreadReadRoutes(app, ctx)
   registerProjectRoutes(app, ctx)
   registerTodayRoutes(app, ctx)
+  registerAskRoutes(app, ctx)
 
   app.get('/api/health', async () => ({ ok: true }))
 

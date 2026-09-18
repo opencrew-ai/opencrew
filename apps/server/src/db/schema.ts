@@ -162,6 +162,12 @@ export const channels = pgTable('channels', {
   name: text('name').notNull(),
   topic: text('topic').notNull(),
   isPrivate: boolean('is_private').notNull(),
+  /**
+   * room = a channel people see. consult = one person's private line to a
+   * Captain (services/ask.ts): never listed, never searchable, never a
+   * place agents may post on their own.
+   */
+  kind: text('kind', { enum: ['room', 'consult'] }).notNull().default('room'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull()
 })
 
@@ -223,7 +229,7 @@ export const runs = pgTable('runs', {
     enum: ['queued', 'running', 'awaiting_approval', 'done', 'failed', 'cancelled']
   }).notNull(),
   error: text('error'),
-  triggerType: text('trigger_type', { enum: ['mention', 'watch', 'review'] })
+  triggerType: text('trigger_type', { enum: ['mention', 'watch', 'review', 'ask'] })
     .notNull()
     .default('mention'),
   depth: integer('depth').notNull().default(0),
@@ -417,6 +423,10 @@ export const artifacts = pgTable('artifacts', {
   /** kind 'change' only: the FULL reviewed patch. Approval commits exactly
    *  this — never whatever happens to be staged at click-time. */
   patch: text('patch'),
+  /** Once committed: where it lives in the repo (docs: `.opencrew/<folder>/<slug>.md`). */
+  path: text('path'),
+  /** Once committed: the short sha of the commit that carries it. */
+  sha: text('sha'),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 })

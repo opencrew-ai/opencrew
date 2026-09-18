@@ -121,8 +121,8 @@ export function NewProjectForm({ onCreated, onCancel, firstRun = false }: NewPro
         )}
         <p className="mt-1 text-xs text-zinc-500">
           {firstRun
-            ? 'A git repo, if you have one. Agents work in their own copies; yours only changes when you approve. You can add this later.'
-            : 'A git repo. Each agent gets its own checkout of it; yours changes only when you approve. Leave empty to start without code.'}
+            ? 'Your repo, if you have one — not a git repo yet is fine, we set it up. Agents work in their own copies; every approval is a commit here. Leave empty and OpenCrew keeps a repo for you.'
+            : 'Your repo — not a git repo yet is fine, we set it up. Each agent gets its own checkout; every approval is a commit here. Leave empty and OpenCrew keeps a repo for you.'}
         </p>
       </div>
 

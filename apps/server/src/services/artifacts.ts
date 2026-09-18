@@ -11,6 +11,20 @@ import { getAgent } from './agents'
 import { getRawSetting, getSettings } from './settings'
 import { projectOfChannel } from './projects'
 import { enqueueRun } from '../runs/enqueue'
+import { addReviewNote, commitFiles, type CommitFile } from './changes'
+import { alreadyPerformed, recordEffect } from './effects'
+import {
+  DECISIONS_FILE,
+  appendDecision,
+  buildRecordSection,
+  decisionLine,
+  docFileContent,
+  docPath,
+  ensureHqRepo,
+  ensureRepo,
+  readRecordFile,
+  type DecisionVerb
+} from './record'
 
 export const DOC_REVIEWER_SETTING = 'docReviewerAgentId'
 export const CODE_REVIEWER_SETTING = 'codeReviewerAgentId'
@@ -190,9 +204,53 @@ function toArtifact(row: ArtifactRow): Artifact {
     version: row.version,
     createdByAgentId: row.createdByAgentId,
     committedBy: row.committedBy ?? undefined,
+    path: row.path ?? undefined,
+    sha: row.sha ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   }
+}
+
+/**
+ * The repo whose record a channel's decisions land in: the project's repo,
+ * or HQ's own. Both exist by construction (projects get one on creation, HQ
+ * at boot); this heals a missing one rather than failing an approval.
+ */
+export async function recordDirForChannel(db: DB, channelId: string): Promise<string> {
+  const project = await projectOfChannel(db, channelId)
+  if (project?.workingDir.startsWith('/')) return (await ensureRepo(project.workingDir)).dir
+  return ensureHqRepo()
+}
+
+async function userName(db: DB, userId: string): Promise<string> {
+  const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1)
+  return user?.name ?? 'someone'
+}
+
+/** The review thread behind a commit, as the text of its git note. */
+async function reviewNoteText(db: DB, row: ArtifactRow, decidedBy: string): Promise<string> {
+  const comments = await listComments(db, row.id)
+  const lines = [
+    `OpenCrew review · "${row.title}" v${row.version} (${row.kind})`,
+    `Proposed by agent ${(await getAgent(db, row.createdByAgentId))?.name ?? row.createdByAgentId}; approved by ${decidedBy}.`
+  ]
+  if (comments.length > 0) {
+    lines.push('', 'Review comments:')
+    for (const c of comments) {
+      lines.push(`- ${c.authorName ?? 'a human'}${c.quote ? ` [on: "${c.quote.slice(0, 120)}"]` : ''}: ${c.body}`)
+    }
+  }
+  if (row.version > 1) lines.push('', `Revision ${row.version}: earlier versions were sent back or superseded before approval.`)
+  return lines.join('\n')
+}
+
+/** Append one decision to the record and commit it on its own. Never throws. */
+async function commitDecision(
+  dir: string,
+  input: { verb: DecisionVerb; what: string; version?: number; by: string; note?: string }
+): Promise<void> {
+  const files: CommitFile[] = [{ path: DECISIONS_FILE, content: appendDecision(dir, decisionLine(input)) }]
+  await commitFiles(dir, files, `record: ${input.verb.toLowerCase()} "${input.what}"`, input.by).catch(() => null)
 }
 
 export async function listChannelArtifacts(db: DB, channelId: string): Promise<Artifact[]> {
@@ -298,6 +356,8 @@ export async function proposePlan(ctx: AppContext, input: ProposePlanInput): Pro
     committedBy: null,
     sourceDir: input.sourceDir ?? null,
     patch: input.patch ?? null,
+    path: null,
+    sha: null,
     createdAt: now,
     updatedAt: now
   }
@@ -558,75 +618,39 @@ export async function commitPlan(
   }
 
   const agent = await getAgent(ctx.db, row.createdByAgentId)
+  const authorName = agent?.name ?? 'OpenCrew agent'
+  const approver = await userName(ctx.db, userId)
 
-  // kind 'change': approval IS the git commit — the codebase artifact stays
-  // local; only the reviewed diff and the resulting sha live in the workspace.
-  if (row.kind === 'change') {
-    if (!row.sourceDir) {
-      return null
-    }
-    // EXACTLY ONCE: a retried or double-clicked approval must not commit
-    // twice. The effects ledger remembers the sha the first approval made.
-    const { alreadyPerformed, recordEffect } = await import('./effects')
-    const prior = await alreadyPerformed(ctx.db, 'commit', row.id)
-    // The stored patch is the reviewed change — approval commits exactly it.
-    // A patch produced in a worker's environment (a worktree) is committed
-    // to the PROJECT's checkout and applied to its working tree, so the
-    // human's repo shows the change; a legacy proposal from a shared dir
-    // commits in place. Proposals without a patch fall back to committing
-    // the CURRENT index (racy; re-propose to upgrade).
-    const { commitPatch, commitStaged } = await import('./changes')
-    const { isGitRepo } = await import('./environments')
-    const project = await projectOfChannel(ctx.db, row.channelId)
-    const projectDir = project?.workingDir ?? ''
-    const fromEnvironment =
-      projectDir.startsWith('/') && row.sourceDir !== projectDir && (await isGitRepo(projectDir))
-    const targetDir = fromEnvironment ? projectDir : row.sourceDir
-    const result = prior
-      ? { sha: prior }
-      : row.patch
-        ? await commitPatch(targetDir, row.patch, row.title, agent?.name ?? 'OpenCrew agent', {
-            applyToWorkingTree: fromEnvironment
-          })
-        : await commitStaged(row.sourceDir, row.title, agent?.name ?? 'OpenCrew agent')
-    if (!('error' in result) && !prior) await recordEffect(ctx.db, 'commit', row.id, result.sha)
-    if ('error' in result) {
-      // Roll the status back so Approve can be retried after the fix.
-      await ctx.db
-        .update(artifacts)
-        .set({ status: 'proposed', committedBy: null })
-        .where(eq(artifacts.id, artifactId))
-      await postSystemMessage(
-        ctx,
-        row.channelId,
-        `⚠️ Commit of **${row.title}** failed: ${result.error}`,
-        { threadRootId: row.conversationRootId }
-      )
-      const artifact = toArtifact(row)
-      ctx.hub.broadcast({ type: 'artifact_state', artifact })
-      return artifact
-    }
-    await postMessage(ctx, {
-      channelId: row.channelId,
-      threadRootId: row.conversationRootId,
-      authorType: 'human',
-      authorId: userId,
-      refArtifactId: row.id,
-      content:
-        `${agent ? `@${agent.name} ` : ''}✅ Approved & committed **${row.title}** ` +
-        `(\`${result.sha}\`).`
+  // APPROVAL IS A COMMIT. A change commits its reviewed patch; a doc commits
+  // its file under .opencrew/. Both carry one new line in decisions.md, and
+  // the review thread rides along as a git note. EXACTLY ONCE: a retried or
+  // double-clicked approval returns the sha the first one made.
+  const prior = await alreadyPerformed(ctx.db, 'commit', row.id)
+  const committed = prior ? { sha: prior, dir: null, path: row.path ?? null } : await commitApproved(ctx, row, authorName, approver)
+  if ('error' in committed) {
+    // Roll the status back so Approve can be retried after the fix.
+    await ctx.db
+      .update(artifacts)
+      .set({ status: 'proposed', committedBy: null })
+      .where(eq(artifacts.id, artifactId))
+    await postSystemMessage(ctx, row.channelId, `⚠️ Commit of **${row.title}** failed: ${committed.error}`, {
+      threadRootId: row.conversationRootId
     })
-    const artifact: Artifact = {
-      ...toArtifact(row),
-      status: 'committed',
-      committedBy: userId,
-      updatedAt: now
-    }
+    const artifact = toArtifact(row)
     ctx.hub.broadcast({ type: 'artifact_state', artifact })
     return artifact
   }
+  if (!prior) {
+    await recordEffect(ctx.db, 'commit', row.id, committed.sha)
+    if (committed.dir) await addReviewNote(committed.dir, committed.sha, await reviewNoteText(ctx.db, row, approver))
+  }
+  await ctx.db
+    .update(artifacts)
+    .set({ path: committed.path, sha: committed.sha })
+    .where(eq(artifacts.id, artifactId))
 
   const taskCount = parseDrafts(row.tasks).length
+  const where = committed.path ? ` → \`${committed.path}\`` : ''
   // The approval IS the go signal: posted as the approving human and
   // @mentioning the authoring agent, so the run pipeline kicks off execution
   // immediately (a system message would trigger nothing). Kept to one line —
@@ -639,20 +663,83 @@ export async function commitPlan(
     authorId: userId,
     refArtifactId: row.id,
     content:
-      taskCount > 0
-        ? `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** — ` +
-          `${taskCount} task${taskCount === 1 ? '' : 's'} on the board, work it top-down.`
-        : `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}** — carry on.`
+      row.kind === 'change'
+        ? `${agent ? `@${agent.name} ` : ''}✅ Approved & committed **${row.title}** (\`${committed.sha}\`).`
+        : taskCount > 0
+          ? `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}**${where} (\`${committed.sha}\`) — ` +
+            `${taskCount} task${taskCount === 1 ? '' : 's'} on the board, work it top-down.`
+          : `${agent ? `@${agent.name} ` : ''}✅ Approved **${row.title}**${where} (\`${committed.sha}\`) — carry on.`
   })
 
   const artifact: Artifact = {
     ...toArtifact(row),
     status: 'committed',
     committedBy: userId,
+    path: committed.path ?? undefined,
+    sha: committed.sha,
     updatedAt: now
   }
   ctx.hub.broadcast({ type: 'artifact_state', artifact })
   return artifact
+}
+
+/**
+ * The commit an approval makes. Changes: the reviewed patch into the
+ * project checkout (applied to its working tree when it came from a
+ * worker's environment). Docs: the file under .opencrew/. Both: one more
+ * line in decisions.md, in the same commit.
+ */
+async function commitApproved(
+  ctx: AppContext,
+  row: ArtifactRow,
+  authorName: string,
+  approver: string
+): Promise<{ sha: string; dir: string; path: string | null } | { error: string }> {
+  const trailer = `\n\nApproved-by: ${approver}`
+  if (row.kind === 'change') {
+    if (!row.sourceDir) return { error: 'this change has no source directory' }
+    // A patch produced in a worker's environment (a worktree) is committed
+    // to the PROJECT's checkout and applied to its working tree, so the
+    // human's repo shows the change; a proposal from a shared dir commits in
+    // place. Proposals without a patch fall back to committing the CURRENT
+    // index (racy; re-propose to upgrade).
+    const { commitPatch, commitStaged } = await import('./changes')
+    const { isGitRepo } = await import('./environments')
+    const project = await projectOfChannel(ctx.db, row.channelId)
+    const projectDir = project?.workingDir ?? ''
+    const fromEnvironment =
+      projectDir.startsWith('/') && row.sourceDir !== projectDir && (await isGitRepo(projectDir))
+    const dir = fromEnvironment ? projectDir : row.sourceDir
+    if (!row.patch) {
+      const staged = await commitStaged(row.sourceDir, row.title, authorName)
+      return 'error' in staged ? staged : { ...staged, dir, path: null }
+    }
+    const line = decisionLine({ verb: 'Approved & committed', what: row.title, by: approver })
+    const result = await commitPatch(dir, row.patch, `${row.title}${trailer}`, authorName, {
+      applyToWorkingTree: fromEnvironment,
+      files: [{ path: DECISIONS_FILE, content: appendDecision(dir, line) }]
+    })
+    return 'error' in result ? result : { ...result, dir, path: null }
+  }
+
+  const dir = await recordDirForChannel(ctx.db, row.channelId)
+  const path = docPath(row.folder, row.title)
+  const line = decisionLine({ verb: 'Approved', what: row.title, version: row.version, by: approver, ref: path })
+  const summary = row.content
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith('#')) ?? ''
+  const message = `docs: ${row.title} (v${row.version})${summary ? `\n\n${summary.slice(0, 300)}` : ''}${trailer}`
+  const result = await commitFiles(
+    dir,
+    [
+      { path, content: docFileContent(row.title, row.content) },
+      { path: DECISIONS_FILE, content: appendDecision(dir, line) }
+    ],
+    message,
+    authorName
+  )
+  return 'error' in result ? result : { ...result, dir, path }
 }
 
 /**
@@ -702,10 +789,32 @@ export async function updateCommittedDoc(
     createdAt: now,
     updatedAt: now
   }
+  // A committed doc is a file in the repo: its progress update is a commit
+  // too, authored by the agent, so the record never drifts from the file.
+  if (latest.status === 'committed') {
+    const agent = await getAgent(ctx.db, input.agentId)
+    const committed = await commitDocFile(ctx, row, `docs: update ${row.title} (v${row.version})`, agent?.name ?? 'OpenCrew agent')
+    if ('error' in committed) return { error: `could not commit the update: ${committed.error}` }
+    row.path = committed.path
+    row.sha = committed.sha
+  }
   await ctx.db.insert(artifacts).values(row)
   const artifact = toArtifact(row)
   ctx.hub.broadcast({ type: 'artifact_state', artifact })
   return { artifact }
+}
+
+/** Commit a doc's file (no decision line — this is content, not a decision). */
+async function commitDocFile(
+  ctx: AppContext,
+  row: ArtifactRow,
+  message: string,
+  authorName: string
+): Promise<{ sha: string; path: string } | { error: string }> {
+  const dir = await recordDirForChannel(ctx.db, row.channelId)
+  const path = row.path ?? docPath(row.folder, row.title)
+  const result = await commitFiles(dir, [{ path, content: docFileContent(row.title, row.content) }], message, authorName)
+  return 'error' in result ? result : { sha: result.sha, path }
 }
 
 /**
@@ -743,6 +852,14 @@ export async function humanEditDoc(
     version: siblings.reduce((max, r) => Math.max(max, r.version), 0) + 1,
     createdAt: now,
     updatedAt: now
+  }
+  // Editing a committed doc edits the file: the human's own commit.
+  if (current.status === 'committed' && current.kind !== 'change') {
+    const by = current.committedBy ? await userName(ctx.db, current.committedBy) : 'the owner'
+    const committed = await commitDocFile(ctx, row, `docs: edit ${row.title} (v${row.version})`, by)
+    if ('error' in committed) return null
+    row.path = committed.path
+    row.sha = committed.sha
   }
   await ctx.db.insert(artifacts).values(row)
   const artifact = toArtifact(row)
@@ -804,6 +921,8 @@ export async function archiveReplyToDoc(
     committedBy: null,
     sourceDir: null,
     patch: null,
+    path: null,
+    sha: null,
     createdAt: now,
     updatedAt: now
   }
@@ -825,8 +944,16 @@ export async function archiveReplyToDoc(
   return { artifact, pointerText }
 }
 
-/** Human rejection: the proposal is dropped (agent can re-propose a revision). */
-export async function discardPlan(ctx: AppContext, artifactId: string): Promise<Artifact | null> {
+/**
+ * Human rejection: the proposal is dropped (agent can re-propose a revision).
+ * The repo never sees the proposal — only the decision, one line in
+ * decisions.md, so "we said no to this" is part of the record.
+ */
+export async function discardPlan(
+  ctx: AppContext,
+  artifactId: string,
+  userId?: string
+): Promise<Artifact | null> {
   const [row] = await ctx.db.select().from(artifacts).where(eq(artifacts.id, artifactId)).limit(1)
   if (!row || (row.status !== 'proposed' && row.status !== 'review')) return null
   const now = Date.now()
@@ -836,6 +963,10 @@ export async function discardPlan(ctx: AppContext, artifactId: string): Promise<
     .where(eq(artifacts.id, artifactId))
   const artifact: Artifact = { ...toArtifact(row), status: 'discarded', updatedAt: now }
   ctx.hub.broadcast({ type: 'artifact_state', artifact })
+  if (userId) {
+    const dir = await recordDirForChannel(ctx.db, row.channelId)
+    await commitDecision(dir, { verb: 'Rejected', what: row.title, version: row.version, by: await userName(ctx.db, userId) })
+  }
   return artifact
 }
 
@@ -935,11 +1066,18 @@ export async function requestChanges(
       `${mention}📝 Requested changes on **${row.title}** (v${row.version}): ${feedback}\n\n` +
       `Please revise and re-propose the doc with the same title (it will become v${row.version + 1}).`
   })
+  const dir = await recordDirForChannel(ctx.db, row.channelId)
+  await commitDecision(dir, {
+    verb: 'Sent back',
+    what: row.title,
+    version: row.version,
+    by: await userName(ctx.db, userId),
+    note: feedback
+  })
   return { ok: true }
 }
 
 const QUOTE_PREVIEW_LIMIT = 100
-const WORKSPACE_DOC_LIST_LIMIT = 30
 
 /**
  * Resolve a doc by title for read_doc: this conversation's latest version
@@ -967,26 +1105,27 @@ export async function findDocByTitle(
   return committed ? toArtifact(committed) : null
 }
 
-/** Latest committed doc per (conversation, title), workspace-wide, newest first. */
-async function listCommittedWorkspaceDocs(db: DB): Promise<ArtifactRow[]> {
-  const rows = await db.select().from(artifacts).orderBy(desc(artifacts.version))
-  const latest = new Map<string, ArtifactRow>()
-  for (const row of rows) {
-    if (row.status !== 'committed') continue
-    const key = `${row.conversationRootId}::${row.title}`
-    if (!latest.has(key)) latest.set(key, row)
-  }
-  return [...latest.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+/**
+ * A committed doc's text is the FILE in the repo (the record); the row's
+ * content is the copy that was approved. Proposals have no file yet.
+ */
+export async function docText(db: DB, artifact: Artifact): Promise<string> {
+  if (artifact.status !== 'committed' || !artifact.path) return artifact.content
+  const dir = await recordDirForChannel(db, artifact.channelId)
+  return readRecordFile(dir, artifact.path) ?? artifact.content
 }
 
 /**
  * Prompt section for a run: the conversation's docs (latest non-discarded
  * version per title) plus their review comments, so revisions actually
- * address the feedback. Empty string when the conversation has no docs.
+ * address the feedback; then the record — what is committed in the repo.
+ * Empty string when there is nothing to say.
  */
 export async function buildDocsPromptSection(
   db: DB,
-  conversationRootId: string
+  conversationRootId: string,
+  recordDir: string | null = null,
+  opts: { commits?: boolean } = {}
 ): Promise<string> {
   const rows = await db
     .select()
@@ -1019,21 +1158,8 @@ export async function buildDocsPromptSection(
     )
   }
 
-  // Committed docs are workspace truth: every agent sees the index and reads
-  // what's relevant, so decisions get made once instead of re-litigated.
-  const workspaceDocs = (await listCommittedWorkspaceDocs(db)).filter(
-    (row) => row.conversationRootId !== conversationRootId
-  )
-  if (workspaceDocs.length > 0) {
-    const docLines = workspaceDocs
-      .slice(0, WORKSPACE_DOC_LIST_LIMIT)
-      .map((row) => `- ${row.folder}/"${row.title}" (v${row.version})`)
-    sections.push(
-      `Committed workspace docs (the source of truth — use the read_doc tool to read any of ` +
-        `these BEFORE deciding or answering on their topic, instead of guessing or ` +
-        `re-litigating):\n${docLines.join('\n')}`
-    )
-  }
-
-  return sections.length > 0 ? `\n\n${sections.join('\n\n')}` : ''
+  // The record is the source of truth: every agent sees what is committed
+  // and reads what's relevant, so decisions get made once, not re-litigated.
+  const record = await buildRecordSection(recordDir, opts)
+  return `${sections.length > 0 ? `\n\n${sections.join('\n\n')}` : ''}${record}`
 }
