@@ -25,6 +25,12 @@ Something else, often an older OpenCrew, holds the port. The installer picks the
 ports; when starting by hand: `lsof -nP -iTCP:5173 -sTCP:LISTEN` to find it, or set
 `OPENCREW_WEB_PORT` and `PORT`.
 
+**"Another OpenCrew server (pid …) is already using …/opencrew.pgdata".**
+OpenCrew is already running on this machine, usually from an earlier install line or
+`pnpm start` in another terminal. Use that one (the message prints its address) or stop
+it first. The embedded database is single-process: a second server on the same data
+directory would corrupt it, so the new one refuses to start.
+
 **The Captain replied, but the worker never proposed anything.**
 Click **terminal** on the worker's message. The usual causes are a Claude rate limit
 (the server log prints `⏳ ... rate limit`), a dev server the worker could not start on its

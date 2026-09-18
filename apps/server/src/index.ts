@@ -4,6 +4,7 @@ import fastifyWebsocket from '@fastify/websocket'
 import { sql } from 'drizzle-orm'
 import { env } from './env'
 import { createDb } from './db'
+import { DataDirLockedError } from './db/lock'
 import { seedIfEmpty, SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD } from './db/seed'
 import { Hub } from './hub'
 import { FabricRuntime } from './fabric/runtime'
@@ -186,6 +187,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  if (err instanceof DataDirLockedError) {
+    console.error(`\n❌ ${err.message}\n   Already running? Open it: http://localhost:${env.webPort}\n`)
+    process.exit(1)
+  }
   console.error(err)
   process.exit(1)
 })

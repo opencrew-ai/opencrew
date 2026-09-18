@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { acquireDataDirLock } from './lock'
 import * as schema from './schema'
 
 // ---------------------------------------------------------------------------
@@ -428,6 +429,8 @@ export async function createDb(url: string): Promise<{ db: DB; close: () => Prom
     const { drizzle } = await import('drizzle-orm/pglite')
     const dataDir = url === ':memory:' ? undefined : url
     if (dataDir) mkdirSync(dirname(dataDir), { recursive: true })
+    // Single-process engine: refuse to open a dir another server holds.
+    const releaseLock = dataDir ? acquireDataDirLock(dataDir) : () => {}
     const client = new PGlite(dataDir)
     await client.exec(DDL)
     await client.exec(MIGRATIONS)
@@ -436,6 +439,7 @@ export async function createDb(url: string): Promise<{ db: DB; close: () => Prom
       db,
       close: async () => {
         await client.close()
+        releaseLock()
       }
     }
   }
