@@ -176,7 +176,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
       if (admin) {
         const sessionId = await createSession(ctx.db, admin.id)
         reply.setCookie(SESSION_COOKIE, sessionId, cookieOpts())
-        return ok(publicUser(admin))
+        return ok({ ...publicUser(admin), viaRelay: false, pro: null })
       }
     }
 

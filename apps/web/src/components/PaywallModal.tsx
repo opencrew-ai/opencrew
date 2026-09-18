@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useWorkspace } from '../lib/workspace'
+import { useAttention } from '../lib/useAttention'
 
 interface PaywallDetail {
   error?: string
@@ -15,7 +15,7 @@ interface PaywallDetail {
  * the laptop stays free; this sells only the part the laptop cannot do.
  */
 export function PaywallModal() {
-  const { attention } = useWorkspace()
+  const attention = useAttention()
   const [detail, setDetail] = useState<PaywallDetail | null>(null)
 
   useEffect(() => {
