@@ -276,10 +276,12 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
         <Link
           to="/settings"
           onClick={onClose}
-          className="ml-auto text-zinc-500 hover:text-white"
-          title="Workspace settings"
+          className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-white"
+          title="Settings"
+          aria-label="Settings"
         >
           <GearIcon />
+          <span>Settings</span>
         </Link>
         {/* Close button — mobile only */}
         {onClose && (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Message } from '@opencrew/shared'
 import { api } from './api'
 import { wsClient } from './ws'
@@ -24,8 +24,10 @@ export function useMessages(channelId: string | undefined, thread: string | null
       .finally(() => setLoading(false))
   }, [channelId, thread])
 
+  const countedReplies = useRef(new Set<string>())
   useEffect(() => {
     if (!channelId) return
+    countedReplies.current = new Set()
     const inScope = (m: Message) => {
       if (m.channelId !== channelId) return false
       return thread ? m.threadRootId === thread || m.id === thread : m.threadRootId === null
@@ -38,8 +40,12 @@ export function useMessages(channelId: string | undefined, thread: string | null
             prev.some((x) => x.id === m.id) ? prev : [...prev, { ...m, replyCount: 0 }]
           )
         }
-        // A reply landed in some thread — bump the root's reply count.
-        if (!thread && m.channelId === channelId && m.threadRootId) {
+        // A reply landed in some thread — bump the root's reply count, once
+        // per reply: the same message can be announced more than once
+        // (reconnects, streaming placeholders), and a double bump shows
+        // "2 replies" over a single answer.
+        if (!thread && m.channelId === channelId && m.threadRootId && !countedReplies.current.has(m.id)) {
+          countedReplies.current.add(m.id)
           setMessages((prev) =>
             prev.map((x) =>
               x.id === m.threadRootId ? { ...x, replyCount: (x.replyCount ?? 0) + 1 } : x
