@@ -41,6 +41,22 @@ if [ "${1:-}" = "--uninstall" ]; then
   exit 0
 fi
 
+# ── already running? Re-running the install line means "update and restart",
+#    so stop the copy running from this directory first. Otherwise a second
+#    server would open the same data directory (it refuses) and land on other
+#    ports. Only processes from $OPENCREW_DIR/apps or node_modules match — not
+#    editors, terminals or Claude Code sessions that merely mention the path.
+running_pids() { pgrep -f "${OPENCREW_DIR}/(apps|node_modules)/" 2>/dev/null || true; }
+if [ -n "$(running_pids)" ]; then
+  echo "▶ Stopping the OpenCrew already running from ${OPENCREW_DIR} — it restarts with the update."
+  kill $(running_pids) 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -z "$(running_pids)" ] && break
+    sleep 0.5
+  done
+  kill -9 $(running_pids) 2>/dev/null || true
+fi
+
 # ── ports: the first free ones, so a laptop already running things on 3001 or
 #    5173 still gets a working install; pin with PORT / OPENCREW_WEB_PORT. ─────
 port_free() { ! (command -v lsof >/dev/null && lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1); }
