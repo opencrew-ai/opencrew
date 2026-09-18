@@ -157,7 +157,8 @@ if [ -d "$OPENCREW_DIR/.git" ]; then
   if [ "$OPENCREW_NO_UPDATE" = "1" ]; then
     success "Using $OPENCREW_DIR (update skipped)"
   else
-    info "Updating $OPENCREW_DIR…"
+    # Braces matter: macOS bash 3.2 reads "$OPENCREW_DIR…" as one variable name.
+    info "Updating ${OPENCREW_DIR}…"
     if git -C "$OPENCREW_DIR" pull --ff-only --quiet; then
       success "Up to date"
     else
