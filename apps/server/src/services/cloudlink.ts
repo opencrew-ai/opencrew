@@ -3,7 +3,7 @@ import WebSocket from 'ws'
 import { nanoid } from 'nanoid'
 import { eq, and } from 'drizzle-orm'
 import type { AppContext } from '../context'
-import { users } from '../db/schema'
+import { attentionDismissals, messages, reactions, sessions, threadReads, users } from '../db/schema'
 import { env } from '../env'
 import { RELAY_FORWARDED_FOR } from '../auth/localauth'
 import { clearSetting, getRawSetting, setRawSetting } from './settings'
@@ -354,6 +354,19 @@ export async function verifyRelayIdentity(
   }
 }
 
+/** Marker password hash of a user who only ever signs in through the relay. */
+const RELAY_PASSWORD = 'relay$none'
+
+/** Move what a duplicate user authored onto the real one, then drop it. */
+async function foldUserInto(ctx: AppContext, fromId: string, intoId: string): Promise<void> {
+  await ctx.db.update(messages).set({ authorId: intoId }).where(eq(messages.authorId, fromId))
+  await ctx.db.delete(reactions).where(eq(reactions.userId, fromId))
+  await ctx.db.delete(threadReads).where(eq(threadReads.userId, fromId))
+  await ctx.db.delete(attentionDismissals).where(eq(attentionDismissals.userId, fromId))
+  await ctx.db.delete(sessions).where(eq(sessions.userId, fromId))
+  await ctx.db.delete(users).where(eq(users.id, fromId))
+}
+
 /** Map a relay identity onto a local user (created on first contact). */
 export async function resolveRelayUser(ctx: AppContext, identity: RelayIdentity) {
   const [existing] = await ctx.db
@@ -361,28 +374,30 @@ export async function resolveRelayUser(ctx: AppContext, identity: RelayIdentity)
     .from(users)
     .where(eq(users.email, identity.email))
     .limit(1)
-  if (existing) return existing
   // The crew's owner arriving through opencrew.run is the same person as
   // the local admin — one account, not a second "human" in the sidebar.
   // The seeded admin still has its placeholder email; take the real one.
-  if (identity.owner) {
+  // A duplicate made before this rule existed is folded into the admin too.
+  if (identity.owner && (!existing || existing.passwordHash === RELAY_PASSWORD)) {
     const [seeded] = await ctx.db
       .select()
       .from(users)
       .where(and(eq(users.role, 'admin'), eq(users.email, SEED_ADMIN_EMAIL)))
       .limit(1)
     if (seeded) {
+      if (existing) await foldUserInto(ctx, existing.id, seeded.id)
       await ctx.db.update(users).set({ email: identity.email }).where(eq(users.id, seeded.id))
       return { ...seeded, email: identity.email }
     }
   }
+  if (existing) return existing
   const user = {
     id: nanoid(),
     workspaceSlug: 'default' as const,
     name: identity.name,
     email: identity.email,
     // Cloud-linked users authenticate via the relay, never with a password.
-    passwordHash: 'relay$none',
+    passwordHash: RELAY_PASSWORD,
     role: identity.owner ? ('admin' as const) : ('member' as const),
     createdAt: Date.now()
   }
