@@ -1,12 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import WebSocket from 'ws'
 import { nanoid } from 'nanoid'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import type { AppContext } from '../context'
 import { users } from '../db/schema'
 import { env } from '../env'
 import { RELAY_FORWARDED_FOR } from '../auth/localauth'
 import { clearSetting, getRawSetting, setRawSetting } from './settings'
+import { installId } from './telemetry'
+import { SEED_ADMIN_EMAIL } from '../db/seed'
 
 /**
  * Cloud Link — connects this OpenCrew instance to an opencrew.run profile.
@@ -88,7 +90,8 @@ export async function startLinking(
   const res = await fetch(`${relayUrl}/connector-api/link/start`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ instanceName })
+    // The install id makes re-linking the same crew, not a new entry.
+    body: JSON.stringify({ instanceName, installId: await installId(ctx.db) })
   })
   if (!res.ok) throw new Error(`relay rejected link start (${res.status})`)
   const { code, pollSecret, approveUrl } = (await res.json()) as {
@@ -359,6 +362,20 @@ export async function resolveRelayUser(ctx: AppContext, identity: RelayIdentity)
     .where(eq(users.email, identity.email))
     .limit(1)
   if (existing) return existing
+  // The crew's owner arriving through opencrew.run is the same person as
+  // the local admin — one account, not a second "human" in the sidebar.
+  // The seeded admin still has its placeholder email; take the real one.
+  if (identity.owner) {
+    const [seeded] = await ctx.db
+      .select()
+      .from(users)
+      .where(and(eq(users.role, 'admin'), eq(users.email, SEED_ADMIN_EMAIL)))
+      .limit(1)
+    if (seeded) {
+      await ctx.db.update(users).set({ email: identity.email }).where(eq(users.id, seeded.id))
+      return { ...seeded, email: identity.email }
+    }
+  }
   const user = {
     id: nanoid(),
     workspaceSlug: 'default' as const,

@@ -223,7 +223,8 @@ export function MessageInput({ placeholder, onSend }: MessageInputProps) {
         </button>
       </div>
 
-      <p className="mt-1 text-xs text-zinc-600">
+      {/* Keyboard hints mean nothing on a phone. */}
+      <p className="mt-1 hidden text-xs text-zinc-600 sm:block">
         Enter to send · Shift+Enter for newline · @mention · paste or drag images
       </p>
     </div>

@@ -269,14 +269,14 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const aside = (
     <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800/70 bg-zinc-950">
       <div className="flex items-center gap-2.5 border-b border-zinc-800/70 px-4 py-3">
-        <Logo className="h-7 w-7" />
-        <span className="font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+        <Logo className="h-7 w-7 shrink-0" />
+        <span className="min-w-0 truncate font-bold" style={{ fontFamily: 'var(--font-display)' }}>
           OpenCrew HQ
         </span>
         <Link
           to="/settings"
           onClick={onClose}
-          className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-white"
+          className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-white"
           title="Settings"
           aria-label="Settings"
         >
@@ -583,6 +583,18 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
           {todayStats.runs} run{todayStats.runs === 1 ? '' : 's'} today
           {todayStats.costUsd > 0 && ` · ≈$${todayStats.costUsd.toFixed(2)}`}
         </div>
+      )}
+
+      {/* Through opencrew.run: the way back to "Your crews" lives here, in
+          the sidebar, instead of floating over it. */}
+      {me.viaRelay && (
+        <a
+          href="/portal/workspaces"
+          className="flex items-center gap-2 border-t border-zinc-800/60 px-4 py-2 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-white"
+          title="Your crews on opencrew.run"
+        >
+          ⇄ Switch crew
+        </a>
       )}
 
       <div className="border-t border-zinc-800 px-4 py-3 text-sm">
