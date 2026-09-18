@@ -48,6 +48,14 @@ The `Chrome` tool drives your own browser through the
 drag the tab you want the agent to see into the Claude tab group. The `Browser` tool needs
 no extension; it launches its own Chrome with a persistent profile.
 
+**opencrew.run says the crew is offline.**
+The crew is the machine OpenCrew runs on. It shows offline when OpenCrew isn't running
+there (`cd ~/opencrew && pnpm start`), when a fresh install hasn't been linked yet (⚙
+Settings → Link to opencrew.run), or when the laptop is asleep. Keep it plugged in and
+stop it sleeping: `caffeinate -i` in a terminal while OpenCrew runs, or System Settings →
+Battery → Options → prevent automatic sleeping on power adapter. A closed lid still sleeps
+it.
+
 **Remove everything.**
 
 ```bash

@@ -123,8 +123,11 @@ no DMs or push notifications, Linux and macOS only. The rest of the rough edges 
 
 Agents and repos stay on your machine. In **⚙ Settings**, link the crew to
 [opencrew.run](https://opencrew.run) and open the same app from your phone or any device;
-sign in once. Prefer your own front door? A Cloudflare tunnel works too
-(`OPENCREW_TUNNEL_TOKEN` and `OPENCREW_TUNNEL_URL`, see [docs/GUIDE.md](docs/GUIDE.md)).
+sign in once. The crew is your laptop, so it has to stay awake and running for the phone
+to work: keep it plugged in with sleep off (on a Mac, `caffeinate -i` in a terminal, or
+Battery → Options → prevent sleeping on power). Prefer your own front door? A Cloudflare
+tunnel works too (`OPENCREW_TUNNEL_TOKEN` and `OPENCREW_TUNNEL_URL`, see
+[docs/GUIDE.md](docs/GUIDE.md)).
 
 ## Pricing
 
