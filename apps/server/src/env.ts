@@ -57,6 +57,8 @@ export const env = {
    * (services/record.ts) — docs and decisions are committed files.
    */
   reposDir: process.env.OPENCREW_REPOS ?? resolve(process.cwd(), '../../data/repos'),
+  /** Which folders this machine has used as projects; outlives the database. */
+  projectsIndex: process.env.OPENCREW_PROJECTS_INDEX ?? resolve(process.cwd(), '../../data/projects.json'),
   /** First port handed to an environment; each gets the next free one. */
   envPortBase: Number(process.env.OPENCREW_ENV_PORT_BASE ?? 4300),
   /** Local hour (0–23) the Chief of Staff posts the morning brief in #hq. */

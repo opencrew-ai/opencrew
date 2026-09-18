@@ -1,8 +1,75 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { Project } from '@opencrew/shared'
 import { api } from '../lib/api'
 import { useWorkspace } from '../lib/workspace'
 import { DirPicker } from './DirPicker'
+
+interface ResumableProject {
+  name: string
+  slug: string
+  workingDir: string
+  lastUsedAt: number
+}
+
+/**
+ * Projects this machine used before the database was reset (reinstall,
+ * corruption). Their record is still in the repo; one click brings the
+ * project back around it.
+ */
+function ResumeList({ onCreated }: { onCreated: (project: Project) => void }) {
+  const [found, setFound] = useState<ResumableProject[]>([])
+  const [busyDir, setBusyDir] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api
+      .get<{ projects: ResumableProject[] }>('/api/projects/resumable')
+      .then((r) => setFound(r.projects))
+      .catch(() => setFound([]))
+  }, [])
+
+  if (found.length === 0) return null
+
+  const resume = async (p: ResumableProject) => {
+    setBusyDir(p.workingDir)
+    setError(null)
+    try {
+      onCreated(await api.post<Project>('/api/projects', { name: p.name, workingDir: p.workingDir }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not resume')
+      setBusyDir(null)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+      <h3 className="font-semibold text-zinc-100">Pick up where you left off</h3>
+      <p className="mt-1 text-xs text-zinc-500">
+        Projects this machine used before. Everything approved is still in the repo; the crew reads
+        it again. Chat history is not kept.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {found.map((p) => (
+          <li key={p.workingDir} className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-zinc-200">{p.name}</div>
+              <div className="truncate font-mono text-[11px] text-zinc-500">{p.workingDir}</div>
+            </div>
+            <button
+              type="button"
+              className="btn-primary shrink-0"
+              disabled={busyDir !== null}
+              onClick={() => void resume(p)}
+            >
+              {busyDir === p.workingDir ? 'Opening…' : 'Continue'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+    </div>
+  )
+}
 
 interface NewProjectFormProps {
   onCreated: (project: Project) => void
@@ -57,6 +124,8 @@ export function NewProjectForm({ onCreated, onCancel, firstRun = false }: NewPro
             : 'One product, its own rooms and crew. You get #general, #customers and a Captain who answers there.'}
         </p>
       </div>
+
+      <ResumeList onCreated={onCreated} />
 
       <div className="flex gap-3">
         <div className="flex-1">

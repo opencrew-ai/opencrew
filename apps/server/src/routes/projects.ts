@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { AppContext } from '../context'
 import { channels } from '../db/schema'
 import { postMessage } from '../services/post'
+import { listResumableProjects } from '../services/resume'
 import {
   createProject,
   getProject,
@@ -46,6 +47,12 @@ function repoSetupError(dir: string, err: unknown): string {
 export function registerProjectRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get('/api/projects', { preHandler: authGuard(ctx) }, async () => {
     return ok({ projects: await listProjects(ctx.db), colors: PROJECT_COLORS })
+  })
+
+  // Projects this machine used before the database was reset — offered
+  // back on onboarding. Creating one is a normal POST with its folder.
+  app.get('/api/projects/resumable', { preHandler: authGuard(ctx) }, async () => {
+    return ok({ projects: await listResumableProjects(ctx.db) })
   })
 
   app.post('/api/projects', { preHandler: adminGuard(ctx) }, async (req, reply) => {

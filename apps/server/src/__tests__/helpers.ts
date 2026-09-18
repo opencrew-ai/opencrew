@@ -15,6 +15,7 @@ import { env } from '../env'
 // Every project has a repo, and HQ too: tests keep those under a temp
 // folder instead of the install's data/repos.
 ;(env as { reposDir: string }).reposDir = mkdtempSync(join(tmpdir(), 'oc-repos-'))
+;(env as { projectsIndex: string }).projectsIndex = join(env.reposDir, '..', `oc-projects-${process.pid}-${Date.now()}.json`)
 
 export interface TestCtx extends AppContext {
   broadcasts: ServerEvent[]

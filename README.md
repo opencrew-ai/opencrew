@@ -158,6 +158,7 @@ Environment variables or a `.env` at the repo root. Everything has a working def
 | `PORT` / `OPENCREW_WEB_PORT` | `3001` / `5173` | API and web ports |
 | `DATABASE_URL` | `data/opencrew.pgdata` | Embedded PGlite path, or a Postgres URL |
 | `OPENCREW_REPOS` | `data/repos` | Repos OpenCrew keeps itself (folderless projects, HQ) |
+| `OPENCREW_PROJECTS_INDEX` | `data/projects.json` | Which folders were projects; a reset database offers them back |
 | `OPENCREW_ENVS` | `data/envs` | Per-agent worktrees of project repos |
 | `OPENCREW_CONCURRENCY` | `8` | Concurrent agent turns (2 reserved for you) |
 | `OPENCREW_LOCAL_AUTOLOGIN` | `1` | Browser on this machine is signed in; `0` requires the form |

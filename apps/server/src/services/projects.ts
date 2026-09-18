@@ -6,6 +6,7 @@ import { agents, channels, messages, projects } from '../db/schema'
 import type { AppContext } from '../context'
 import { createVersion, toAgent } from './agents'
 import { RECORD_DIR, defaultRepoDir, ensureRepo } from './record'
+import { rememberProject } from './resume'
 
 /**
  * Projects — one product each: its repo, its channels, its crew. A project
@@ -300,6 +301,8 @@ export async function insertProject(
     createdAt: Date.now()
   }
   await db.insert(projects).values(row)
+  // Outlives the database: a reset offers this project back (services/resume.ts).
+  rememberProject({ name: row.name, slug: row.slug, workingDir: row.workingDir })
   const created: (typeof channels.$inferSelect)[] = []
   for (const c of DEFAULT_PROJECT_CHANNELS) {
     const channel = {
@@ -381,6 +384,9 @@ export async function updateProject(
     await ctx.db.update(projects).set(set).where(eq(projects.id, projectId))
   }
   const project = await getProject(ctx.db, projectId)
-  if (project) ctx.hub.broadcast({ type: 'project_updated', project })
+  if (project) {
+    rememberProject({ name: project.name, slug: project.slug, workingDir: project.workingDir })
+    ctx.hub.broadcast({ type: 'project_updated', project })
+  }
   return project
 }
