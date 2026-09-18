@@ -2,12 +2,13 @@
   <img src="docs/logo.svg" width="84" alt="OpenCrew" />
 </p>
 <h1 align="center">OpenCrew</h1>
-<p align="center"><b>The HQ where AI agents work as a team — and you have the final say.</b></p>
+<p align="center"><b>Give your Claude subscription a team.</b></p>
 
 <p align="center">
 Turn one <a href="https://claude.com/claude-code">Claude Code</a> subscription into a crew of
 AI agents that research, plan, and ship code <b>in parallel</b> — a Slack-style HQ on your own
-laptop, where every risky action stops at an approval card with your name on it.
+laptop. Nothing ships until you approve, and every approval is a commit in your repo: the
+docs, the decisions, the review behind each one. <b>Your repo is the memory.</b>
 </p>
 
 <p align="center">
@@ -54,6 +55,45 @@ office where nobody sleeps.
   conversations in parallel, parks approval waits at zero cost, and redelivers crashed or
   stalled turns automatically. Restart the server mid-flight; the crew picks up where it
   left off.
+- **Your repo is the memory** — no vendor database of "agent memory". What the crew
+  proposes and you approve becomes files and commits in your repo, readable with plain git
+  on a machine that has never heard of OpenCrew. Leave any time; the record stays.
+
+## Your repo is the memory
+
+Every project has a repo (give one, or OpenCrew keeps one for it). Inside it, one folder:
+
+```
+.opencrew/
+  plans/…, notes/…     docs the crew proposed and you approved, one file each
+  decisions.md         one line per approval, rejection, or change request
+```
+
+Approving a doc commits its file and its decision line together. Approving a code change
+commits the reviewed patch with its decision line. Rejecting or sending something back
+appends a line and touches nothing else. The review thread — your comments, who approved,
+which revision — rides along as a git note. This is what a real run looks like afterwards,
+in a plain terminal:
+
+```
+$ git log --notes=opencrew -1
+b05ebb2 docs: Shop Launch Checklist (v1)
+Notes (opencrew):
+    OpenCrew review · "Shop Launch Checklist" v1 (plan)
+    Proposed by agent Captain; approved by anup-singhai.
+    Review comments:
+    - anup-singhai: Good. Keep step three about the announcement.
+
+$ cat .opencrew/decisions.md
+- 2026-09-18 · Approved "Shop Launch Checklist" v1 · anup-singhai · .opencrew/plans/shop-launch-checklist.md
+```
+
+Agents read the record the same way you do: their prompt lists the docs by path and the
+latest decisions, and `read_doc` returns the file. Push the repo and the memory goes with it
+(`git push origin main refs/notes/opencrew`). Clone it into a fresh install and the crew
+picks up the history. Ask the project's Captain a question — *"what did we decide about the
+launch, and where is it written down?"* — and the answer cites `path@sha`, which you can check
+yourself.
 
 ## How the crew works
 
@@ -192,7 +232,8 @@ already done. To remove it: `curl -fsSL https://opencrew.run/install | bash -s -
    repo and reports back in the thread.
 3. **Needs You** in the sidebar fills up as work comes back: docs and code changes reviewed by
    the built-in 📚 Librarian and 🔍 CodeReviewer, waiting for your one-click decision. Your
-   checkout changes only when you approve.
+   checkout changes only when you approve — and every approval is a commit, with the doc or
+   patch, one line in `.opencrew/decisions.md`, and the review as a git note.
 
 Add your other products with **New project**. **HQ** (`#hq`) is the one room across all of
 them: ask there and the 🗂️ Chief of Staff routes it. **Today** shows every project at a glance.
@@ -316,7 +357,8 @@ generates `SESSION_SECRET` automatically on first boot — you don't need to set
 | `PORT` | `3001` | Port the API server listens on |
 | `SESSION_SECRET` | *(auto-generated)* | Secret used to sign session cookies |
 | `DATABASE_URL` | `data/opencrew.pgdata` | Postgres URL for a real cluster, or a path for embedded PGlite (zero setup) |
-| `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent scratch files (projects without a repo) |
+| `OPENCREW_REPOS` | `data/repos` | Repos OpenCrew keeps itself: projects started without a folder, and HQ's own record |
+| `OPENCREW_WORKSPACES` | `data/workspaces` | Directory for per-agent scratch files (agents without code tools) |
 | `OPENCREW_ENVS` | `data/envs` | Per-agent git worktrees of project repos (each agent's private checkout) |
 | `OPENCREW_ENV_PORT_BASE` | `4300` | First port handed to an agent environment; each gets the next free one |
 | `OPENCREW_BRIEF_HOUR` | `8` | Local hour the Chief of Staff posts the morning brief in `#hq` |
