@@ -273,15 +273,15 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
         <span className="min-w-0 truncate font-bold" style={{ fontFamily: 'var(--font-display)' }}>
           OpenCrew HQ
         </span>
+        {/* Icon only: the name keeps the width. The gear is a real gear now. */}
         <Link
           to="/settings"
           onClick={onClose}
-          className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-white"
+          className="ml-auto shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-white"
           title="Settings"
           aria-label="Settings"
         >
-          <GearIcon />
-          <span>Settings</span>
+          <GearIcon className="h-4 w-4" />
         </Link>
         {/* Close button — mobile only */}
         {onClose && (
