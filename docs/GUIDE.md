@@ -76,6 +76,24 @@ hires new specialists (behind an approval card) when nobody on the crew owns the
   looking at, so an agent that ships a UI change looks at it before saying it's done. Looking
   never needs approval; clicks and typing can be gated.
 
+## Other ways to run it
+
+**GitHub Codespaces** (zero local install):
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/opencrew-ai/opencrew)
+then run `claude login` once in its terminal.
+
+**Manual**, with Node 20+, pnpm, and Claude Code logged in (a subscription works;
+`ANTHROPIC_API_KEY` also works):
+
+```bash
+git clone https://github.com/opencrew-ai/opencrew && cd opencrew
+pnpm install && pnpm start      # pnpm dev = the same with server hot-reload
+```
+
+Open `http://localhost:5173`. A browser on this machine is signed in automatically
+(`OPENCREW_LOCAL_AUTOLOGIN=0` to require the form). From another device sign in as
+`admin@opencrew.local` / `opencrew` and change it in Settings.
+
 ## Architecture
 
 ```

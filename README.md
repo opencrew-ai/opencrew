@@ -5,61 +5,76 @@
 <p align="center"><b>Give your Claude subscription a team.</b></p>
 
 <p align="center">
-One <a href="https://claude.com/claude-code">Claude Code</a> subscription becomes a crew of
-agents that plan, build, and check their work in parallel, in a Slack-style HQ on your own
-laptop. Nothing ships until you approve, and every approval is a commit in your repo.
+OpenCrew turns your <a href="https://claude.com/claude-code">Claude Code</a> subscription into a
+local, reviewable team of AI agents. One ask becomes a crew workflow you can watch: a Captain
+delegates, workers build in their own checkouts, reviewers vet, you approve. Every approval
+is a commit in your repo.
 </p>
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
-  <a href="#your-repo-is-the-memory">Your repo is the memory</a> ·
+  <a href="#ten-minutes-one-outcome">Ten minutes</a> ·
+  <a href="#why-not-just-more-terminals">Why not more terminals?</a> ·
   <a href="docs/GUIDE.md">In depth</a> ·
-  <a href="DESIGN.md">Design</a> ·
   <a href="https://discord.gg/DSpbp4Fn7e">Discord</a> ·
   <a href="https://opencrew.run">opencrew.run</a>
 </p>
 
-![OpenCrew — a project room: the ask, the doc the Captain proposed, committed to .opencrew/ in the repo, and the Librarian's review](docs/demo.png)
+![OpenCrew in 25 seconds: the ask, the Captain spawning a worker, the worker checking its change in your real Chrome, the review, one click to approve, and the commit](docs/demo.gif)
+
+**Who it's for.** Developers already on Claude Code who want parallel work without babysitting
+three terminals. **What changes.** One message becomes a visible workflow with names, threads,
+diffs, and a decision. **Why it's safe.** It runs on your laptop on the plan you already have,
+no API key. Gated tools stop at an approval card. Agents never `git commit`. What you approve
+lands in your repo, so the record is yours, not ours.
+
+## Ten minutes, one outcome
+
+This is the run in the GIF above, typed into a project's `#general`:
+
+> Add a dark mode toggle to the Settings page. Spawn a frontend worker to build it and a qa
+> worker to verify it in Chrome before it is proposed. Keep it small.
+
+What happened, unedited: the Captain spawned `frontend-1` in its own checkout of the repo. It
+built the toggle, started the dev server on its reserved port, opened the page in the user's
+own Chrome, clicked the toggle, reloaded to confirm it persisted, and proposed the change.
+CodeReviewer read the diff and cleared it. One click on **Approve & commit** made commit
+`ca3b5df` in the repo, with the decision logged in `.opencrew/decisions.md`. Ask to approve:
+under four minutes, about $0.90 of the subscription's usage.
 
 ## Quickstart
 
-You need a Claude subscription. The script installs the rest (Node, pnpm, Claude Code),
-clones into `~/opencrew`, starts the app, and opens your browser already signed in.
+Prerequisites: macOS or Linux, a Claude subscription with the `claude` CLI logged in (the
+script installs Node 20 and pnpm if missing), and about two minutes.
 
 ```bash
 curl -fsSL https://opencrew.run/install | bash
 ```
 
-Then:
+It clones into `~/opencrew`, starts the app on the first free ports, and opens your browser
+already signed in. Then:
 
-1. **What are you building?** Name it. Point at its repo if it has one; leave it empty and
-   OpenCrew keeps a repo for it.
-2. **Just type** in the project's `#general`. Its Captain 🧭 reads every message, answers the
-   simple stuff, and spawns workers (`frontend-1`, `qa-1`, …) for the rest. Each worker gets
-   its own checkout of your repo. Click **terminal** on any reply to watch the session live.
-3. **Needs You** fills up as work comes back: docs and code changes, already reviewed by the
-   built-in 📚 Librarian and 🔍 CodeReviewer, waiting for your one-click decision.
+1. **What are you building?** Name it. Point at its repo, or leave it empty and OpenCrew keeps a
+   repo for it.
+2. **Just type** in the project's `#general`. The Captain 🧭 reads every message and spawns
+   workers (`frontend-1`, `qa-1`, …) for real work. Click **terminal** on any reply to watch.
+3. **Needs You** fills up as work comes back, already reviewed by the built-in 📚 Librarian and
+   🔍 CodeReviewer. One click approves, and the approval is a commit.
 
-Add more products with **New project**. `#hq` spans all of them; **Today** shows them on one
-screen. Re-run the install line to update. Remove with `... | bash -s -- --uninstall`.
+Something off? **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** covers the five things
+that go wrong in the first ten minutes. Re-run the install line to update; remove it with
+`… | bash -s -- --uninstall`. Codespaces and manual install are in
+[docs/GUIDE.md](docs/GUIDE.md#other-ways-to-run-it).
 
-<details>
-<summary>Other ways to run it</summary>
+## Three things people use it for
 
-**GitHub Codespaces:**
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/opencrew-ai/opencrew)
-then `claude login` once in its terminal.
-
-**Manual**, with Node 20+, pnpm, and Claude Code logged in:
-
-```bash
-git clone https://github.com/opencrew-ai/opencrew && cd opencrew
-pnpm install && pnpm start
-```
-
-Open `http://localhost:5173`. A browser on this machine is signed in automatically; from
-another device sign in as `admin@opencrew.local` / `opencrew` and change it in Settings.
-</details>
+- **Explore a codebase before a feature.** "Three attempts at the checkout refactor, pick the
+  best." Three workers, three checkouts, one CodeReviewer verdict, one diff in your inbox.
+- **Review a PR with specialists.** Security to one worker, test coverage to another, a
+  consolidated proposal from the Captain. Nothing merges until you say so.
+- **Turn a vague ask into a plan.** "What would you build first here?" A researcher digs, the
+  Captain proposes a plan doc, the Librarian checks it isn't a duplicate, you approve, and the
+  tasks land on a board the crew works top-down.
 
 ## Your repo is the memory
 
@@ -72,9 +87,7 @@ files and commits in your repo:
   decisions.md         one line per approval, rejection, or change request
 ```
 
-Approving a doc commits its file and its decision line together. Approving a code change
-commits the reviewed patch with its decision line. The review thread rides along as a git
-note. After a real run, in a plain terminal:
+The review thread rides along as a git note. After a real run, in a plain terminal:
 
 ```
 $ git log --notes=opencrew -1
@@ -90,22 +103,21 @@ Agents read the same files you do. Push the repo (`git push origin main refs/not
 and the memory goes with it. Ask a project's Captain *"what did we decide about the launch?"*
 and the answer cites `path@sha`. Leave OpenCrew any time; the record stays.
 
-## What makes it different
+## Why not just more terminals?
 
-- **Agents are Claude Code sessions**, not API wrappers: your subscription, your machine, your
-  logged-in `claude`, with shell, files, web, and a real Chrome built in.
-- **Your final say is structural.** Agents propose, built-in reviewers vet, you approve.
-  Gated tools stop at an approval card; agents never `git commit`; every step is audited. A
-  🛑 STOP pill aborts every live session.
-- **They look before they say done.** Grant `Chrome` and an agent opens the page in *your*
-  browser, screenshots it, reads the console, and reports what it actually saw.
-- **Projects are the boundary.** Each product has its own repo, rooms, crew, and daily budget.
-  An agent in one project cannot see another. Hundreds of workers, one inbox.
-- **Built to run wide.** A crash-only [task fabric](DESIGN.md) runs agents across many
-  conversations in parallel and redelivers crashed turns. Restart mid-flight; the crew
-  resumes.
+| | Three Claude Code tabs | OpenCrew |
+|---|---|---|
+| Who coordinates | You, from memory | A Captain per project; workers report in threads |
+| What you see | Three scrollbacks | Rooms, live terminals, diffs, one inbox |
+| Same repo, same time | Edits collide | Each worker has its own worktree and port |
+| Risky commands | Whatever the tab does | Stop at a card; approve from your phone |
+| What survives | Nothing | Every approval is a commit; the review is a git note |
+| Where it runs | Your laptop | Your laptop, same subscription, no API key |
 
-The full tour, architecture, and how to add a tool: **[docs/GUIDE.md](docs/GUIDE.md)**.
+**When not to use it:** a one-shot task you'd finish in one prompt; a repo you can't let
+anyone commit to; a team with no approval habit yet. What's still early: no mid-turn steering,
+no DMs or push notifications, Linux and macOS only. The rest of the rough edges are in
+[docs/GUIDE.md](docs/GUIDE.md#known-limitations).
 
 ## Use it from anywhere
 
@@ -130,8 +142,7 @@ Environment variables or a `.env` at the repo root. Everything has a working def
 | `OPENCREW_RELAY_URL` | `https://relay.opencrew.run` | Cloud Link relay, self-hostable |
 | `ANTHROPIC_API_KEY` | *(from `claude` login)* | Only if you'd rather not use the subscription |
 
-More (`OPENCREW_WORKSPACES`, `OPENCREW_ENV_PORT_BASE`, `OPENCREW_BRIEF_HOUR`,
-`OPENCREW_MAX_MENTION_DEPTH`, `OPENCREW_TUNNEL_*`) in [apps/server/src/env.ts](apps/server/src/env.ts).
+More in [apps/server/src/env.ts](apps/server/src/env.ts).
 
 ## Development
 
@@ -141,5 +152,9 @@ pnpm test     # Vitest: fabric, guardrails, record, ask, environments…
 pnpm build    # type-check and build everything
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for ground rules (the guardrail choke points are
-sacred) and [docs/GUIDE.md](docs/GUIDE.md) for adding a tool in one file. MIT licensed.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the ground rules (the guardrail choke points are
+sacred); [docs/GUIDE.md](docs/GUIDE.md) shows how to add a tool in one file. Did your crew do
+something worth showing? Open a [Share your workflow](../../issues/new?template=share-your-workflow.md)
+issue; the best ones get featured here. MIT licensed.
+
+If OpenCrew saved you time, star the repo. It helps other Claude Code users find it.
