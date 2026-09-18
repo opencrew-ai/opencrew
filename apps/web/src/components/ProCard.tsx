@@ -41,11 +41,11 @@ export function ProCard() {
       </div>
       <p className="text-sm text-zinc-400">
         Everything on this machine is free, forever. <span className="text-zinc-200">Pro</span> is
-        the part the laptop can&apos;t do alone: approve, reject, and send work back from your phone
-        without limits. Free accounts get three remote decisions a month.
+        for deciding from your phone: unlimited approvals through opencrew.run. Free gets three a
+        month.
       </p>
       {linked === false && (
-        <p className="text-xs text-zinc-500">Link this crew to opencrew.run (below) to use it from anywhere.</p>
+        <p className="text-xs text-zinc-500">Link to opencrew.run above first.</p>
       )}
       {plan !== 'Pro' && (
         <a

@@ -49,11 +49,10 @@ export function DeviceAccessCard() {
 
   return (
     <div className="mt-6 max-w-xl rounded-lg border border-zinc-800 p-5">
-      <h2 className="font-semibold">📱 Same Wi-Fi</h2>
+      <h2 className="font-semibold">📱 On this Wi-Fi</h2>
       <p className="mt-1 text-sm text-zinc-400">
-        A phone or tablet on this network can open the crew directly. Scan, sign in with the
-        same account, and use &ldquo;Add to Home Screen&rdquo; for the app feel. From anywhere
-        else, link to opencrew.run above.
+        Scan with your phone to open the crew. Works only on this network; from anywhere else,
+        use opencrew.run above.
       </p>
 
       <div className="mt-4">
@@ -70,7 +69,7 @@ export function DeviceAccessCard() {
       {/* The tunnel is for people who'd rather not use opencrew.run at all. */}
       <details className="mt-5 text-sm">
         <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
-          Advanced: your own public tunnel instead of opencrew.run
+          Advanced: don&apos;t want opencrew.run? Run your own tunnel
         </summary>
         <div className="mt-3">
           {info?.tunnel ? (
@@ -93,12 +92,12 @@ export function DeviceAccessCard() {
           ) : (
             <div className="space-y-2">
               <p className="text-xs text-zinc-500">
-                Starts a secure Cloudflare tunnel to this machine (HTTPS, WebSockets). The URL is
-                unguessable but public — your password is the lock. Stop it when done.
+                A Cloudflare tunnel gives this machine a public URL. Your password is the only
+                lock. Optional; needs <code>cloudflared</code> installed.
               </p>
               {isAdmin && (
-                <button className="btn-primary" onClick={() => void toggleTunnel()} disabled={busy}>
-                  {busy ? 'Starting…' : 'Enable remote access'}
+                <button className="btn-secondary" onClick={() => void toggleTunnel()} disabled={busy}>
+                  {busy ? 'Starting…' : 'Start tunnel'}
                 </button>
               )}
             </div>

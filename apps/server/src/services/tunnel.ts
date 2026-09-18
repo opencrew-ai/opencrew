@@ -75,7 +75,7 @@ class TunnelManager {
         reject(
           err.code === 'ENOENT'
             ? new Error(
-                'cloudflared is not installed — run `brew install cloudflared` (macOS) and try again'
+                'Needs cloudflared (macOS: `brew install cloudflared`). Or skip this and use opencrew.run.'
               )
             : err
         )

@@ -86,15 +86,15 @@ export function CloudLinkCard() {
       {status?.linked ? (
         <div className="mt-2 space-y-2 text-sm text-zinc-400">
           <p>
-            This crew is linked to your profile as{' '}
+            Linked as{' '}
             <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-emerald-300">
               {status.slug}
             </code>
-            . Chat from any device: sign in at{' '}
+            . On any device, open{' '}
             <a href={status.relayUrl} target="_blank" rel="noreferrer" className="text-emerald-400 underline">
               {status.relayUrl.replace(/^https?:\/\//, '')}
-            </a>
-            .
+            </a>{' '}
+            and sign in.
           </p>
           {isAdmin && (
             <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => void unlink()}>
@@ -105,7 +105,7 @@ export function CloudLinkCard() {
       ) : approveUrl ? (
         <div className="mt-2 space-y-3">
           <p className="text-sm text-zinc-400">
-            Approve it on your opencrew.run profile — this page updates by itself once linked.
+            Approve it on opencrew.run. This page updates by itself.
           </p>
           <a
             href={approveUrl}
@@ -116,7 +116,7 @@ export function CloudLinkCard() {
             Approve on opencrew.run →
           </a>
           <details className="text-xs text-zinc-500">
-            <summary className="cursor-pointer hover:text-zinc-300">Approving from your phone instead? Scan this.</summary>
+            <summary className="cursor-pointer hover:text-zinc-300">On your phone? Scan instead.</summary>
             <div className="mt-2 space-y-2">
               <QrCode value={approveUrl} />
               <code className="block break-all font-mono text-[11px] text-emerald-400">{approveUrl}</code>
@@ -126,8 +126,8 @@ export function CloudLinkCard() {
       ) : (
         <div className="mt-2 space-y-2">
           <p className="text-sm text-zinc-400">
-            Link this crew to your opencrew.run profile and chat with your agents from any
-            device — sign in once, no tunnels, no changing URLs.
+            Use your crew from your phone or any other device. Sign in once at opencrew.run;
+            your agents stay on this machine.
           </p>
           {isAdmin && (
             <button className="btn-primary" onClick={() => void startLink()} disabled={busy}>
