@@ -39,13 +39,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         // Navigations ALWAYS hit the network. The app is live-data only
         // (WS + API), so an offline shell is worthless — and behind the
         // opencrew.run relay the served HTML is where relay-layer features
-        // live (crew-switcher injection, the ocr_via_relay marker cookie).
-        // A cached shell silently disables all of that and keeps clients on
-        // stale bundles after deploys.
+        // live (sign-in redirect, crew-switcher injection, the ocr_via_relay
+        // marker cookie). Precaching index.html would let workbox answer `/`
+        // from cache (directoryIndex) — the relay never sees the request, a
+        // signed-out visitor gets the local login form, and clients stay on
+        // stale bundles after deploys. So: no html in the precache, no
+        // directory index, no navigate fallback.
+        globPatterns: ['**/*.{js,css,svg,woff2}'],
+        globIgnores: ['**/index.html'],
+        directoryIndex: null,
         navigateFallback: null,
         runtimeCaching: [
           {
