@@ -22,6 +22,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(`request failed (${res.status})`, res.status)
   }
   if (!res.ok || !body.success) {
+    // 402 comes from the opencrew.run relay: a decision past the free tier.
+    // The paywall renders once, app-wide (components/PaywallModal.tsx).
+    if (res.status === 402) {
+      window.dispatchEvent(new CustomEvent('opencrew:paywall', { detail: body }))
+    }
     throw new ApiError(body.error ?? `request failed (${res.status})`, res.status)
   }
   return body.data as T

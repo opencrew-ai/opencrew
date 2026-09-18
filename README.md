@@ -119,12 +119,17 @@ anyone commit to; a team with no approval habit yet. What's still early: no mid-
 no DMs or push notifications, Linux and macOS only. The rest of the rough edges are in
 [docs/GUIDE.md](docs/GUIDE.md#known-limitations).
 
-## Use it from anywhere
+## Use it from anywhere, and what costs money
 
 Agents and repos stay on your machine; remote access is a front door. In **⚙ Workspace
 settings**: **Cloud Link** to [opencrew.run](https://opencrew.run) (full app from your phone,
 invite teammates with their own login), a QR code for your Wi-Fi, or your own Cloudflare
 tunnel.
+
+Everything on your laptop is free, forever, and nothing local is ever gated. **Pro ($19/month)**
+is the one thing the laptop cannot do alone: decide from anywhere. Free accounts get three
+approvals a month from their phone through opencrew.run; Pro makes them unlimited and adds
+teammates and share links. Self-host the relay and there is no plan at all.
 
 ## Configuration
 

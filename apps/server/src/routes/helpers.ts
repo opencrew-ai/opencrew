@@ -3,13 +3,15 @@ import type { ApiResponse } from '@opencrew/shared'
 import type { users } from '../db/schema'
 import type { AppContext } from '../context'
 import { getSessionUser, SESSION_COOKIE } from '../auth/sessions'
-import { verifyRelayIdentity, resolveRelayUser } from '../services/cloudlink'
+import { verifyRelayIdentity, resolveRelayUser, type RelayIdentity } from '../services/cloudlink'
 
 export type UserRow = typeof users.$inferSelect
 
 declare module 'fastify' {
   interface FastifyRequest {
     user: UserRow | null
+    /** Set when the request came through Cloud Link (the relay's signed identity). */
+    relay?: RelayIdentity | null
   }
 }
 
@@ -29,6 +31,7 @@ export async function currentUser(
   // identity header instead of a cookie. Verification requires the link
   // secret, so nothing outside the relay can mint one.
   const identity = await verifyRelayIdentity(ctx, req.headers)
+  req.relay = identity
   if (identity) return resolveRelayUser(ctx, identity)
 
   const cookies = (req as FastifyRequest & { cookies: Record<string, string> }).cookies

@@ -14,6 +14,7 @@ import { AgentDetailPage } from './pages/AgentDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { CrewActivityBar } from './components/CrewActivityBar'
 import { DialogHost } from './lib/dialogs'
+import { PaywallModal } from './components/PaywallModal'
 import { initTheme } from './lib/theme'
 
 // Apply the stored/OS theme before the first render — no dark flash.
@@ -120,6 +121,7 @@ export default function App() {
       </Routes>
       <CrewActivityBar />
       <DialogHost />
+      <PaywallModal />
     </WorkspaceProvider>
   )
 }

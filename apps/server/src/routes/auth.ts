@@ -157,7 +157,9 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): void 
 
   app.get('/api/auth/me', async (req, reply) => {
     const user = await currentUser(ctx, req)
-    if (user) return ok(publicUser(user))
+    // Through Cloud Link the relay says which plan the person is on; locally
+    // there is no plan — everything on the laptop is free.
+    if (user) return ok({ ...publicUser(user), viaRelay: Boolean(req.relay), pro: req.relay?.pro ?? null })
 
     // Local-first: the browser on this machine IS the owner — no password
     // form on localhost (see auth/localauth.ts for the origin checks).

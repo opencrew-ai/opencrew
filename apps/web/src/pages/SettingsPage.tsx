@@ -5,6 +5,7 @@ import { Sidebar } from '../components/Sidebar'
 import { AccountCard } from '../components/AccountCard'
 import { PrivacyCard } from '../components/PrivacyCard'
 import { CloudLinkCard } from '../components/CloudLinkCard'
+import { ProCard } from '../components/ProCard'
 import { DeviceAccessCard } from '../components/DeviceAccessCard'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { useWorkspace } from '../lib/workspace'
@@ -138,6 +139,8 @@ export function SettingsPage() {
         <AccountCard />
 
         <CloudLinkCard />
+
+        <ProCard />
 
         <DeviceAccessCard />
 

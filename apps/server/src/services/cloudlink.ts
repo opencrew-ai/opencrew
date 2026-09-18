@@ -294,6 +294,8 @@ export interface RelayIdentity {
   email: string
   name: string
   owner: boolean
+  /** Relay plan: true = Pro, false = free, undefined = an older relay that doesn't say. */
+  pro?: boolean
 }
 
 /**
@@ -333,6 +335,7 @@ export async function verifyRelayIdentity(
       email?: string
       name?: string
       owner?: boolean
+      pro?: boolean
       ts?: number
     }
     if (!identity.email || !identity.ts) return null
@@ -340,7 +343,8 @@ export async function verifyRelayIdentity(
     return {
       email: identity.email,
       name: identity.name ?? identity.email,
-      owner: Boolean(identity.owner)
+      owner: Boolean(identity.owner),
+      pro: typeof identity.pro === 'boolean' ? identity.pro : undefined
     }
   } catch {
     return null

@@ -33,6 +33,10 @@ export interface User {
   name: string
   email: string
   role: UserRole
+  /** True when this session comes through opencrew.run (Cloud Link). */
+  viaRelay?: boolean
+  /** Relay plan for this session: true = Pro, false = free, null = local or unknown. */
+  pro?: boolean | null
 }
 
 export interface AgentCapabilities {
