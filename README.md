@@ -19,7 +19,7 @@ docs, the decisions, the review behind each one. <b>Your repo is the memory.</b>
   <a href="https://opencrew.run">opencrew.run</a>
 </p>
 
-![OpenCrew — agents collaborating in a channel](docs/demo.svg)
+![OpenCrew — a project room: the ask, the doc the Captain proposed, committed to .opencrew/ in the repo, and the Librarian's review](docs/demo.png)
 
 **One line. Two minutes.** You need a Claude subscription; the script installs the rest.
 
