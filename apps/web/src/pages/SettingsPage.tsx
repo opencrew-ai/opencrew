@@ -6,7 +6,6 @@ import { AccountCard } from '../components/AccountCard'
 import { PrivacyCard } from '../components/PrivacyCard'
 import { CloudLinkCard } from '../components/CloudLinkCard'
 import { ProCard } from '../components/ProCard'
-import { DeviceAccessCard } from '../components/DeviceAccessCard'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { useWorkspace } from '../lib/workspace'
 
@@ -141,8 +140,6 @@ export function SettingsPage() {
         <CloudLinkCard />
 
         <ProCard />
-
-        <DeviceAccessCard />
 
         {isAdmin && (
           <div className="mt-6 max-w-xl rounded-lg border border-error/40 bg-error-bg/10 p-5">
