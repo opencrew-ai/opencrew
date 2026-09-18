@@ -119,17 +119,31 @@ anyone commit to; a team with no approval habit yet. What's still early: no mid-
 no DMs or push notifications, Linux and macOS only. The rest of the rough edges are in
 [docs/GUIDE.md](docs/GUIDE.md#known-limitations).
 
-## Use it from anywhere, and what costs money
+## Use it from anywhere
 
 Agents and repos stay on your machine; remote access is a front door. In **⚙ Workspace
-settings**: **Cloud Link** to [opencrew.run](https://opencrew.run) (full app from your phone,
-invite teammates with their own login), a QR code for your Wi-Fi, or your own Cloudflare
-tunnel.
+settings**: **Cloud Link** to [opencrew.run](https://opencrew.run) (the same app from your
+phone), a QR code for your Wi-Fi, or your own Cloudflare tunnel.
 
-Everything on your laptop is free, forever, and nothing local is ever gated. **Pro ($19/month)**
-is the one thing the laptop cannot do alone: decide from anywhere. Free accounts get three
-approvals a month from their phone through opencrew.run; Pro makes them unlimited and adds
-teammates and share links. Self-host the relay and there is no plan at all.
+## Pricing
+
+**Everything on your laptop is free, forever.** No seat limit, no agent limit, nothing local
+is ever gated, and the record in your repo is yours whether you pay or leave.
+
+**Pro is the one thing the laptop cannot do alone: decide from anywhere.** When your crew
+finishes something while you are away, you open the same app on your phone through
+opencrew.run and press approve; your laptop makes the commit. That press is a *remote
+decision* (approve, reject, send back, answer a tool approval).
+
+| | Free | Pro · $19/month |
+|---|---|---|
+| Everything on the laptop | ✓ | ✓ |
+| Remote decisions via opencrew.run | 3 a month | Unlimited |
+| Teammates with their own login | | ✓ |
+| Share a change with someone who has no install | | ✓ |
+
+Self-host the relay and there is no plan at all. Why the line is here:
+[Free on your laptop, Pro in your pocket](docs/blog/2026-09-18-free-on-your-laptop-pro-in-your-pocket.md).
 
 ## Configuration
 
