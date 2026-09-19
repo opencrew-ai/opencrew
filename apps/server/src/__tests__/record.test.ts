@@ -70,6 +70,18 @@ describe('every project has a repo', () => {
     mkdirSync(inner)
     await expect(ensureRepo(inner)).rejects.toThrow(/inside the repo at/)
 
+    // Repos OpenCrew keeps itself (data/repos) sit inside the install clone.
+    const outerRepos = join(outer, 'data', 'repos')
+    mkdirSync(outerRepos, { recursive: true })
+    const savedRepos = env.reposDir
+    ;(env as { reposDir: string }).reposDir = outerRepos
+    try {
+      const kept = await ensureRepo(join(outerRepos, 'notes'))
+      expect(kept.initialized).toBe(true)
+    } finally {
+      ;(env as { reposDir: string }).reposDir = savedRepos
+    }
+
     // A stray `git init` in ~ must not swallow every project under it.
     const savedHome = process.env.HOME
     process.env.HOME = outer

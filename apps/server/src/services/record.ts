@@ -64,7 +64,10 @@ async function repoTopLevel(dir: string): Promise<string | null> {
  * root (a stray `git init` in ~ happens), where a nested repo is exactly
  * right. Anywhere else, the person should point at the real root.
  */
-function nestingAllowed(topLevel: string): boolean {
+function nestingAllowed(dir: string, topLevel: string): boolean {
+  // Repos OpenCrew keeps itself sit under data/ inside the install clone,
+  // which is a git repo too; they are always their own repos.
+  if (dir.startsWith(realpathSync(env.reposDir) + '/')) return true
   const home = realpathSync(homedir())
   return topLevel === home || topLevel === '/' || topLevel === dirname(home)
 }
@@ -93,8 +96,9 @@ export async function ensureRepo(dir: string): Promise<EnsuredRepo> {
   mkdirSync(dir, { recursive: true })
   let initialized = false
   const topLevel = (await isRepo(dir)) ? await repoTopLevel(dir) : null
-  const isOwnRepo = topLevel !== null && topLevel === realpathSync(dir)
-  if (topLevel !== null && !isOwnRepo && !nestingAllowed(topLevel)) {
+  const real = realpathSync(dir)
+  const isOwnRepo = topLevel !== null && topLevel === real
+  if (topLevel !== null && !isOwnRepo && !nestingAllowed(real, topLevel)) {
     throw new Error(
       `${dir} is inside the repo at ${topLevel} — point the project at ${topLevel}, or pick a folder outside it`
     )
