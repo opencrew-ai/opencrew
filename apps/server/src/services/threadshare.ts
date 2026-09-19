@@ -35,7 +35,7 @@ export interface ThreadShareState {
   updatedAt: number
 }
 
-async function relayCredentials(db: DB) {
+export async function relayCredentials(db: DB) {
   const [relayUrl, workspaceId, secret] = await Promise.all([
     getRawSetting(db, 'cloudRelayUrl'),
     getRawSetting(db, 'cloudWorkspaceId'),

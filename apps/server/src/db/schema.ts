@@ -219,6 +219,20 @@ export const threadShares = pgTable('thread_shares', {
   updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 })
 
+/** A committed doc published to opencrew.run — public, or for listed emails. */
+export const docShares = pgTable('doc_shares', {
+  artifactId: text('artifact_id').primaryKey(),
+  ...ws,
+  channelId: text('channel_id').notNull(),
+  token: text('token').notNull(),
+  url: text('url').notNull(),
+  /** JSON array of emails, or null for anyone with the link. */
+  allowedEmails: text('allowed_emails'),
+  sharedBy: text('shared_by').notNull(),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+})
+
 export const runs = pgTable('runs', {
   id: text('id').primaryKey(),
   ...ws,

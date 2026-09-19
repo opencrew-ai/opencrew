@@ -29,6 +29,7 @@ import { registerReactionRoutes } from './routes/reactions'
 import { registerThreadReadRoutes } from './routes/threadreads'
 import { registerStatsRoutes } from './routes/stats'
 import { registerThreadShareRoutes } from './routes/threadshare'
+import { registerDocShareRoutes } from './routes/docshare'
 import { registerCrewsRoutes } from './routes/crews'
 import { registerExportRoutes } from './routes/export'
 import { registerProjectRoutes } from './routes/projects'
@@ -123,6 +124,7 @@ async function main(): Promise<void> {
   registerReactionRoutes(app, ctx)
   registerStatsRoutes(app, ctx)
   registerThreadShareRoutes(app, ctx)
+  registerDocShareRoutes(app, ctx)
   registerThreadReadRoutes(app, ctx)
   registerProjectRoutes(app, ctx)
   registerTodayRoutes(app, ctx)

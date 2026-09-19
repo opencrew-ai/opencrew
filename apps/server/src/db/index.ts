@@ -290,6 +290,17 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_conversation ON tasks (conversation_root_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_channel ON tasks (channel_id);
+CREATE TABLE IF NOT EXISTS doc_shares (
+  artifact_id TEXT PRIMARY KEY,
+  workspace_slug TEXT NOT NULL DEFAULT 'default',
+  channel_id TEXT NOT NULL,
+  token TEXT NOT NULL,
+  url TEXT NOT NULL,
+  allowed_emails TEXT,
+  shared_by TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS thread_shares (
   thread_root_id TEXT PRIMARY KEY,
   workspace_slug TEXT NOT NULL DEFAULT 'default',

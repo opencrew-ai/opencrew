@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
 import { useWorkspace } from '../lib/workspace'
 import { DiffIcon, DocIcon } from './Icons'
+import { ShareDocButton } from './ShareDocButton'
 import { diffAwarePre } from './UnifiedDiff'
 
 function KindIcon({ kind, className }: { kind: Artifact['kind']; className?: string }) {
@@ -331,6 +332,9 @@ export function ArtifactDocModal({ artifact, onClose }: DocModalProps) {
           <span className="font-mono text-xs tabular-nums text-zinc-500">v{doc.version}</span>
           <StatusBadge status={doc.status} />
           <RecordRef artifact={doc} />
+          {canReview && doc.kind !== 'change' && (
+            <ShareDocButton artifactId={doc.id} enabled={doc.status === 'committed'} />
+          )}
           {canReview && !isEditing && (
             <button
               onClick={() => startEdit()}
