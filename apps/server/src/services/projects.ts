@@ -4,7 +4,7 @@ import type { Agent, AgentVersionConfig, Project } from '@opencrew/shared'
 import type { DB } from '../db'
 import { agents, channels, messages, projects } from '../db/schema'
 import type { AppContext } from '../context'
-import { createVersion, toAgent } from './agents'
+import { createVersion, getAgentWithVersion, toAgent } from './agents'
 import { RECORD_DIR, defaultRepoDir, ensureRepo } from './record'
 import { rememberProject } from './resume'
 
@@ -348,7 +348,10 @@ export async function insertProject(
 
 /** Create a project and tell every connected client. Usable the moment it returns. */
 export async function createProject(ctx: AppContext, input: CreateProjectInput): Promise<Project> {
-  const { project, channels: rooms } = await insertProject(ctx.db, input)
+  const { project, channels: rooms, captainId } = await insertProject(ctx.db, input)
+  // The Captain must show up in every open sidebar right away, like the rooms.
+  const captain = await getAgentWithVersion(ctx.db, captainId)
+  if (captain) ctx.hub.broadcast({ type: 'agent_updated', agent: captain })
   for (const channel of rooms) {
     ctx.hub.broadcast({
       type: 'channel_created',

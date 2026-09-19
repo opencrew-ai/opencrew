@@ -252,18 +252,24 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
   const channelGroups = [groupFor(null), ...projects.map(groupFor)].filter(
     (g) => g.channels.length > 0 || g.project !== null
   )
-  // The crew list is the STANDING crew — the names you address. Workers
-  // come and go inside their task threads; retired agents stay in history.
+  // The standing crew first — the names you address — then the workers the
+  // Captain has spawned that are still on a task. Retired workers leave the
+  // list (their threads keep the history), so what you see is who is here.
   const agentGroups = [null, ...projects]
-    .map((project) => ({
-      key: project?.id ?? 'hq',
-      label: project?.name ?? 'HQ',
-      project,
-      agents: agents
+    .map((project) => {
+      const mine = agents
         .filter((a) => (a.projectId ?? null) === (project?.id ?? null))
-        .filter((a) => a.kind !== 'worker' && a.status !== 'retired')
-        .sort(byName)
-    }))
+        .filter((a) => a.status !== 'retired')
+      return {
+        key: project?.id ?? 'hq',
+        label: project?.name ?? 'HQ',
+        project,
+        agents: [
+          ...mine.filter((a) => a.kind !== 'worker').sort(byName),
+          ...mine.filter((a) => a.kind === 'worker').sort(byName)
+        ]
+      }
+    })
     .filter((g) => g.agents.length > 0)
 
   const aside = (
@@ -635,7 +641,14 @@ export function Sidebar({ activeChannelId, open, onClose }: SidebarProps) {
                     <PresenceDot state={stateOf('agent', a.id)} />
                     <span>{a.avatarEmoji}</span>
                     <span className={`min-w-0 flex-1 ${a.status === 'paused' ? 'line-through opacity-50' : ''}`}>
-                      <span className="block truncate">{a.name}</span>
+                      <span className="block truncate">
+                        {a.name}
+                        {a.kind === 'worker' && (
+                          <span className="ml-1.5 rounded bg-zinc-800 px-1 text-[9px] uppercase tracking-wide text-zinc-500" title="A worker the Captain spawned for one task; it retires when the task is done">
+                            worker
+                          </span>
+                        )}
+                      </span>
                       {agentActivity.get(a.id) && (
                         <span className="block truncate text-[10px] italic text-amber-400/90">
                           {agentActivity.get(a.id)}
