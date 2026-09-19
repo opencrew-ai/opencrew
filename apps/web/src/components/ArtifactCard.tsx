@@ -89,6 +89,16 @@ function StatusBadge({ status }: { status: Artifact['status'] }) {
       </span>
     )
   }
+  if (status === 'sent_back') {
+    return (
+      <span
+        className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-wide text-zinc-400"
+        title="A reviewer asked for changes; the revised version will replace this one"
+      >
+        ↩ sent back · revising
+      </span>
+    )
+  }
   return (
     <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 font-mono text-[10px] lowercase tracking-wide text-emerald-300">
       ✓ committed

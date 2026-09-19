@@ -110,7 +110,7 @@ export function TasksPage() {
   const groups = useMemo(() => {
     const titleByRoot = new Map<string, string>()
     for (const artifact of artifacts) {
-      if (artifact.status === 'discarded') continue
+      if (artifact.status === 'discarded' || artifact.status === 'sent_back') continue
       // Prefer plan docs; first (newest-listed) wins.
       if (!titleByRoot.has(artifact.conversationRootId) || artifact.kind === 'plan') {
         titleByRoot.set(artifact.conversationRootId, artifact.title)

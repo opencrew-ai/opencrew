@@ -369,7 +369,8 @@ export interface Artifact {
   content: string
   tasks: PlanTaskDraft[]
   /** review = doc reviewer gate; proposed = awaiting HUMAN approval. */
-  status: 'review' | 'proposed' | 'committed' | 'discarded'
+  /** sent_back: a reviewer asked for changes; the next version replaces it. */
+  status: 'review' | 'proposed' | 'sent_back' | 'committed' | 'discarded'
   version: number
   createdByAgentId: string
   committedBy?: string

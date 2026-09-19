@@ -413,7 +413,7 @@ export const artifacts = pgTable('artifacts', {
   /** JSON array of {content, priority} drafts (plan kind). */
   tasks: text('tasks').notNull(),
   status: text('status', {
-    enum: ['review', 'proposed', 'committed', 'discarded']
+    enum: ['review', 'proposed', 'sent_back', 'committed', 'discarded']
   }).notNull(),
   version: integer('version').notNull(),
   createdByAgentId: text('created_by_agent_id').notNull(),

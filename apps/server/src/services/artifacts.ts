@@ -443,7 +443,7 @@ async function discardStaleSiblings(ctx: AppContext, row: ArtifactRow): Promise<
         eq(artifacts.conversationRootId, row.conversationRootId),
         eq(artifacts.title, row.title),
         lt(artifacts.version, row.version),
-        inArray(artifacts.status, ['review', 'proposed'])
+        inArray(artifacts.status, ['review', 'proposed', 'sent_back'])
       )
     )
   const now = Date.now()
@@ -1058,17 +1058,17 @@ export async function requestChanges(
 ): Promise<{ ok: true } | null> {
   const [row] = await ctx.db.select().from(artifacts).where(eq(artifacts.id, artifactId)).limit(1)
   if (!row || row.status !== 'proposed') return null
-  // Sending it back RETIRES this version — the ball is with the author now,
-  // so it must leave the human's Needs-You inbox immediately. The revision
-  // arrives as the next version and re-enters review.
+  // Sending it back hands the ball to the author: it leaves the human's
+  // Needs-You inbox, but stays readable in the thread as "sent back" until
+  // the revision arrives as the next version and re-enters review.
   const now = Date.now()
   await ctx.db
     .update(artifacts)
-    .set({ status: 'discarded', updatedAt: now })
+    .set({ status: 'sent_back', updatedAt: now })
     .where(eq(artifacts.id, artifactId))
   ctx.hub.broadcast({
     type: 'artifact_state',
-    artifact: { ...toArtifact(row), status: 'discarded', updatedAt: now }
+    artifact: { ...toArtifact(row), status: 'sent_back', updatedAt: now }
   })
   const agent = await getAgent(ctx.db, row.createdByAgentId)
   const mention = agent ? `@${agent.name} ` : ''

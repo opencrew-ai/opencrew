@@ -62,7 +62,7 @@ export function AttentionModal({ item, onClose }: AttentionModalProps) {
       .then((all) => {
         const latest = new Map<string, Artifact>()
         for (const doc of all) {
-          if (doc.status === 'discarded') continue
+          if (doc.status === 'discarded' || doc.status === 'sent_back') continue
           if (doc.conversationRootId !== item.conversationRootId) continue
           const prior = latest.get(doc.title)
           if (!prior || doc.version > prior.version) latest.set(doc.title, doc)
