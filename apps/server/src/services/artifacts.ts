@@ -180,6 +180,20 @@ export async function reviewKindsForAgent(db: DB, agentId: string): Promise<Arti
 
 type ArtifactRow = typeof artifacts.$inferSelect
 
+/**
+ * A plan written as markdown checkboxes is a task list too: `- [ ] Fix the
+ * 500 on signup` becomes a board task when the agent passed no drafts.
+ * Checked boxes are already done and stay in the doc only.
+ */
+export function draftsFromCheckboxes(content: string): PlanTaskDraft[] {
+  const out: PlanTaskDraft[] = []
+  for (const line of content.split('\n')) {
+    const m = /^\s*[-*]\s+\[ \]\s+(.+?)\s*$/.exec(line)
+    if (m) out.push({ content: m[1]!, priority: 'medium' })
+  }
+  return out
+}
+
 function parseDrafts(json: string): PlanTaskDraft[] {
   try {
     const parsed = JSON.parse(json) as PlanTaskDraft[]
@@ -595,7 +609,8 @@ export async function commitPlan(
   // Materialize the drafts in order, wiring dependsOn (1-based indexes of
   // EARLIER drafts — later/self references are ignored, so the resulting
   // graph is acyclic by construction) into blockedBy task ids.
-  const drafts = parseDrafts(row.tasks)
+  const given = parseDrafts(row.tasks)
+  const drafts = given.length > 0 || row.kind !== 'plan' ? given : draftsFromCheckboxes(row.content)
   const createdIds: string[] = []
   for (const [index, draft] of drafts.entries()) {
     const scheduledMs = draft.scheduledFor ? Date.parse(draft.scheduledFor) : NaN
@@ -649,7 +664,7 @@ export async function commitPlan(
     .set({ path: committed.path, sha: committed.sha })
     .where(eq(artifacts.id, artifactId))
 
-  const taskCount = parseDrafts(row.tasks).length
+  const taskCount = drafts.length
   const where = committed.path ? ` → \`${committed.path}\`` : ''
   // The approval IS the go signal: posted as the approving human and
   // @mentioning the authoring agent, so the run pipeline kicks off execution

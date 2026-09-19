@@ -6,6 +6,9 @@ import type { AppContext } from '../context'
 import { env } from '../env'
 import { getAgentWithVersion, listAgentsWithVersions } from '../services/agents'
 import { getProject } from '../services/projects'
+import { hqRepoDir } from '../services/record'
+import { channels } from '../db/schema'
+import { eq } from 'drizzle-orm'
 import { resolveAgentWorkingDir } from '../services/environments'
 import { authGuard, adminGuard, fail, ok } from './helpers'
 
@@ -57,7 +60,11 @@ export function registerFsRoutes(app: FastifyInstance, ctx: AppContext): void {
    * Auth: any logged-in member (not admin-only — devs need to browse files).
    */
   app.get('/api/fs/file', { preHandler: authGuard(ctx) }, async (req, reply) => {
-    const { agentId, path: rawPath } = req.query as { agentId?: string; path?: string }
+    const { agentId, channelId, path: rawPath } = req.query as {
+      agentId?: string
+      channelId?: string
+      path?: string
+    }
 
     if (!rawPath) {
       return reply.code(400).send(fail('path is required'))
@@ -83,6 +90,17 @@ export function registerFsRoutes(app: FastifyInstance, ctx: AppContext): void {
 
       target = resolve(baseDir, rawPath)
       // Traverse guard: resolved path must stay inside the base dir
+      if (!target.startsWith(baseDir + '/') && target !== baseDir) {
+        return reply.code(400).send(fail('path traversal not allowed'))
+      }
+    } else if (channelId) {
+      // Relative path from a room — the record and anything else committed
+      // there live in the project's repo (HQ keeps its own).
+      const [channel] = await ctx.db.select().from(channels).where(eq(channels.id, channelId)).limit(1)
+      if (!channel) return reply.code(404).send(fail('channel not found'))
+      const project = channel.projectId ? await getProject(ctx.db, channel.projectId) : null
+      const baseDir = project?.workingDir || hqRepoDir()
+      target = resolve(baseDir, rawPath)
       if (!target.startsWith(baseDir + '/') && target !== baseDir) {
         return reply.code(400).send(fail('path traversal not allowed'))
       }

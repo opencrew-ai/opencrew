@@ -30,7 +30,7 @@ function childrenToText(children: React.ReactNode): string {
  * Build the shared markdown component overrides for a given message.
  * We need agentId to pass to CodeFileChip so relative paths resolve correctly.
  */
-function buildMdComponents(agentId?: string): Components {
+function buildMdComponents(agentId?: string, channelId?: string): Components {
   return {
     // Links must never navigate the app away — always open in a new tab.
     a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
@@ -55,7 +55,7 @@ function buildMdComponents(agentId?: string): Components {
       if (!isBlock) {
         const text = childrenToText(children)
         if (looksLikeFilePath(text)) {
-          return <CodeFileChip path={text} agentId={agentId} />
+          return <CodeFileChip path={text} agentId={agentId} channelId={channelId} />
         }
       }
       return <code {...rest}>{children}</code>
@@ -153,7 +153,7 @@ export function MessageItem({
   // Build markdown components once per message, keyed to the author's agentId
   // so CodeFileChip can resolve relative paths against the right workspace dir.
   const isAgentMsg = message.authorType === 'agent'
-  const mdComponents = buildMdComponents(isAgentMsg ? (message.authorId ?? undefined) : undefined)
+  const mdComponents = buildMdComponents(isAgentMsg ? (message.authorId ?? undefined) : undefined, channelId ?? message.channelId)
   // Docs produced by this message's run render inline right under it.
   const runArtifacts = useArtifactsForRun(message.runId)
   // Explicitly anchored card (review notices) — reachable even when the

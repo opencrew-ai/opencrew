@@ -61,8 +61,10 @@ registerOpenCrewTool({
       .max(30)
       .optional()
       .describe(
-        'For PLANS: the actionable tasks, in execution order. Omit for deliverable docs ' +
-          '(drafts, specs, reports) that have no tasks.'
+        'For PLANS: the actionable tasks, in execution order — anything the doc lists as an ' +
+          'action item, next step, fix, or follow-up belongs here, or approval puts nothing on ' +
+          'the board. (Markdown `- [ ]` checkboxes in the doc are picked up too.) Omit only for ' +
+          'deliverable docs (drafts, specs, reports) that ask for no work.'
       )
   },
   execute: async ({ title, folder, content, tasks }, ctx) => {

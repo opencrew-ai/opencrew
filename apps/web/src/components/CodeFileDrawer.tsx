@@ -87,6 +87,8 @@ interface CodeFileDrawerProps {
    * Omit when filePath is absolute.
    */
   agentId?: string
+  /** Room the path was mentioned in — relative paths resolve in its project repo. */
+  channelId?: string
   /** The element that triggered the drawer — focus returns here on close. */
   triggerRef?: RefObject<HTMLElement | null>
   onClose: () => void
@@ -102,7 +104,7 @@ type LoadState =
  * content of a local file fetched from the server. Same visual style and
  * a11y contract as DocDrawer.
  */
-export function CodeFileDrawer({ filePath, agentId, triggerRef, onClose }: CodeFileDrawerProps) {
+export function CodeFileDrawer({ filePath, agentId, channelId, triggerRef, onClose }: CodeFileDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null)
   const [state, setState] = useState<LoadState>({ status: 'loading' })
 
@@ -111,13 +113,14 @@ export function CodeFileDrawer({ filePath, agentId, triggerRef, onClose }: CodeF
     setState({ status: 'loading' })
     const params = new URLSearchParams({ path: filePath })
     if (agentId) params.set('agentId', agentId)
+    if (channelId) params.set('channelId', channelId)
     api
       .get<{ path: string; content: string }>(`/api/fs/file?${params}`)
       .then((data) => setState({ status: 'ok', content: data.content, resolvedPath: data.path }))
       .catch((err: unknown) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'failed to load' })
       )
-  }, [filePath, agentId])
+  }, [filePath, agentId, channelId])
 
   // Keyboard handling: Escape closes, Tab stays trapped inside
   const handleKey = useCallback(
@@ -264,6 +267,8 @@ interface CodeFileChipProps {
    * paths resolve against the agent's workspace directory.
    */
   agentId?: string
+  /** Room the message is in — relative paths resolve in its project repo. */
+  channelId?: string
 }
 
 /**
@@ -273,7 +278,7 @@ interface CodeFileChipProps {
  *
  * Renders a plain `<code>` when the path can't be loaded (graceful fallback).
  */
-export function CodeFileChip({ path, agentId }: CodeFileChipProps) {
+export function CodeFileChip({ path, agentId, channelId }: CodeFileChipProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [popoverVisible, setPopoverVisible] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
@@ -288,6 +293,7 @@ export function CodeFileChip({ path, agentId }: CodeFileChipProps) {
       if (preview === null) {
         const params = new URLSearchParams({ path })
         if (agentId) params.set('agentId', agentId)
+        if (channelId) params.set('channelId', channelId)
         api
           .get<{ content: string }>(`/api/fs/file?${params}`)
           .then((d) => setPreview(d.content.split('\n').slice(0, 8).join('\n')))
@@ -381,6 +387,7 @@ export function CodeFileChip({ path, agentId }: CodeFileChipProps) {
         <CodeFileDrawer
           filePath={path}
           agentId={agentId}
+          channelId={channelId}
           triggerRef={triggerRef as RefObject<HTMLElement | null>}
           onClose={() => setDrawerOpen(false)}
         />
