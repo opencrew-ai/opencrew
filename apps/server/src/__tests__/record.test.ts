@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -61,6 +61,25 @@ describe('every project has a repo', () => {
     // The Captain says so, in the room, so the human knows what happened.
     const [welcome] = await ctx.db.select().from(messages).where(eq(messages.authorType, 'agent'))
     expect(welcome?.content).toContain('git init')
+  })
+
+  it('a folder inside another repo is refused, unless that repo is the home directory', async () => {
+    const outer = mkdtempSync(join(tmpdir(), 'oc-outer-'))
+    git(outer, 'init', '-q', '-b', 'main')
+    const inner = join(outer, 'app')
+    mkdirSync(inner)
+    await expect(ensureRepo(inner)).rejects.toThrow(/inside the repo at/)
+
+    // A stray `git init` in ~ must not swallow every project under it.
+    const savedHome = process.env.HOME
+    process.env.HOME = outer
+    try {
+      const repo = await ensureRepo(inner)
+      expect(repo.initialized).toBe(true)
+      expect(git(inner, 'rev-parse', '--show-toplevel')).toBe(realpathSync(inner))
+    } finally {
+      process.env.HOME = savedHome
+    }
   })
 
   it('a repo stays a repo: ensureRepo is idempotent', async () => {

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, dirname } from 'node:path'
 import { promisify } from 'node:util'
 import { env } from '../env'
 
@@ -50,6 +51,24 @@ async function isRepo(dir: string): Promise<boolean> {
     .catch(() => false)
 }
 
+/** The root of the repo `dir` sits in, or null when it is not in one. */
+async function repoTopLevel(dir: string): Promise<string | null> {
+  return git(dir, ['rev-parse', '--show-toplevel'])
+    .then((out) => realpathSync(out))
+    .catch(() => null)
+}
+
+/**
+ * A folder that lives inside a bigger repo is not that repo's problem to
+ * carry — except when the "bigger repo" is the home directory or the disk
+ * root (a stray `git init` in ~ happens), where a nested repo is exactly
+ * right. Anywhere else, the person should point at the real root.
+ */
+function nestingAllowed(topLevel: string): boolean {
+  const home = realpathSync(homedir())
+  return topLevel === home || topLevel === '/' || topLevel === dirname(home)
+}
+
 async function hasHead(dir: string): Promise<boolean> {
   return git(dir, ['rev-parse', '--verify', 'HEAD'])
     .then(() => true)
@@ -73,7 +92,16 @@ export interface EnsuredRepo {
 export async function ensureRepo(dir: string): Promise<EnsuredRepo> {
   mkdirSync(dir, { recursive: true })
   let initialized = false
-  if (!(await isRepo(dir))) {
+  const topLevel = (await isRepo(dir)) ? await repoTopLevel(dir) : null
+  const isOwnRepo = topLevel !== null && topLevel === realpathSync(dir)
+  if (topLevel !== null && !isOwnRepo && !nestingAllowed(topLevel)) {
+    throw new Error(
+      `${dir} is inside the repo at ${topLevel} — point the project at ${topLevel}, or pick a folder outside it`
+    )
+  }
+  if (!isOwnRepo) {
+    // Not a repo, or only inside an accidental one (home): this folder gets
+    // its own, so the record never lands in someone else's history.
     await git(dir, ['init', '-q', '-b', 'main'])
     initialized = true
   }
